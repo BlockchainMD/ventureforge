@@ -48,5 +48,7 @@ jobs:
             --cpu 1 \
             --min-instances 0 \
             --max-instances 3 \
-            --set-env-vars "DRY_RUN=true" \
+            --set-env-vars "DRY_RUN=true,DATABASE_URL=sqlite:////tmp/ventureforge.db" \
+            --startup-cpu-boost \
+            --timeout 60 \
             --quiet
