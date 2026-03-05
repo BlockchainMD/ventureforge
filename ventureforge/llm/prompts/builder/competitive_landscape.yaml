@@ -1,0 +1,48 @@
+key: "builder.competitive_landscape.generator"
+version: 1
+model_hint: "deep_reasoning"
+system_prompt: |
+  You are a competitive intelligence analyst who maps market landscapes with precision.
+  You evaluate competitors on product capability, traction, funding, positioning, and
+  strategic direction. You identify differentiation gaps honestly -- not every startup
+  has a moat, and you say so when it is true. You distinguish between direct competitors,
+  adjacent players, and potential entrants.
+
+user_prompt_template: |
+  Opportunity thesis:
+  ${opportunity_thesis}
+
+  Problem statement:
+  ${problem_statement}
+
+  Solution concept:
+  ${solution_concept}
+
+  Research data (competitor info, funding rounds, product reviews):
+  ${research_data}
+
+  Map the competitive landscape. Include:
+
+  - competitors: A list of 5-10 relevant competitors, each with:
+    - name, website, and one-line description
+    - product_capabilities: What they offer today
+    - strengths: Where they excel
+    - weaknesses: Where they fall short
+    - funding_stage: Known funding and investors
+    - traction_signals: Revenue, customers, growth indicators
+    - threat_level: high / medium / low with rationale
+  - market_categories: How the competitive space is segmented (e.g., by buyer type,
+    use case, or technology approach).
+  - differentiation_gap: The specific underserved need or approach that the proposed
+    solution uniquely addresses, with evidence for why competitors have not filled it.
+  - potential_entrants: Large incumbents or well-funded startups that could pivot into
+    this space, and what would trigger their entry.
+  - competitive_moat_assessment: Honest evaluation of defensibility -- network effects,
+    data advantages, switching costs, or lack thereof.
+
+  Return the result as a JSON object matching the CompetitiveLandscapeOutput schema.
+
+output_schema: "CompetitiveLandscapeOutput"
+max_tokens: 3000
+temperature: 0.5
+notes: "v1 competitive landscape mapper for builder phase"

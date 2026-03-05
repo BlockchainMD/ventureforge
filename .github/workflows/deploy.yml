@@ -1,0 +1,52 @@
+name: Build & Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+
+env:
+  PROJECT_ID: present-health-dpc-2025
+  REGION: us-central1
+  SERVICE: ventureforge
+  IMAGE: us-central1-docker.pkg.dev/present-health-dpc-2025/ventureforge/ventureforge
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/447777832264/locations/global/workloadIdentityPools/github-pool/providers/github-ventureforge
+          service_account: ventureforge-ci@present-health-dpc-2025.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Authenticate Docker
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build & push image
+        run: |
+          docker build --target prod -t $IMAGE:$GITHUB_SHA -t $IMAGE:latest .
+          docker push $IMAGE:$GITHUB_SHA
+          docker push $IMAGE:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy $SERVICE \
+            --image $IMAGE:$GITHUB_SHA \
+            --region $REGION \
+            --platform managed \
+            --allow-unauthenticated \
+            --memory 1Gi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 3 \
+            --set-env-vars "DRY_RUN=true" \
+            --quiet

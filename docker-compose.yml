@@ -1,0 +1,45 @@
+services:
+  app:
+    build:
+      context: .
+      target: prod
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://ventureforge:ventureforge@postgres:5432/ventureforge
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - outputs:/app/outputs
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=ventureforge
+      - POSTGRES_PASSWORD=ventureforge
+      - POSTGRES_DB=ventureforge
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ventureforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  redisdata:
+  outputs:

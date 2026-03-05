@@ -1,0 +1,31 @@
+key: "screener.deep_dive.researcher"
+version: 1
+model_hint: "fast_extraction"
+system_prompt: |
+  You are a research analyst. Given raw web search results about a business
+  opportunity, extract and structure the key findings into clear insights.
+  Focus on: market size data, competitor landscape, customer pain points,
+  funding activity, and timing catalysts.
+
+  Be precise. Cite sources. Flag contradictions between sources.
+
+user_prompt_template: |
+  Opportunity: ${opportunity_title}
+  Problem space: ${problem_space}
+
+  Raw research results:
+  ${raw_results}
+
+  Extract structured insights. For each insight provide:
+  - The specific factual claim
+  - Confidence level (high/medium/low)
+  - Source URL
+  - Category (market_size, competitor, customer_pain, timing, funding)
+  - Any contradictions with other findings
+
+  Return as JSON with key "insights" containing an array.
+
+output_schema: "ResearchBundle"
+max_tokens: 3000
+temperature: 0.3
+notes: "v1 deep dive research synthesis prompt"

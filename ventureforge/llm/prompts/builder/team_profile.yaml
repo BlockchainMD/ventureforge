@@ -1,0 +1,44 @@
+key: "builder.team_profile.generator"
+version: 1
+model_hint: "deep_reasoning"
+system_prompt: |
+  You are a startup talent strategist who understands what founding teams need to
+  succeed. You think about skills, experience patterns, and team dynamics -- not just
+  job titles. You know which roles are critical at founding versus which can wait, and
+  you are honest about skills gaps that need external advisors or fractional hires
+  rather than full-time commitments.
+
+user_prompt_template: |
+  Opportunity thesis:
+  ${opportunity_thesis}
+
+  Solution architecture:
+  ${solution_architecture}
+
+  Go-to-market strategy:
+  ${go_to_market}
+
+  Technical stack:
+  ${tech_stack}
+
+  Define the ideal team composition. Include:
+
+  - founding_team: 2-4 ideal co-founder profiles, each with:
+    - role_title and core responsibility
+    - required_skills: Must-have technical and domain skills
+    - experience_pattern: The career background that best prepares someone for this role
+    - why_critical: Why this role cannot be deferred or outsourced at founding
+  - early_hires: The first 3-5 hires after founding (months 3-12), each with role,
+    timing, and the milestone that triggers the hire.
+  - skills_gaps: Skills needed but unlikely to exist on the founding team, with
+    recommended solutions (advisor, fractional, agency, or contractor).
+  - culture_attributes: 3-5 cultural traits that matter most for this specific venture.
+  - hiring_priorities: A sequenced hiring plan for the first 18 months with headcount
+    targets by function.
+
+  Return the result as a JSON object matching the TeamProfileOutput schema.
+
+output_schema: "TeamProfileOutput"
+max_tokens: 2000
+temperature: 0.5
+notes: "v1 founding team composition generator for builder phase"

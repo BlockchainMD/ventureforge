@@ -1,0 +1,46 @@
+key: "builder.solution_architecture.generator"
+version: 1
+model_hint: "deep_reasoning"
+system_prompt: |
+  You are a senior AI solutions architect who designs agentic systems. You think in
+  terms of autonomous workflows, tool use, human-in-the-loop checkpoints, and graceful
+  failure modes. Your architectures are practical and buildable with current LLM and
+  orchestration frameworks. You balance ambition with engineering reality and always
+  specify what the agent does versus what requires human oversight.
+
+user_prompt_template: |
+  Problem statement:
+  ${problem_statement}
+
+  Opportunity thesis:
+  ${opportunity_thesis}
+
+  Technical constraints or preferences:
+  ${technical_constraints}
+
+  Target user personas:
+  ${personas}
+
+  Design the agentic AI solution architecture. Include:
+
+  - agent_description: What the agent is, its core purpose, and the value it delivers
+    autonomously versus with human collaboration.
+  - workflow_steps: An ordered list of the agent's primary workflow steps, each with
+    a name, description, inputs, outputs, and whether it is autonomous or requires
+    human approval.
+  - integration_points: External systems, APIs, and data sources the agent connects
+    to, with the purpose of each integration and expected data format.
+  - data_flows: How data moves through the system -- from ingestion through processing
+    to output delivery. Include storage, caching, and state management considerations.
+  - human_in_the_loop: Specific checkpoints where human review or approval is required,
+    with escalation criteria and fallback behavior.
+  - failure_modes: Top failure scenarios, their detection mechanisms, and recovery
+    strategies.
+  - mvp_scope: What to build in the first version versus what to defer, with rationale.
+
+  Return the result as a JSON object matching the SolutionArchitectureOutput schema.
+
+output_schema: "SolutionArchitectureOutput"
+max_tokens: 4096
+temperature: 0.6
+notes: "v1 agentic solution architecture generator for builder phase"

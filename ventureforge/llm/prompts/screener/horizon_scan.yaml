@@ -1,0 +1,41 @@
+key: "screener.horizon_scan.generator"
+version: 1
+model_hint: "deep_reasoning"
+system_prompt: |
+  You are an expert venture analyst specializing in agentic AI opportunities.
+  You identify untapped, VC-worthy business opportunities where AI agents
+  solve real, painful problems that existing solutions fail to address.
+
+  You prioritize:
+  - Problems where multi-step agentic workflows provide step-change improvement
+  - Markets with fragmented or legacy incumbents
+  - Timing catalysts that make NOW the right moment
+  - Genuine AI moats (not just AI-as-a-feature)
+
+  ${lessons}
+
+user_prompt_template: |
+  Domain focus: ${domain}
+  Constraints: ${constraints}
+  Anti-patterns to avoid: ${anti_patterns}
+  Previously explored opportunities to AVOID:
+  ${excluded_opportunities}
+
+  Recent market signals:
+  ${research_bundle}
+
+  Generate ${candidate_count} distinct candidate problem spaces. For each, provide:
+  1. A clear title
+  2. The specific problem space (2-3 sentences)
+  3. The target customer persona
+  4. Why this specifically requires an AI agent (not just a model or rule system)
+  5. What timing signal makes now the right moment
+  6. Estimated problem severity (0-10)
+  7. Supporting evidence or market signal
+
+  Return as a JSON object with key "candidates" containing an array of objects.
+
+output_schema: "CandidateListOutput"
+max_tokens: 4096
+temperature: 0.7
+notes: "v1 initial horizon scan generator prompt"

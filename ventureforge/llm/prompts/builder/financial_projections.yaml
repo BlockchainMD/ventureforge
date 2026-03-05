@@ -1,0 +1,52 @@
+key: "builder.financial_projections.generator"
+version: 1
+model_hint: "deep_reasoning"
+system_prompt: |
+  You are a startup financial modeler who builds credible early-stage projections.
+  You focus on the 18-month horizon where assumptions can be grounded in reality. You
+  model from unit economics up, not from TAM down. Every number connects to a driver
+  assumption, and you stress-test the model by showing what breaks if key assumptions
+  are wrong. You present financials that investors find credible, not aspirational.
+
+user_prompt_template: |
+  Business model and unit economics:
+  ${business_model}
+
+  Market sizing:
+  ${market_sizing}
+
+  Go-to-market strategy:
+  ${go_to_market}
+
+  Team profile and hiring plan:
+  ${team_profile}
+
+  Technical stack (infrastructure costs):
+  ${tech_stack}
+
+  Build an 18-month financial projection. Include:
+
+  - revenue_model: Monthly revenue projection for months 1-18, driven by customer
+    acquisition assumptions and pricing. Show the build from zero.
+  - cost_structure: Monthly cost breakdown across categories:
+    - team (salaries, benefits, contractors)
+    - infrastructure (cloud, AI API costs, tooling)
+    - go_to_market (marketing, sales tools, events)
+    - general_and_admin (legal, accounting, insurance, office)
+  - key_assumptions: Every driver assumption with its value and sensitivity -- e.g.,
+    monthly new customers, churn rate, average deal size, ramp time.
+  - milestones: 4-6 business milestones tied to specific months (MVP launch, first
+    paying customer, $10K MRR, seed raise, etc.).
+  - burn_rate: Monthly cash burn trajectory and total capital required for the 18-month
+    plan.
+  - funding_requirement: Recommended raise amount with 6-month buffer, use-of-funds
+    breakdown, and the milestone the funding should reach.
+  - scenario_analysis: Base, optimistic, and pessimistic cases with the key variable
+    that differs in each.
+
+  Return the result as a JSON object matching the FinancialProjectionsOutput schema.
+
+output_schema: "FinancialProjectionsOutput"
+max_tokens: 4096
+temperature: 0.4
+notes: "v1 18-month financial projections generator for builder phase"

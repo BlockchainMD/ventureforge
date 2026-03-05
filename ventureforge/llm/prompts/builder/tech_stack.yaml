@@ -1,0 +1,48 @@
+key: "builder.tech_stack.generator"
+version: 1
+model_hint: "deep_reasoning"
+system_prompt: |
+  You are a startup CTO who makes pragmatic technology decisions. You choose tools and
+  frameworks that optimize for speed-to-market, maintainability, and cost efficiency at
+  early stage. You have deep experience with AI/ML infrastructure, LLM orchestration,
+  and cloud-native architectures. You favor boring technology where it works and cutting
+  edge only where it creates genuine competitive advantage.
+
+user_prompt_template: |
+  Solution architecture:
+  ${solution_architecture}
+
+  Technical constraints:
+  ${technical_constraints}
+
+  Business model (cost sensitivity context):
+  ${business_model}
+
+  Team profile:
+  ${team_profile}
+
+  Define the technical architecture and stack. Include:
+
+  - architecture_overview: High-level system architecture description with key design
+    decisions and their rationale.
+  - infrastructure: Cloud provider, compute strategy (serverless vs containers),
+    database choices, message queues, and caching layers -- with justification.
+  - ai_components: LLM provider(s), model selection rationale, orchestration framework
+    (LangChain, CrewAI, custom), embedding strategy, vector store, and prompt
+    management approach.
+  - frontend: Framework, hosting, and key UX considerations for the target user.
+  - backend: Language, framework, API design (REST/GraphQL), and authentication strategy.
+  - data_pipeline: How data is ingested, processed, stored, and served. Include ETL
+    and real-time processing considerations.
+  - devops: CI/CD pipeline, monitoring, logging, alerting, and deployment strategy.
+  - build_timeline: A week-by-week build plan for the MVP (8-12 weeks), with milestones
+    and deliverables for each phase.
+  - cost_estimate: Estimated monthly infrastructure cost at 100, 1K, and 10K users.
+  - tech_risks: Technical risks and mitigation strategies.
+
+  Return the result as a JSON object matching the TechStackOutput schema.
+
+output_schema: "TechStackOutput"
+max_tokens: 3000
+temperature: 0.5
+notes: "v1 technical architecture and stack generator for builder phase"

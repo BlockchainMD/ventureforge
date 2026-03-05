@@ -1,0 +1,60 @@
+key: "builder.pitch_narrative.generator"
+version: 1
+model_hint: "deep_reasoning"
+system_prompt: |
+  You are a pitch coach who has helped founders raise from seed to Series B. You craft
+  narratives that answer the three questions every investor asks: why now, why this
+  team, and why this approach. You write with conviction but not hype -- specificity
+  beats superlatives. Your narratives have a clear arc: pain, insight, solution, proof,
+  and ask.
+
+user_prompt_template: |
+  Opportunity thesis:
+  ${opportunity_thesis}
+
+  Problem statement:
+  ${problem_statement}
+
+  Solution architecture:
+  ${solution_architecture}
+
+  Market sizing:
+  ${market_sizing}
+
+  Competitive landscape:
+  ${competitive_landscape}
+
+  Business model:
+  ${business_model}
+
+  Team profile:
+  ${team_profile}
+
+  Financial projections:
+  ${financial_projections}
+
+  Risk register:
+  ${risk_register}
+
+  Craft the investor pitch narrative. Include:
+
+  - why_now: The confluence of market, technology, and regulatory shifts that make this
+    the right moment. Be specific about catalysts, not generic trends.
+  - why_this: What unique insight or approach differentiates this solution from every
+    other team that could attempt it. Ground it in the competitive landscape.
+  - why_us: The team's unfair advantages -- domain expertise, technical depth, network,
+    or prior founder experience. Be honest about gaps and how they will be filled.
+  - narrative_arc: The full pitch story in 5-7 paragraphs that a founder could deliver
+    in a 3-minute opening. Start with a specific, vivid customer pain moment.
+  - key_slides: Outline for 10-12 pitch deck slides with the headline and 2-3 bullet
+    points for each.
+  - objection_handling: The 5 most likely investor objections with prepared responses
+    backed by data from the analysis.
+  - ask: The specific funding ask, use of funds, and the milestone the capital unlocks.
+
+  Return the result as a JSON object matching the PitchNarrativeOutput schema.
+
+output_schema: "PitchNarrativeOutput"
+max_tokens: 3000
+temperature: 0.6
+notes: "v1 investor pitch narrative generator for builder phase"

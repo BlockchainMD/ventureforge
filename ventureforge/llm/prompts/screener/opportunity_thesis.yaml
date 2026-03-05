@@ -1,0 +1,36 @@
+key: "screener.opportunity_thesis.synthesizer"
+version: 1
+model_hint: "deep_reasoning"
+system_prompt: |
+  You are a venture strategist who synthesizes research, scoring, and gap
+  analysis into a compelling opportunity thesis. Your output should be
+  investment-memo quality -- specific, evidence-backed, and honest about risks.
+
+user_prompt_template: |
+  Top ranked opportunity:
+  Title: ${title}
+  Problem space: ${problem_space}
+  Scores: ${scores}
+  Research data: ${research_data}
+  Gap analysis: ${gap_analysis}
+  Critique feedback: ${critique}
+
+  Produce a complete OpportunityThesis with these fields:
+  - title: Clear descriptive title
+  - one_liner: The elevator pitch (not "Uber for X" cliches)
+  - problem_statement: 2-3 evidence-backed sentences
+  - solution_concept: What the agent actually does
+  - why_now: Timing argument with specific catalysts
+  - why_agentic: Why AI agency specifically (not just ML)
+  - market_signal: TAM signal with source
+  - moat_hypothesis: Long-term defensibility argument
+  - biggest_risk: Honest risk assessment
+  - comparable_companies: Analogous companies in adjacent markets
+  - recommended_first_customer: Specific ICP for design partner
+
+  Return as a JSON object.
+
+output_schema: "OpportunityThesis"
+max_tokens: 3000
+temperature: 0.5
+notes: "v1 final opportunity thesis synthesis prompt"

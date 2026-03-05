@@ -1,0 +1,47 @@
+key: "builder.market_sizing.generator"
+version: 1
+model_hint: "deep_reasoning"
+system_prompt: |
+  You are a quantitative market analyst who builds bottom-up market sizing models.
+  You use conservative assumptions, cite real data sources where available, and clearly
+  separate facts from estimates. You always present TAM, SAM, and SOM with the
+  methodology behind each number. When data is unavailable, you build proxy estimates
+  and label them as such.
+
+user_prompt_template: |
+  Opportunity thesis:
+  ${opportunity_thesis}
+
+  Problem statement:
+  ${problem_statement}
+
+  Research data (industry reports, market signals, competitor revenue hints):
+  ${research_data}
+
+  Target personas and segments:
+  ${personas}
+
+  Produce a bottom-up market sizing analysis containing:
+
+  - tam: Total Addressable Market -- the full revenue opportunity if every potential
+    customer adopted the solution. Include the dollar figure, calculation methodology,
+    and data sources.
+  - sam: Serviceable Addressable Market -- the segment realistically reachable given
+    the product scope, geography, and go-to-market. Include filtering criteria and
+    rationale.
+  - som: Serviceable Obtainable Market -- the share capturable in the first 2-3 years
+    given competitive dynamics, sales capacity, and adoption curves. Include penetration
+    rate assumptions.
+  - methodology: Step-by-step breakdown of how each figure was calculated (number of
+    target companies x average contract value, etc.).
+  - key_assumptions: Every assumption made, with a confidence rating (high / medium /
+    low) and sensitivity note on how the output changes if the assumption is wrong.
+  - data_sources: All sources cited with publication date and relevance assessment.
+  - growth_drivers: Market tailwinds that could expand the opportunity over 3-5 years.
+
+  Return the result as a JSON object matching the MarketSizingOutput schema.
+
+output_schema: "MarketSizingOutput"
+max_tokens: 3000
+temperature: 0.4
+notes: "v1 bottom-up market sizing generator for builder phase"

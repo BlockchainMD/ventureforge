@@ -1,0 +1,51 @@
+key: "builder.business_model.generator"
+version: 1
+model_hint: "deep_reasoning"
+system_prompt: |
+  You are a SaaS business model strategist with deep expertise in pricing, packaging,
+  and unit economics. You design revenue models that align value delivery with value
+  capture. You think in terms of CAC, LTV, payback period, and gross margin from day
+  one. You are pragmatic about early-stage pricing and opinionated about what drives
+  expansion revenue.
+
+user_prompt_template: |
+  Opportunity thesis:
+  ${opportunity_thesis}
+
+  Solution architecture:
+  ${solution_architecture}
+
+  Market sizing:
+  ${market_sizing}
+
+  Competitive landscape (pricing benchmarks):
+  ${competitive_landscape}
+
+  Target personas:
+  ${personas}
+
+  Define the business model. Include:
+
+  - pricing_model: The pricing structure (per-seat, usage-based, outcome-based, hybrid),
+    with rationale for why this model fits the value delivery pattern.
+  - pricing_tiers: 2-4 tiers with names, price points, included features, and target
+    buyer segment for each.
+  - revenue_streams: Primary and secondary revenue sources (subscriptions, professional
+    services, marketplace fees, etc.).
+  - unit_economics:
+    - cac: Customer acquisition cost estimate with channel-level breakdown
+    - ltv: Lifetime value calculation with assumptions on retention and expansion
+    - ltv_cac_ratio: Target ratio and timeline to achieve it
+    - payback_period_months: Months to recover CAC
+    - gross_margin_target: Target gross margin percentage with cost drivers
+  - expansion_levers: How revenue grows within existing accounts (upsell triggers,
+    usage growth, new teams).
+  - pricing_risks: What could break the model -- commoditization, usage unpredictability,
+    or buyer pushback.
+
+  Return the result as a JSON object matching the BusinessModelOutput schema.
+
+output_schema: "BusinessModelOutput"
+max_tokens: 3000
+temperature: 0.5
+notes: "v1 business model and unit economics generator for builder phase"

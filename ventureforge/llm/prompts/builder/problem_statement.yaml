@@ -1,0 +1,43 @@
+key: "builder.problem_statement.generator"
+version: 1
+model_hint: "deep_reasoning"
+system_prompt: |
+  You are an expert business analyst who specializes in problem discovery and validation.
+  You write problem statements that are specific, evidence-backed, and framed around
+  customer pain rather than solution features. You quantify the cost of the status quo
+  and identify who suffers most acutely. You never invent data -- if evidence is thin,
+  you flag it explicitly.
+
+user_prompt_template: |
+  Opportunity thesis:
+  ${opportunity_thesis}
+
+  Research data (market signals, interviews, reports):
+  ${research_data}
+
+  Lessons from prior iterations or critique feedback:
+  ${lessons}
+
+  Using the above inputs, produce a structured problem statement containing:
+
+  - core_problem: A precise 2-3 sentence description of the problem, grounded in
+    evidence from the research data. Avoid vague language; name the specific friction,
+    inefficiency, or unmet need.
+  - affected_personas: A list of 2-4 distinct personas who experience this problem,
+    each with a role description, pain intensity (high/medium/low), and frequency of
+    encounter.
+  - current_alternatives: How these personas solve (or work around) the problem today,
+    including incumbent tools, manual processes, and their key limitations.
+  - cost_of_inaction: Quantified or estimated cost of leaving the problem unsolved --
+    in dollars, time, churn rate, or opportunity cost. Be specific and cite sources
+    where available.
+  - evidence_sources: List every data point, report, interview quote, or market signal
+    that supports the above claims, with confidence level (strong / moderate / weak)
+    for each.
+
+  Return the result as a JSON object matching the ProblemStatementOutput schema.
+
+output_schema: "ProblemStatementOutput"
+max_tokens: 3000
+temperature: 0.5
+notes: "v1 problem statement generator for builder phase"

@@ -1,0 +1,52 @@
+key: "builder.go_to_market.generator"
+version: 1
+model_hint: "deep_reasoning"
+system_prompt: |
+  You are a go-to-market strategist who has launched multiple B2B SaaS products from
+  zero to traction. You think in terms of ideal customer profiles, channel economics,
+  and sequenced launch plays. You know when to use product-led growth versus sales-led
+  approaches and how to design land-and-expand motions. You are specific about tactics,
+  not just strategy.
+
+user_prompt_template: |
+  Opportunity thesis:
+  ${opportunity_thesis}
+
+  Problem statement:
+  ${problem_statement}
+
+  Solution concept:
+  ${solution_concept}
+
+  Business model:
+  ${business_model}
+
+  Market sizing:
+  ${market_sizing}
+
+  Competitive landscape:
+  ${competitive_landscape}
+
+  Design the go-to-market strategy. Include:
+
+  - ideal_customer_profile: The primary ICP with firmographic (industry, size, revenue),
+    technographic (tools they use), and behavioral (triggers, buying signals) criteria.
+    Include a secondary ICP if relevant.
+  - channels: Ranked list of acquisition channels with estimated CAC, rationale, and
+    expected ramp time for each. Include both inbound and outbound.
+  - sales_motion: Whether the primary motion is product-led growth (PLG), sales-led
+    growth (SLG), or hybrid. Detail the buyer journey from awareness to closed-won.
+  - launch_sequence: A phased plan with three stages:
+    - phase_1_design_partners: How to get the first 5-10 design partners (specific
+      tactics, outreach templates, value proposition).
+    - phase_2_early_traction: How to reach 25-50 paying customers.
+    - phase_3_scale: How to reach 200+ customers and what changes at that stage.
+  - key_metrics: The 5-7 metrics to track at each phase, with target values.
+  - partnerships: Strategic partnerships that could accelerate distribution.
+
+  Return the result as a JSON object matching the GoToMarketOutput schema.
+
+output_schema: "GoToMarketOutput"
+max_tokens: 3000
+temperature: 0.5
+notes: "v1 go-to-market strategy generator for builder phase"

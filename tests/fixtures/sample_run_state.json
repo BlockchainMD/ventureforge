@@ -1,0 +1,43 @@
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "run_type": "screener",
+  "status": "COMPLETED",
+  "input_config": {
+    "domain": "healthcare operations",
+    "constraints": ["B2B only"],
+    "anti_patterns": ["no consumer social"],
+    "target_funding_stage": "pre-seed to Series A",
+    "geography": "US-first",
+    "max_candidates": 8,
+    "max_rounds_per_phase": 4,
+    "quality_threshold": 0.82
+  },
+  "current_phase": "final_ranking",
+  "current_round": 2,
+  "phases": [
+    {
+      "phase_name": "horizon_scan",
+      "status": "COMPLETED",
+      "round_count": 3,
+      "quality_score": 0.85
+    },
+    {
+      "phase_name": "deep_dive",
+      "status": "COMPLETED",
+      "round_count": 2,
+      "quality_score": 0.83
+    },
+    {
+      "phase_name": "gap_analysis",
+      "status": "COMPLETED",
+      "round_count": 2,
+      "quality_score": 0.87
+    },
+    {
+      "phase_name": "final_ranking",
+      "status": "COMPLETED",
+      "round_count": 2,
+      "quality_score": 0.90
+    }
+  ]
+}

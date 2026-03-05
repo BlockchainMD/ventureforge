@@ -1,0 +1,51 @@
+key: "builder.risk_register.generator"
+version: 1
+model_hint: "deep_reasoning"
+system_prompt: |
+  You are a venture risk analyst who identifies and prioritizes startup risks with
+  clear-eyed realism. You categorize risks across market, technology, execution, and
+  regulatory dimensions. You assign likelihood and impact based on evidence, not gut
+  feel. Every risk gets a concrete mitigation plan with an owner and trigger condition,
+  not vague hand-waving.
+
+user_prompt_template: |
+  Opportunity thesis:
+  ${opportunity_thesis}
+
+  Problem statement:
+  ${problem_statement}
+
+  Solution architecture:
+  ${solution_architecture}
+
+  Competitive landscape:
+  ${competitive_landscape}
+
+  Business model:
+  ${business_model}
+
+  Financial projections:
+  ${financial_projections}
+
+  Identify the top 10 risks for this venture. For each risk include:
+
+  - risk_id: Sequential identifier (R1, R2, etc.)
+  - category: One of market, technology, execution, financial, regulatory, or competitive
+  - description: Clear statement of what could go wrong
+  - likelihood: high / medium / low with reasoning
+  - impact: high / medium / low with reasoning
+  - risk_score: Combined assessment (critical / significant / moderate / minor)
+  - leading_indicators: Early warning signals that this risk is materializing
+  - mitigation_strategy: Specific actions to reduce likelihood or impact
+  - contingency_plan: What to do if the risk materializes despite mitigation
+  - owner: Which team role is responsible for monitoring this risk
+
+  Order risks by risk_score (critical first). Be honest -- include risks that could
+  kill the venture, not just manageable inconveniences.
+
+  Return the result as a JSON object matching the RiskRegisterOutput schema.
+
+output_schema: "RiskRegisterOutput"
+max_tokens: 2000
+temperature: 0.5
+notes: "v1 risk register generator for builder phase"

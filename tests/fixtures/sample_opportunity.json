@@ -1,0 +1,13 @@
+{
+  "title": "Autonomous Revenue Cycle Agent for Independent Medical Practices",
+  "one_liner": "AI agent that handles the entire billing-to-collection workflow for small medical practices",
+  "problem_statement": "Independent medical practices lose 15-30% of revenue to billing errors, claim denials, and slow collections. The average practice has 2.5 FTEs dedicated to billing, costing $150K+ annually.",
+  "solution_concept": "An agentic AI system that autonomously manages the entire revenue cycle: claim generation, submission, denial management, patient billing, and collections follow-up.",
+  "why_now": "CMS interoperability mandates (2024-2025) have opened payer data APIs. LLM capabilities now handle the multi-step reasoning required for medical coding and payer rule navigation.",
+  "why_agentic": "Revenue cycle management requires multi-step reasoning across coding guidelines (ICD-10, CPT), payer-specific rules, denial patterns, and patient communication - a perfect fit for agentic AI.",
+  "market_signal": "$15B revenue cycle management market growing at 12% CAGR. 250,000+ independent practices in the US alone.",
+  "moat_hypothesis": "Proprietary data flywheel from processing claims across practices creates increasingly accurate coding and denial prediction models.",
+  "biggest_risk": "Healthcare regulatory compliance (HIPAA, state billing regulations) creates high barriers but also high liability.",
+  "comparable_companies": ["Athenahealth", "Waystar", "Olive AI", "Thoughtful AI"],
+  "recommended_first_customer": "Solo dermatology practices billing $500K-2M annually in states with simpler billing regulations"
+}
