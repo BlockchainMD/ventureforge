@@ -12,7 +12,8 @@ class TestSettingsDefaults:
         monkeypatch.delenv("DATABASE_URL", raising=False)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-        s = Settings(anthropic_api_key="", tavily_api_key="")
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        s = Settings(anthropic_api_key="", tavily_api_key="", gemini_api_key="")
         assert "sqlite" in s.database_url
 
     def test_default_llm_settings(self, monkeypatch: pytest.MonkeyPatch):
@@ -35,28 +36,31 @@ class TestSettingsDefaults:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("TAVILY_API_KEY", raising=False)
         monkeypatch.delenv("CRUNCHBASE_API_KEY", raising=False)
-        s = Settings(anthropic_api_key="", tavily_api_key="")
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        s = Settings(anthropic_api_key="", tavily_api_key="", gemini_api_key="")
         assert s.anthropic_api_key == ""
         assert s.openai_api_key is None
         assert s.tavily_api_key == ""
         assert s.crunchbase_api_key is None
+        assert s.gemini_api_key == ""
 
 
 class TestIsDryRun:
     def test_dry_run_when_no_keys(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("TAVILY_API_KEY", raising=False)
-        s = Settings(anthropic_api_key="", tavily_api_key="")
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        s = Settings(anthropic_api_key="", tavily_api_key="", gemini_api_key="")
         assert s.is_dry_run() is True
 
-    def test_dry_run_when_only_anthropic_key(self, monkeypatch: pytest.MonkeyPatch):
-        s = Settings(anthropic_api_key="sk-ant-123", tavily_api_key="")
-        assert s.is_dry_run() is True
+    def test_not_dry_run_with_gemini_key(self, monkeypatch: pytest.MonkeyPatch):
+        s = Settings(gemini_api_key="AIza-test", anthropic_api_key="", tavily_api_key="")
+        assert s.is_dry_run() is False
 
-    def test_dry_run_when_only_tavily_key(self, monkeypatch: pytest.MonkeyPatch):
-        s = Settings(anthropic_api_key="", tavily_api_key="tvly-123")
-        assert s.is_dry_run() is True
+    def test_not_dry_run_with_anthropic_key(self, monkeypatch: pytest.MonkeyPatch):
+        s = Settings(anthropic_api_key="sk-ant-123", gemini_api_key="", tavily_api_key="")
+        assert s.is_dry_run() is False
 
-    def test_not_dry_run_when_both_keys_present(self, monkeypatch: pytest.MonkeyPatch):
-        s = Settings(anthropic_api_key="sk-ant-123", tavily_api_key="tvly-123")
+    def test_not_dry_run_with_both_keys(self, monkeypatch: pytest.MonkeyPatch):
+        s = Settings(gemini_api_key="AIza-test", anthropic_api_key="sk-ant-123", tavily_api_key="")
         assert s.is_dry_run() is False
