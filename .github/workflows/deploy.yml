@@ -48,6 +48,7 @@ jobs:
             --cpu 1 \
             --min-instances 0 \
             --max-instances 3 \
-            --set-env-vars "DRY_RUN=true,DATABASE_URL=sqlite:////tmp/ventureforge.db" \
+            --set-env-vars "DATABASE_URL=sqlite:////tmp/ventureforge.db" \
+            --set-secrets "GEMINI_API_KEY=ventureforge-gemini-key:latest" \
             --cpu-boost \
             --quiet

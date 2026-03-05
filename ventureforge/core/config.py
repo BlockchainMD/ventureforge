@@ -41,7 +41,8 @@ class Settings(BaseSettings):
 
     def is_dry_run(self) -> bool:
         """Check if API keys are missing, indicating dry-run mode."""
-        return not self.anthropic_api_key or not self.tavily_api_key
+        has_llm = bool(self.gemini_api_key) or bool(self.anthropic_api_key)
+        return not has_llm
 
 
 _settings: Settings | None = None
