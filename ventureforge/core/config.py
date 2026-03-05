@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str | None = None
 
+    # Google Gemini
+    gemini_api_key: str = ""
+
     # Research
     tavily_api_key: str = ""
     crunchbase_api_key: str | None = None
