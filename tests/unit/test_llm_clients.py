@@ -49,10 +49,12 @@ async def test_llm_router_resolve_model():
     with patch("ventureforge.llm.router.get_settings") as mock:
         mock.return_value.anthropic_api_key = ""
         mock.return_value.openai_api_key = None
+        mock.return_value.gemini_api_key = ""
         mock.return_value.deep_reasoning_model = "claude-opus-4-6"
         mock.return_value.fast_model = "claude-sonnet-4-6"
         from ventureforge.llm.router import LLMRouter
         router = LLMRouter()
+        # Gemini not available (no key), so falls back to Anthropic routing
         assert router.resolve_model("deep_reasoning") == "claude-opus-4-6"
         assert router.resolve_model("fast_extraction") == "claude-sonnet-4-6"
         assert router.resolve_model("custom-model") == "custom-model"
