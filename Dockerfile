@@ -17,12 +17,23 @@ RUN pip install --no-cache-dir ".[dev]"
 COPY . .
 CMD ["uvicorn", "ventureforge.api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
+# Frontend build stage
+FROM node:20-alpine AS frontend-build
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci --ignore-scripts 2>/dev/null || npm install
+COPY frontend/ .
+RUN npm run build
+
 # Production stage
 FROM base AS prod
 
 # Copy prompt YAML files and examples
 COPY ventureforge/ ventureforge/
 COPY examples/ examples/
+
+# Copy frontend build
+COPY --from=frontend-build /frontend/dist/ frontend/dist/
 
 RUN useradd -m -r appuser && chown -R appuser:appuser /app
 USER appuser
