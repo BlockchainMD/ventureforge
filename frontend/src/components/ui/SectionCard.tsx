@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { PhaseResponse } from "@/api/types";
+import { parseUTC } from "@/api/utils";
 import StatusBadge from "./StatusBadge";
 import QualityGauge from "./QualityGauge";
 
@@ -28,12 +29,12 @@ export default function SectionCard({ phase }: { phase: PhaseResponse }) {
             <span>{phase.round_count} rounds</span>
             {phase.started_at && (
               <span>
-                Started: {new Date(phase.started_at).toLocaleString()}
+                Started: {parseUTC(phase.started_at).toLocaleString()}
               </span>
             )}
             {phase.completed_at && (
               <span>
-                Completed: {new Date(phase.completed_at).toLocaleString()}
+                Completed: {parseUTC(phase.completed_at).toLocaleString()}
               </span>
             )}
           </div>

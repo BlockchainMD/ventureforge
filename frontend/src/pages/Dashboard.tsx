@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { PlusCircle } from "lucide-react";
 import { useRuns } from "@/hooks/useRuns";
+import { parseUTC } from "@/api/utils";
 import StatusBadge from "@/components/ui/StatusBadge";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import EmptyState from "@/components/ui/EmptyState";
@@ -71,7 +72,7 @@ export default function Dashboard() {
                     {run.current_phase ?? "-"}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">
-                    {formatDistanceToNow(new Date(run.created_at), {
+                    {formatDistanceToNow(parseUTC(run.created_at), {
                       addSuffix: true,
                     })}
                   </td>

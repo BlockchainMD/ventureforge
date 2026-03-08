@@ -4,6 +4,7 @@ import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import EmptyState from "@/components/ui/EmptyState";
 import ErrorAlert from "@/components/ui/ErrorAlert";
 import { formatDistanceToNow } from "date-fns";
+import { parseUTC } from "@/api/utils";
 
 export default function Lessons() {
   const { data: lessons, loading, error } = useLessons();
@@ -52,7 +53,7 @@ export default function Lessons() {
                         </span>
                       ))}
                       <span className="text-xs text-gray-400">
-                        {formatDistanceToNow(new Date(lesson.created_at), {
+                        {formatDistanceToNow(parseUTC(lesson.created_at), {
                           addSuffix: true,
                         })}
                       </span>
