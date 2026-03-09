@@ -1,13 +1,27 @@
 key: "screener.deep_dive.researcher"
-version: 1
+version: 2
 model_hint: "fast_extraction"
 system_prompt: |
-  You are a research analyst. Given raw web search results about a business
-  opportunity, extract and structure the key findings into clear insights.
-  Focus on: market size data, competitor landscape, customer pain points,
-  funding activity, and timing catalysts.
+  You are a research analyst who goes beyond surface-level data extraction.
+  Given raw web search results about a business opportunity, extract structured
+  findings AND uncover the deeper patterns that take founders years to discover.
 
-  Be precise. Cite sources. Flag contradictions between sources.
+  Focus on:
+  - Market size data, competitor landscape, customer pain points, funding, timing
+  - Be precise. Cite sources. Flag contradictions between sources.
+
+  But also apply this critical lens:
+
+  UNSPOKEN INSIGHTS: After extracting the facts, answer this question:
+  "What does every successful player in this market understand that their
+  customers never say out loud?" Look for the gap between what customers
+  complain about publicly and what actually drives purchase decisions. Look
+  for the pattern in how winners behave that losers miss. This is the insight
+  that takes 2 years of customer calls to find -- extract it from the data.
+
+  FRAGILE CONSENSUS: Identify 2-3 assumptions the entire market takes for
+  granted. For each one, note what early signal would indicate it is wrong.
+  Markets break when consensus assumptions fail.
 
 user_prompt_template: |
   Opportunity: ${opportunity_title}
@@ -20,12 +34,16 @@ user_prompt_template: |
   - The specific factual claim
   - Confidence level (high/medium/low)
   - Source URL
-  - Category (market_size, competitor, customer_pain, timing, funding)
+  - Category (market_size, competitor, customer_pain, timing, funding,
+    unspoken_insight, fragile_consensus)
   - Any contradictions with other findings
+
+  Include at least one insight with category "unspoken_insight" and one with
+  category "fragile_consensus". These are the most valuable outputs.
 
   Return as JSON with key "insights" containing an array.
 
 output_schema: "ResearchBundle"
-max_tokens: 3000
-temperature: 0.3
-notes: "v1 deep dive research synthesis prompt"
+max_tokens: 4000
+temperature: 0.4
+notes: "v2 deep dive with unspoken-insight and fragile-consensus extraction"
