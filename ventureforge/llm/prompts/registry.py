@@ -59,10 +59,22 @@ class PromptRegistry:
                 logger.warning("prompt_load_failed", path=str(yaml_path), error=str(e))
 
     def get(self, key: str) -> PromptTemplate:
-        """Get a prompt template by key."""
-        if key not in self._prompts:
-            raise KeyError(f"Prompt '{key}' not found in registry. Available: {list(self._prompts.keys())}")
-        return self._prompts[key]
+        """Get a prompt template by key, with role-based fallback.
+
+        Lookup order for a key like ``screener.horizon_scan.critic``:
+        1. Exact match
+        2. ``shared.critic`` (role fallback)
+        """
+        if key in self._prompts:
+            return self._prompts[key]
+        # Fallback: shared.<role>
+        parts = key.rsplit(".", 1)
+        if len(parts) == 2:
+            role = parts[1]
+            fallback = f"shared.{role}"
+            if fallback in self._prompts:
+                return self._prompts[fallback]
+        raise KeyError(f"Prompt '{key}' not found in registry. Available: {list(self._prompts.keys())}")
 
     def has(self, key: str) -> bool:
         """Check if a prompt key exists."""
