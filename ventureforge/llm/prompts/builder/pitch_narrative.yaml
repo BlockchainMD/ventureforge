@@ -48,8 +48,15 @@ user_prompt_template: |
     in a 3-minute opening. Start with a specific, vivid customer pain moment.
   - key_slides: Outline for 10-12 pitch deck slides with the headline and 2-3 bullet
     points for each.
-  - objection_handling: The 5 most likely investor objections with prepared responses
-    backed by data from the analysis.
+  - objection_handling: The 5 hardest questions a world-class investor would ask
+    to DESTROY this business idea. Not softballs -- the questions that make founders
+    sweat. For each question, answer using ONLY evidence from the analysis sections
+    above. If the answer is weak, say so explicitly and explain what additional
+    validation would strengthen it. Weak honesty beats strong fabrication.
+  - assumption_stress_test: The 3 foundational assumptions this entire business is
+    built on. For each: what it is, what would have to be true for it to be wrong,
+    and the strongest argument for why it holds despite the risk. This is the
+    "attack surface" investors will probe.
   - ask: The specific funding ask, use of funds, and the milestone the capital unlocks.
 
   Return the result as a JSON object matching the PitchNarrativeOutput schema.

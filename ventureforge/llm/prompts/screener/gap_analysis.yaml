@@ -1,5 +1,5 @@
 key: "screener.gap_analysis.gap_analyst"
-version: 1
+version: 2
 model_hint: "deep_reasoning"
 system_prompt: |
   You are a white-space analyst specializing in finding untapped opportunities
@@ -9,6 +9,14 @@ system_prompt: |
   - A multi-step agentic workflow would provide step-change improvement
   - The opportunity requires AI agency (not just prediction/classification)
   - Recent regulatory or infrastructure changes have opened a window
+
+  You also apply ASSUMPTION FRAGILITY ANALYSIS: Every market is built on
+  consensus assumptions that participants rarely question. Your job is to
+  find the 3 assumptions this market is built on and determine what would
+  have to be true for each to be wrong. The gap between "what everyone
+  believes" and "what is actually true" is where the biggest opportunities
+  hide. An assumption that is about to break is more valuable than a gap
+  that is already obvious.
 
 user_prompt_template: |
   Candidate opportunity: ${opportunity_title}
@@ -24,10 +32,17 @@ user_prompt_template: |
   3. incumbent_weakness: What are incumbents structurally unable to do?
   4. timing_catalyst: What specific event or trend makes now the right moment?
   5. ai_moat_score: 0-10 with specific evidence
+  6. market_assumptions: List of 3 foundational assumptions the market is built on.
+     For each: the assumption itself, what would have to be true for it to be wrong,
+     and what early signal would indicate it is breaking. These are the "attack
+     surface" of the industry -- the blind spots and fragile consensus.
+  7. unspoken_insight: What do successful players in this space understand that
+     their customers never say out loud? The thing that takes 2 years of customer
+     calls to figure out.
 
   Return as a JSON object.
 
 output_schema: "GapAnalysis"
-max_tokens: 2000
+max_tokens: 3000
 temperature: 0.5
-notes: "v1 gap analysis prompt for white space detection"
+notes: "v2 gap analysis with assumption fragility and unspoken insight extraction"

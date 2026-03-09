@@ -108,10 +108,22 @@ DEEP_DIVE_RUBRIC = Rubric(
 GAP_ANALYSIS_RUBRIC = Rubric(
     phase="gap_analysis",
     dimensions=[
-        ScoringDimension(name="gap_specificity", weight=0.25, description="How specific is the identified gap?"),
-        ScoringDimension(name="agentic_justification", weight=0.30, description="Why does this need AI agency?"),
-        ScoringDimension(name="incumbent_analysis", weight=0.20, description="Quality of incumbent weakness analysis"),
-        ScoringDimension(name="timing_evidence", weight=0.25, description="Specific timing catalyst with evidence"),
+        ScoringDimension(name="gap_specificity", weight=0.20, description="How specific is the identified gap?"),
+        ScoringDimension(name="agentic_justification", weight=0.25, description="Why does this need AI agency?"),
+        ScoringDimension(name="incumbent_analysis", weight=0.15, description="Quality of incumbent weakness analysis"),
+        ScoringDimension(name="timing_evidence", weight=0.20, description="Specific timing catalyst with evidence"),
+        ScoringDimension(
+            name="assumption_stress_test",
+            weight=0.20,
+            description="Has the analysis identified and pressure-tested its foundational assumptions?",
+            scoring_guide={
+                0: "No assumptions identified",
+                4: "Assumptions listed but not tested",
+                6: "Assumptions identified with what-breaks-them analysis",
+                8: "Deep assumption attack with evidence for/against each",
+                10: "Found the fragile consensus and has data on whether it holds",
+            },
+        ),
     ],
     advancement_threshold=0.80,
     max_rounds=3,
@@ -156,10 +168,22 @@ FINANCIAL_PROJECTIONS_RUBRIC = Rubric(
 GENERIC_BUILDER_RUBRIC = Rubric(
     phase="generic_builder",
     dimensions=[
-        ScoringDimension(name="specificity", weight=0.30, description="Specific, not generic"),
-        ScoringDimension(name="evidence_quality", weight=0.30, description="Claims backed by evidence"),
-        ScoringDimension(name="coherence", weight=0.20, description="Internally consistent"),
-        ScoringDimension(name="actionability", weight=0.20, description="Actionable, not theoretical"),
+        ScoringDimension(name="specificity", weight=0.25, description="Specific, not generic"),
+        ScoringDimension(name="evidence_quality", weight=0.25, description="Claims backed by evidence"),
+        ScoringDimension(name="coherence", weight=0.15, description="Internally consistent"),
+        ScoringDimension(name="actionability", weight=0.15, description="Actionable, not theoretical"),
+        ScoringDimension(
+            name="assumption_stress_test",
+            weight=0.20,
+            description="Has the analysis identified its own load-bearing assumptions and tested them?",
+            scoring_guide={
+                0: "No awareness of underlying assumptions",
+                4: "Assumptions mentioned but taken for granted",
+                6: "Key assumptions identified with risk notes",
+                8: "Assumptions stress-tested with what-breaks-them analysis",
+                10: "Steelmanned arguments with honest assessment of remaining fractures",
+            },
+        ),
     ],
     advancement_threshold=0.85,
     max_rounds=3,
