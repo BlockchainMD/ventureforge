@@ -4,7 +4,7 @@ import type {
   NormalizedBatch,
   ParsedBatch,
   SourceAdapter,
-} from '../adapter.js';
+} from '../adapter';
 
 /**
  * The MANUAL_SOURCE adapter.

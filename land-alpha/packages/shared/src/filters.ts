@@ -7,7 +7,7 @@ import {
   type BuildabilityRating,
   type ParcelStatus,
   type SourceType,
-} from './enums.js';
+} from './enums';
 
 /**
  * One filter model, three consumers.

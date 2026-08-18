@@ -3,7 +3,7 @@ import {
   UNVERIFIABLE_EXTRACTION_METHODS,
   type ConfidenceLevel,
   type ExtractionMethod,
-} from './enums.js';
+} from './enums';
 
 /**
  * The confidence model.

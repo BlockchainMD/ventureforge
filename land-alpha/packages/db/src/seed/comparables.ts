@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
-import { prisma } from '../client.js';
-import { toDecimal } from '../mappers.js';
-import { createRandom } from './random.js';
+import { prisma } from '../client';
+import { toDecimal } from '../mappers';
+import { createRandom } from './random';
 
 /**
  * Synthetic comparable sales.

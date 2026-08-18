@@ -9,10 +9,10 @@ import type {
   SaleStatus,
   SaleType,
   SourceType,
-} from './enums.js';
-import type { ParcelGeometry, Position } from './geo.js';
-import type { EvidenceInput } from './provenance.js';
-import type { UsdCents } from './money.js';
+} from './enums';
+import type { ParcelGeometry, Position } from './geo';
+import type { EvidenceInput } from './provenance';
+import type { UsdCents } from './money';
 
 /**
  * `ParcelOpportunityInput` is the canonical contract every source adapter

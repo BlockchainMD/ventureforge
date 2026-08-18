@@ -7,7 +7,7 @@ import {
   adjustPricePerAcreForSize,
   DEFAULT_ACREAGE_CURVE,
   type AcreageCurveConfig,
-} from './acreage-curve.js';
+} from './acreage-curve';
 
 /**
  * Comparable selection, adjustment and weighting.

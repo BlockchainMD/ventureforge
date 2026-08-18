@@ -1,7 +1,7 @@
 import { env } from '@land-alpha/shared/env';
 import type { AnyGeometry, Position } from '@land-alpha/shared';
-import { ArcGisClient } from '../fetch/arcgis.js';
-import type { EnrichmentContext, EnrichmentTarget } from './types.js';
+import { ArcGisClient } from '../fetch/arcgis';
+import type { EnrichmentContext, EnrichmentTarget } from './types';
 
 /**
  * Road network for the Access Engine.

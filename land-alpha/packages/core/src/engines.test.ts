@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { assessAccess, type RoadObservation } from './access.js';
-import { assessEnvironment, computeEnvironmentalRisk, isSpecialFloodHazardZone } from './environmental.js';
-import { assessBuildability } from './buildability.js';
-import { scoreParcel, evaluateRejectionRules, type ScoringInputs } from './scoring.js';
+import { assessAccess, type RoadObservation } from './access';
+import { assessEnvironment, computeEnvironmentalRisk, isSpecialFloodHazardZone } from './environmental';
+import { assessBuildability } from './buildability';
+import { scoreParcel, evaluateRejectionRules, type ScoringInputs } from './scoring';
 import {
   DEFAULT_SCORING_CONFIG,
   type AccessAssessment,

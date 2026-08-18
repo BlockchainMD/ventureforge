@@ -1,7 +1,7 @@
 import { env } from '@land-alpha/shared/env';
 import { distanceMeters } from '@land-alpha/gis';
 import type { Position } from '@land-alpha/shared';
-import type { EnrichmentContext, EnrichmentTarget } from './types.js';
+import type { EnrichmentContext, EnrichmentTarget } from './types';
 
 /**
  * Terrain from the USGS 3DEP elevation point query service.

@@ -1,8 +1,8 @@
 import { esriPolygonToGeoJson, type EsriPolygon } from '@land-alpha/gis';
 import { env } from '@land-alpha/shared/env';
 import type { AnyGeometry } from '@land-alpha/shared';
-import { envelopeParam } from './fema.js';
-import type { EnrichmentContext, EnrichmentTarget } from './types.js';
+import { envelopeParam } from './fema';
+import type { EnrichmentContext, EnrichmentTarget } from './types';
 
 /**
  * USFWS National Wetlands Inventory.

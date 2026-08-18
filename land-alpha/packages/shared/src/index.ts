@@ -9,15 +9,15 @@
  *     import { normalizeApn } from '@land-alpha/shared/ids';
  */
 
-export * from './enums.js';
-export * from './confidence.js';
-export * from './units.js';
-export * from './money.js';
-export * from './format.js';
-export * from './geo.js';
-export * from './provenance.js';
-export * from './result.js';
-export * from './errors.js';
-export * from './types.js';
-export * from './filters.js';
-export * from './scoring-config.js';
+export * from './enums';
+export * from './confidence';
+export * from './units';
+export * from './money';
+export * from './format';
+export * from './geo';
+export * from './provenance';
+export * from './result';
+export * from './errors';
+export * from './types';
+export * from './filters';
+export * from './scoring-config';

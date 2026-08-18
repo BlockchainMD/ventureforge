@@ -1,2 +1,2 @@
-export * from './shape.js';
-export * from './geometry.js';
+export * from './shape';
+export * from './geometry';

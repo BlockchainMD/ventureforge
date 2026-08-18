@@ -1,13 +1,13 @@
-import { prisma } from '../client.js';
+import { prisma } from '../client';
 import {
   DEFAULT_COST_MODEL,
   DEFAULT_REJECTION_RULES,
   DEFAULT_THRESHOLDS,
   DEFAULT_WEIGHTS,
 } from '@land-alpha/shared';
-import { seedUsers } from './users.js';
-import { seedComparables } from './comparables.js';
-import { seedFixtureParcels } from './parcels.js';
+import { seedUsers } from './users';
+import { seedComparables } from './comparables';
+import { seedFixtureParcels } from './parcels';
 
 /**
  * Seed the development database.

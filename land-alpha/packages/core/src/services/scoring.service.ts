@@ -11,7 +11,7 @@ import {
 } from '@land-alpha/shared';
 import { createLogger } from '@land-alpha/shared/logger';
 import { getActiveScoringConfig, prisma, spatial, toCents, Prisma } from '@land-alpha/db';
-import { scoreParcel } from '../scoring.js';
+import { scoreParcel } from '../scoring';
 
 /**
  * Scoring orchestration.

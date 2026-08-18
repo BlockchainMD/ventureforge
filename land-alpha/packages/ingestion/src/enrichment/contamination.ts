@@ -1,7 +1,7 @@
 import { env } from '@land-alpha/shared/env';
 import type { ContaminatedSiteHit } from '@land-alpha/shared';
 import { distanceMeters } from '@land-alpha/gis';
-import type { EnrichmentContext, EnrichmentTarget } from './types.js';
+import type { EnrichmentContext, EnrichmentTarget } from './types';
 
 /**
  * EPA Facility Registry Service.

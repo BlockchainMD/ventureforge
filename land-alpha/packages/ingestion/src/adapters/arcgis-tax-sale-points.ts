@@ -6,7 +6,7 @@ import {
   type SaleStatus,
   type SaleType,
 } from '@land-alpha/shared';
-import { ArcGisClient, arcgisLiteral } from '../fetch/arcgis.js';
+import { ArcGisClient, arcgisLiteral } from '../fetch/arcgis';
 import {
   validateNormalized,
   type AdapterContext,
@@ -14,7 +14,7 @@ import {
   type NormalizedBatch,
   type ParsedBatch,
   type SourceAdapter,
-} from '../adapter.js';
+} from '../adapter';
 
 /**
  * Adapter for a tax-sale point layer — Florida's statutory "Lands Available for

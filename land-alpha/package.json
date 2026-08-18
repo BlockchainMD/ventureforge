@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "description": "Land Alpha — land-acquisition intelligence platform",
   "packageManager": "pnpm@10.33.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "pnpm -r --filter \"./packages/**\" build && pnpm --filter @land-alpha/web build",
     "dev": "pnpm --filter @land-alpha/web dev",
@@ -27,6 +29,7 @@
     "@types/node": "^22.20.0",
     "eslint": "^9.39.0",
     "eslint-config-prettier": "^10.1.8",
+    "playwright": "^1.62.1",
     "prettier": "^3.6.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",

@@ -1,7 +1,7 @@
 import { esriPolygonToGeoJson, type EsriPolygon } from '@land-alpha/gis';
 import { env } from '@land-alpha/shared/env';
 import type { AnyGeometry } from '@land-alpha/shared';
-import type { EnrichmentContext, EnrichmentTarget } from './types.js';
+import type { EnrichmentContext, EnrichmentTarget } from './types';
 
 /**
  * FEMA National Flood Hazard Layer.

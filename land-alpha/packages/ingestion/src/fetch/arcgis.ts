@@ -1,7 +1,7 @@
 import { ParseError } from '@land-alpha/shared';
 import type { ParcelGeometry, Position } from '@land-alpha/shared';
 import { esriPolygonToGeoJson, esriPointToPosition, type EsriPolygon } from '@land-alpha/gis';
-import type { IngestHttpClient } from './http.js';
+import type { IngestHttpClient } from './http';
 
 /**
  * ArcGIS REST client.

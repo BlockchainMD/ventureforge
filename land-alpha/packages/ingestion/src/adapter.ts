@@ -1,6 +1,6 @@
 import type { ParcelOpportunityInput, RejectedItem } from '@land-alpha/shared';
 import type { RegistryEntry } from '@land-alpha/source-registry';
-import type { IngestHttpClient } from './fetch/http.js';
+import type { IngestHttpClient } from './fetch/http';
 import type { Logger } from '@land-alpha/shared/logger';
 
 /**

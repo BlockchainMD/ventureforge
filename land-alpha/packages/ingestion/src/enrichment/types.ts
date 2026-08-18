@@ -1,5 +1,5 @@
 import type { AnyGeometry, ParcelGeometry, Position } from '@land-alpha/shared';
-import type { IngestHttpClient } from '../fetch/http.js';
+import type { IngestHttpClient } from '../fetch/http';
 
 /**
  * Enrichment connectors.

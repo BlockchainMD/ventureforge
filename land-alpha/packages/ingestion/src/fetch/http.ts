@@ -5,7 +5,7 @@ import { sleep, withRetry } from '@land-alpha/shared/retry';
 import { env } from '@land-alpha/shared/env';
 import { createLogger } from '@land-alpha/shared/logger';
 import { contentHash } from '@land-alpha/shared/ids';
-import { isAllowed, crawlDelayMs, parseRobotsTxt, PERMISSIVE_ROBOTS, type RobotsTxt } from './robots.js';
+import { isAllowed, crawlDelayMs, parseRobotsTxt, PERMISSIVE_ROBOTS, type RobotsTxt } from './robots';
 
 /**
  * The ingestion HTTP client.

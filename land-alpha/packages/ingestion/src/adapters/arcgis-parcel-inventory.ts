@@ -9,7 +9,7 @@ import {
   type SaleStatus,
 } from '@land-alpha/shared';
 import { normalizeParcelGeometry, centroidOf } from '@land-alpha/gis';
-import { ArcGisClient } from '../fetch/arcgis.js';
+import { ArcGisClient } from '../fetch/arcgis';
 import {
   validateNormalized,
   type AdapterContext,
@@ -17,7 +17,7 @@ import {
   type NormalizedBatch,
   type ParsedBatch,
   type SourceAdapter,
-} from '../adapter.js';
+} from '../adapter';
 
 /**
  * Generic adapter for a county parcel layer filtered to government-held

@@ -5,8 +5,8 @@ import {
   type ValuationEstimate,
   type ValuationResult,
 } from '@land-alpha/shared';
-import { MINIMUM_PLAUSIBLE_PARCEL_VALUE_CENTS } from './acreage-curve.js';
-import { analyzeComps, type CompCandidate, type CompsConfig, type SubjectProfile, DEFAULT_COMPS_CONFIG } from './comps.js';
+import { MINIMUM_PLAUSIBLE_PARCEL_VALUE_CENTS } from './acreage-curve';
+import { analyzeComps, type CompCandidate, type CompsConfig, type SubjectProfile, DEFAULT_COMPS_CONFIG } from './comps';
 
 /**
  * Three values, three different questions.

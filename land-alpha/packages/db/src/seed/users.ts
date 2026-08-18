@@ -1,5 +1,5 @@
 import { createHash, randomBytes, scryptSync } from 'node:crypto';
-import { prisma } from '../client.js';
+import { prisma } from '../client';
 import { STARTER_SAVED_SEARCHES, type UserRole } from '@land-alpha/shared';
 
 /**

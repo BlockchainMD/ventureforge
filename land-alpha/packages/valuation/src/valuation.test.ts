@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { adjustPricePerAcreForSize, acreageBandFor } from './acreage-curve.js';
-import { analyzeComps, weightedMedian, type CompCandidate } from './comps.js';
-import { valueParcel } from './valuation.js';
-import { classifyTier, computeEconomics, maximumBidForTargetRatio } from './economics.js';
-import type { EconomicsCostModel, EconomicsThresholds } from './economics.js';
+import { adjustPricePerAcreForSize, acreageBandFor } from './acreage-curve';
+import { analyzeComps, weightedMedian, type CompCandidate } from './comps';
+import { valueParcel } from './valuation';
+import { classifyTier, computeEconomics, maximumBidForTargetRatio } from './economics';
+import type { EconomicsCostModel, EconomicsThresholds } from './economics';
 
 const NOW = new Date('2026-08-18T00:00:00Z');
 

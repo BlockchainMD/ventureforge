@@ -1,8 +1,8 @@
-import { prisma } from '../client.js';
-import { toDecimal } from '../mappers.js';
-import { writeParcelGeometry } from '../spatial.js';
+import { prisma } from '../client';
+import { toDecimal } from '../mappers';
+import { writeParcelGeometry } from '../spatial';
 import { parcelNaturalKey, normalizeApn, listingSlug } from '@land-alpha/shared/ids';
-import { allFixtureParcels, fixtureGeometry, type FixtureParcel } from './fixture-parcels.js';
+import { allFixtureParcels, fixtureGeometry, type FixtureParcel } from './fixture-parcels';
 
 /**
  * Load the fixture parcels into the database.

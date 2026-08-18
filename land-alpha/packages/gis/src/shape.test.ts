@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeShape, acreageAgreement, orientedExtents, shapeScore } from './shape.js';
-import { syntheticParcel, esriPolygonToGeoJson, normalizeParcelGeometry, toWgs84 } from './geometry.js';
+import { analyzeShape, acreageAgreement, orientedExtents, shapeScore } from './shape';
+import { syntheticParcel, esriPolygonToGeoJson, normalizeParcelGeometry, toWgs84 } from './geometry';
 import { sqMetersToAcres } from '@land-alpha/shared';
 import type { ParcelGeometry, Position } from '@land-alpha/shared';
 

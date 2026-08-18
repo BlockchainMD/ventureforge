@@ -1,4 +1,4 @@
-import type { ConfidenceLevel, ExtractionMethod } from './enums.js';
+import type { ConfidenceLevel, ExtractionMethod } from './enums';
 
 /**
  * Provenance is mandatory in Land Alpha, not decorative.

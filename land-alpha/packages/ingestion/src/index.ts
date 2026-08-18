@@ -1,9 +1,9 @@
-export * from './adapter.js';
-export * from './pipeline.js';
-export * from './change-detection.js';
-export * from './sync-registry.js';
-export * from './fetch/http.js';
-export * from './fetch/robots.js';
-export * from './fetch/arcgis.js';
-export * from './adapters/index.js';
-export * as enrichment from './enrichment/index.js';
+export * from './adapter';
+export * from './pipeline';
+export * from './change-detection';
+export * from './sync-registry';
+export * from './fetch/http';
+export * from './fetch/robots';
+export * from './fetch/arcgis';
+export * from './adapters/index';
+export * as enrichment from './enrichment/index';

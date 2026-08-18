@@ -1,4 +1,4 @@
-import type { JobStatus } from './enums.js';
+import type { JobStatus } from './enums';
 
 /**
  * Queue contract. Two drivers implement it — Postgres (default) and BullMQ

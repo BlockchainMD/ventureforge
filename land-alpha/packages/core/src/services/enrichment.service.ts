@@ -12,9 +12,9 @@ import { prisma, recordEvidence, spatial } from '@land-alpha/db';
 import { analyzeShape, acreageAgreement } from '@land-alpha/gis';
 import { IngestHttpClient, enrichment } from '@land-alpha/ingestion';
 import { registryByKey } from '@land-alpha/source-registry';
-import { assessAccess, type RoadObservation as AccessRoad } from '../access.js';
-import { assessEnvironment } from '../environmental.js';
-import { assessBuildability, type UtilityContext, type ZoningContext } from '../buildability.js';
+import { assessAccess, type RoadObservation as AccessRoad } from '../access';
+import { assessEnvironment } from '../environmental';
+import { assessBuildability, type UtilityContext, type ZoningContext } from '../buildability';
 
 /**
  * Enrichment orchestration.

@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
-import { prisma } from '../client.js';
-import { toCents, toDecimal } from '../mappers.js';
+import { prisma } from '../client';
+import { toCents, toDecimal } from '../mappers';
 import {
   DISTRESSED_REOFFER_SOURCE_TYPES,
   MAX_PAGE_SIZE,
@@ -283,6 +283,8 @@ export interface DashboardStats {
   readonly totalAskingCents: number;
   readonly estimatedQsvCents: number;
   readonly aggregateImpliedDiscount: number | null;
+  /** Parcels with both a cost and a value — the population the discount covers. */
+  readonly pricedParcelCount: number;
   readonly sourcesMonitored: number;
   readonly sourcesHealthy: number;
   readonly sourceRefreshSuccessRate: number | null;
@@ -327,10 +329,41 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
     prisma.parcelOpportunity.count({
       where: { AND: [liveWhere, { firstSeenAt: { gte: weekAgo } }] },
     }),
-    prisma.parcelOpportunity.aggregate({
-      where: liveWhere,
-      _sum: { askingPrice: true, minimumBid: true, quickSaleValue: true, estimatedAllInBasis: true },
-    }),
+    // The headline "total asking" must be the sum of what an analyst would
+    // actually pay per parcel — the asking price where the source publishes
+    // one, otherwise the minimum bid. Summing the two columns separately and
+    // picking whichever is non-zero silently reports only the handful of
+    // parcels that happen to carry an asking price.
+    prisma.$queryRaw<
+      {
+        asking: string | null;
+        qsv: string | null;
+        basis: string | null;
+        comparable_basis: string | null;
+        comparable_qsv: string | null;
+        comparable_count: number;
+      }[]
+    >`
+      SELECT
+        SUM(COALESCE(p."askingPrice", p."minimumBid", 0))::text AS asking,
+        SUM(COALESCE(p."quickSaleValue", 0))::text              AS qsv,
+        SUM(COALESCE(p."estimatedAllInBasis", 0))::text         AS basis,
+        -- The aggregate discount is only meaningful across parcels where BOTH
+        -- a cost and a value exist. Many government layers publish no price at
+        -- all (Minnesota tax-forfeited land among them); including their value
+        -- but not their cost would manufacture an enormous fictitious discount.
+        SUM(p."estimatedAllInBasis") FILTER (
+          WHERE p."estimatedAllInBasis" IS NOT NULL AND p."quickSaleValue" IS NOT NULL
+        )::text AS comparable_basis,
+        SUM(p."quickSaleValue") FILTER (
+          WHERE p."estimatedAllInBasis" IS NOT NULL AND p."quickSaleValue" IS NOT NULL
+        )::text AS comparable_qsv,
+        COUNT(*) FILTER (
+          WHERE p."estimatedAllInBasis" IS NOT NULL AND p."quickSaleValue" IS NOT NULL
+        )::int AS comparable_count
+      FROM "ParcelOpportunity" p
+      WHERE p."removedFromSourceAt" IS NULL AND p."rejected" = false
+    `,
     prisma.source.count({ where: { enabled: true } }),
     prisma.source.count({ where: { enabled: true, sourceStatus: 'ACTIVE' } }),
     prisma.parcelOpportunity.count({ where: { AND: [liveWhere, { watchlisted: true }] } }),
@@ -354,10 +387,11 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
     }),
   ]);
 
-  const totalAskingCents =
-    (toCents(sums._sum.askingPrice) ?? 0) || (toCents(sums._sum.minimumBid) ?? 0);
-  const estimatedQsvCents = toCents(sums._sum.quickSaleValue) ?? 0;
-  const totalBasisCents = toCents(sums._sum.estimatedAllInBasis) ?? 0;
+  const totals = sums[0];
+  const totalAskingCents = toCents(totals?.asking ?? null) ?? 0;
+  const estimatedQsvCents = toCents(totals?.qsv ?? null) ?? 0;
+  const comparableBasisCents = toCents(totals?.comparable_basis ?? null) ?? 0;
+  const comparableQsvCents = toCents(totals?.comparable_qsv ?? null) ?? 0;
 
   const totalRuns = runStats.reduce((sum, row) => sum + row._count._all, 0);
   const successfulRuns = runStats
@@ -371,7 +405,10 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
     totalAskingCents,
     estimatedQsvCents,
     aggregateImpliedDiscount:
-      estimatedQsvCents > 0 && totalBasisCents > 0 ? 1 - totalBasisCents / estimatedQsvCents : null,
+      comparableQsvCents > 0 && comparableBasisCents > 0
+        ? 1 - comparableBasisCents / comparableQsvCents
+        : null,
+    pricedParcelCount: totals?.comparable_count ?? 0,
     sourcesMonitored,
     sourcesHealthy,
     sourceRefreshSuccessRate: totalRuns === 0 ? null : successfulRuns / totalRuns,

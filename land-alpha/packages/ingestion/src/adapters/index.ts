@@ -1,7 +1,7 @@
-import { registerAdapter } from '../adapter.js';
-import { arcgisParcelInventoryAdapter } from './arcgis-parcel-inventory.js';
-import { arcgisTaxSalePointsAdapter } from './arcgis-tax-sale-points.js';
-import { manualImportAdapter } from './manual-import.js';
+import { registerAdapter } from '../adapter';
+import { arcgisParcelInventoryAdapter } from './arcgis-parcel-inventory';
+import { arcgisTaxSalePointsAdapter } from './arcgis-tax-sale-points';
+import { manualImportAdapter } from './manual-import';
 
 /**
  * Adapter registration.

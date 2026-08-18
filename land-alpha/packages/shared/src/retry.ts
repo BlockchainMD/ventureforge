@@ -1,5 +1,5 @@
-import { isRetryable, RateLimitedError } from './errors.js';
-import { backoffMs } from './queue.js';
+import { isRetryable, RateLimitedError } from './errors';
+import { backoffMs } from './queue';
 
 export interface RetryOptions {
   readonly attempts?: number;

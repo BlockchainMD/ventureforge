@@ -1,2 +1,2 @@
-export * from './prescreen.js';
-export * from './queue.js';
+export * from './prescreen';
+export * from './queue';

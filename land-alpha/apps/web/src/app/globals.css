@@ -1,0 +1,131 @@
+@import 'tailwindcss';
+
+/*
+ * Land Alpha design language.
+ *
+ * The reference points are a Bloomberg terminal and institutional underwriting
+ * software, not a consumer real-estate portal. That means: dark ground, dense
+ * information, tabular numerals everywhere a figure appears, hairline rules
+ * instead of cards-with-shadows, and colour reserved for signal — never
+ * decoration.
+ *
+ * Colour carries meaning and only meaning:
+ *   amber   the Alpha Score and anything that ranks
+ *   green   favourable evidence (access A, buildability GREEN, profit)
+ *   red     rejection, blocking issues, loss
+ *   slate   everything else
+ *
+ * Unknown is styled deliberately: a dotted underline and muted text, so a
+ * missing fact reads as missing rather than as a dash you skim past.
+ */
+
+@theme {
+  --color-ground: #07090d;
+  --color-surface: #0d1016;
+  --color-panel: #12161f;
+  --color-raised: #181d28;
+  --color-line: #222a38;
+  --color-line-strong: #2f3a4c;
+
+  --color-ink: #e2e8f0;
+  --color-ink-muted: #94a3b8;
+  --color-ink-faint: #64748b;
+
+  --color-alpha: #f0b429;
+  --color-alpha-dim: #7a5a12;
+  --color-good: #34d399;
+  --color-good-dim: #1a5c46;
+  --color-warn: #fbbf24;
+  --color-bad: #f87171;
+  --color-bad-dim: #6b2626;
+  --color-info: #60a5fa;
+
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Inter, sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-ground);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Every number in this product is compared against another number in the row
+     above it. Tabular figures are not a nicety here. */
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  th {
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-size: 10px;
+    color: var(--color-ink-faint);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-ground);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 5px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-faint);
+  }
+
+  ::selection {
+    background: var(--color-alpha-dim);
+    color: var(--color-ink);
+  }
+}
+
+@layer components {
+  /* An unverified or missing value. Visually distinct on purpose: the product
+     is worthless if an analyst cannot tell a known figure from a guess. */
+  .unknown {
+    color: var(--color-ink-faint);
+    text-decoration: underline dotted var(--color-line-strong);
+    text-underline-offset: 3px;
+  }
+
+  .panel {
+    background-color: var(--color-panel);
+    border: 1px solid var(--color-line);
+  }
+
+  .rule-label {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+  }
+
+  .data-row:hover {
+    background-color: var(--color-raised);
+  }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--color-alpha);
+    outline-offset: 1px;
+  }
+}

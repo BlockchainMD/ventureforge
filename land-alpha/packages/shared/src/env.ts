@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ConfigurationError } from './errors.js';
+import { ConfigurationError } from './errors';
 
 /**
  * Environment validation.

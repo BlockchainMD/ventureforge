@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, stat, writeFile, readdir, unlink } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
-import { ConfigurationError, NotFoundError } from './errors.js';
-import { env } from './env.js';
+import { ConfigurationError, NotFoundError } from './errors';
+import { env } from './env';
 
 /**
  * Object storage abstraction.

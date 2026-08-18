@@ -1,4 +1,4 @@
-import { defineSources, type RegistryEntry } from './types.js';
+import { defineSources, type RegistryEntry } from './types';
 
 /**
  * The County Opportunity Registry — initial coverage.

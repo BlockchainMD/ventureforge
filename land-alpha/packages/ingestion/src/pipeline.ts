@@ -15,9 +15,9 @@ import {
   spatial,
 } from '@land-alpha/db';
 import type { RegistryEntry } from '@land-alpha/source-registry';
-import { getAdapter, type AdapterContext } from './adapter.js';
-import { IngestHttpClient } from './fetch/http.js';
-import { detectChanges, isPriceReduction, requiresRescore, type ComparableSnapshot } from './change-detection.js';
+import { getAdapter, type AdapterContext } from './adapter';
+import { IngestHttpClient } from './fetch/http';
+import { detectChanges, isPriceReduction, requiresRescore, type ComparableSnapshot } from './change-detection';
 
 /**
  * The ingestion pipeline.
