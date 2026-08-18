@@ -64,7 +64,9 @@ export function esriPolygonToGeoJson(esri: EsriPolygon): ParcelGeometry | null {
   if (outer.length === 0) {
     // Every ring wound the "hole" way. Treat the largest as the outer ring
     // rather than dropping the parcel entirely.
-    const largest = rings.reduce((a, b) => (Math.abs(signedArea(a)) >= Math.abs(signedArea(b)) ? a : b));
+    const largest = rings.reduce((a, b) =>
+      Math.abs(signedArea(a)) >= Math.abs(signedArea(b)) ? a : b,
+    );
     outer.push(largest);
     const index = holes.indexOf(largest);
     if (index >= 0) holes.splice(index, 1);
@@ -115,9 +117,10 @@ export function toWgs84(position: Position, wkid: number): Position | null {
  * Returns null with a reason rather than throwing: an unusable geometry on one
  * row must not abort a 4,000-row county import.
  */
-export function normalizeParcelGeometry(
-  geometry: unknown,
-): { geometry: ParcelGeometry | null; reason: string | null } {
+export function normalizeParcelGeometry(geometry: unknown): {
+  geometry: ParcelGeometry | null;
+  reason: string | null;
+} {
   if (!geometry || typeof geometry !== 'object') {
     return { geometry: null, reason: 'not an object' };
   }
@@ -127,7 +130,9 @@ export function normalizeParcelGeometry(
   }
 
   const polygons: Position[][][] =
-    candidate.type === 'Polygon' ? [candidate.coordinates as Position[][]] : (candidate.coordinates as Position[][][]);
+    candidate.type === 'Polygon'
+      ? [candidate.coordinates as Position[][]]
+      : (candidate.coordinates as Position[][][]);
 
   const cleaned: Position[][][] = [];
   for (const polygon of polygons) {

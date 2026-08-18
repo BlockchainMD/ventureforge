@@ -21,10 +21,12 @@ export interface SyncResult {
   readonly unchanged: number;
 }
 
-export async function syncRegistry(entries: RegistryEntry[] = SOURCE_REGISTRY): Promise<SyncResult> {
+export async function syncRegistry(
+  entries: RegistryEntry[] = SOURCE_REGISTRY,
+): Promise<SyncResult> {
   let created = 0;
   let updated = 0;
-  let unchanged = 0;
+  const unchanged = 0;
 
   for (const entry of entries) {
     const jurisdiction = await upsertJurisdiction(entry);

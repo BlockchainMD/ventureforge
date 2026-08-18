@@ -2,7 +2,13 @@ import Link from 'next/link';
 import { spatial } from '@land-alpha/db';
 
 type MapParcelRow = Awaited<ReturnType<typeof spatial.queryParcelsInBounds>>[number];
-import { formatAcres, formatCents, formatNumber, type BBox, type ParcelGeometry } from '@land-alpha/shared';
+import {
+  formatAcres,
+  formatCents,
+  formatNumber,
+  type BBox,
+  type ParcelGeometry,
+} from '@land-alpha/shared';
 import { PageHeader } from '@/components/layout/shell';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { ParcelMap } from '@/components/ui/parcel-map';
@@ -74,15 +80,17 @@ export default async function MapPage({
           <Panel className="col-span-2">
             <PanelBody>
               <p className="py-12 text-center text-xs text-ink-faint">
-                No parcels with mapped geometry. Run an ingestion from a source that publishes parcel
-                polygons.
+                No parcels with mapped geometry. Run an ingestion from a source that publishes
+                parcel polygons.
               </p>
             </PanelBody>
           </Panel>
         ) : (
           groups.map(([county, parcels]) => {
             const geometries = parcels
-              .map((parcel) => (parcel.geojson ? (JSON.parse(parcel.geojson) as ParcelGeometry) : null))
+              .map((parcel) =>
+                parcel.geojson ? (JSON.parse(parcel.geojson) as ParcelGeometry) : null,
+              )
               .filter((geometry): geometry is ParcelGeometry => geometry != null);
 
             const merged: ParcelGeometry | null =
@@ -101,10 +109,7 @@ export default async function MapPage({
 
             return (
               <Panel key={county}>
-                <PanelHeader
-                  title={county}
-                  subtitle={`${formatNumber(parcels.length)} parcels`}
-                />
+                <PanelHeader title={county} subtitle={`${formatNumber(parcels.length)} parcels`} />
                 <ParcelMap geometry={merged} centroid={null} height={260} className="border-x-0" />
                 <PanelBody className="space-y-1">
                   {best.map((parcel) => (

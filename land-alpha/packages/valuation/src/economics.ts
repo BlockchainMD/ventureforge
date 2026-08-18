@@ -83,7 +83,8 @@ export function computeEconomics(
 
   const grossProfitAtQsv =
     inputs.quickSaleValueCents == null ? null : inputs.quickSaleValueCents - allInBasis;
-  const roiAtQsv = grossProfitAtQsv == null || allInBasis === 0 ? null : grossProfitAtQsv / allInBasis;
+  const roiAtQsv =
+    grossProfitAtQsv == null || allInBasis === 0 ? null : grossProfitAtQsv / allInBasis;
 
   // Annualised return. Only meaningful for a profitable position; a -40% return
   // annualised by compounding produces a nonsense figure, so losses report the

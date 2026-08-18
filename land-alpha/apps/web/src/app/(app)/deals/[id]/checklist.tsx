@@ -63,7 +63,13 @@ function ChecklistItem({ item, canAct }: { item: ChecklistRow; canAct: boolean }
   };
 
   const Icon =
-    status === 'COMPLETE' ? Check : status === 'NOT_APPLICABLE' ? Minus : status === 'IN_PROGRESS' ? Loader2 : Circle;
+    status === 'COMPLETE'
+      ? Check
+      : status === 'NOT_APPLICABLE'
+        ? Minus
+        : status === 'IN_PROGRESS'
+          ? Loader2
+          : Circle;
 
   return (
     <div className="rounded-sm border border-line/70 px-2 py-1.5">

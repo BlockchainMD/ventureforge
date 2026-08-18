@@ -54,10 +54,22 @@ export function ParcelMap({
           <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
             <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#1a2130" strokeWidth="0.5" />
           </pattern>
-          <pattern id="wetland-hatch" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+          <pattern
+            id="wetland-hatch"
+            width="6"
+            height="6"
+            patternTransform="rotate(45)"
+            patternUnits="userSpaceOnUse"
+          >
             <line x1="0" y1="0" x2="0" y2="6" stroke="#34d399" strokeWidth="1.4" opacity="0.55" />
           </pattern>
-          <pattern id="flood-hatch" width="6" height="6" patternTransform="rotate(-45)" patternUnits="userSpaceOnUse">
+          <pattern
+            id="flood-hatch"
+            width="6"
+            height="6"
+            patternTransform="rotate(-45)"
+            patternUnits="userSpaceOnUse"
+          >
             <line x1="0" y1="0" x2="0" y2="6" stroke="#60a5fa" strokeWidth="1.4" opacity="0.55" />
           </pattern>
         </defs>
@@ -66,8 +78,20 @@ export function ParcelMap({
 
         {scene.roads.map((road, index) => (
           <g key={`road-${index}`}>
-            <polyline points={road.points} fill="none" stroke="#2f3a4c" strokeWidth={6} strokeLinecap="round" />
-            <polyline points={road.points} fill="none" stroke="#64748b" strokeWidth={2} strokeLinecap="round" />
+            <polyline
+              points={road.points}
+              fill="none"
+              stroke="#2f3a4c"
+              strokeWidth={6}
+              strokeLinecap="round"
+            />
+            <polyline
+              points={road.points}
+              fill="none"
+              stroke="#64748b"
+              strokeWidth={2}
+              strokeLinecap="round"
+            />
           </g>
         ))}
 
@@ -83,7 +107,13 @@ export function ParcelMap({
         ))}
 
         {scene.parcel ? (
-          <path d={scene.parcel} fill="#f0b429" fillOpacity={0.14} stroke="#f0b429" strokeWidth={2} />
+          <path
+            d={scene.parcel}
+            fill="#f0b429"
+            fillOpacity={0.14}
+            stroke="#f0b429"
+            strokeWidth={2}
+          />
         ) : null}
 
         {scene.centroid ? (

@@ -1,8 +1,4 @@
-import {
-  type ComparableSummary,
-  type ConfidenceLevel,
-  type UsdCents,
-} from '@land-alpha/shared';
+import { type ComparableSummary, type ConfidenceLevel, type UsdCents } from '@land-alpha/shared';
 import {
   adjustPricePerAcreForSize,
   DEFAULT_ACREAGE_CURVE,
@@ -213,7 +209,8 @@ export function analyzeComps(
     0.75,
   );
 
-  const dispersion = central && central > 0 && low != null && high != null ? (high - low) / central : null;
+  const dispersion =
+    central && central > 0 && low != null && high != null ? (high - low) / central : null;
 
   if (selected.length < config.minComps) {
     warnings.push(
@@ -258,7 +255,8 @@ function compWeight(
   const recency = Math.exp(-ageDays / 540);
 
   const sizeRatio =
-    Math.max(candidate.acreage, subject.acreage) / Math.max(Math.min(candidate.acreage, subject.acreage), 0.01);
+    Math.max(candidate.acreage, subject.acreage) /
+    Math.max(Math.min(candidate.acreage, subject.acreage), 0.01);
   const sizeSimilarity = 1 / (1 + Math.log10(Math.max(sizeRatio, 1)) * 2);
 
   const zoningSimilarity =
@@ -333,7 +331,9 @@ function compsConfidence(
  * occasional wild outliers. A mean chases them; a median does not. Robustness
  * matters more than efficiency when the data is this messy.
  */
-export function weightedMedian(points: readonly { value: number; weight: number }[]): number | null {
+export function weightedMedian(
+  points: readonly { value: number; weight: number }[],
+): number | null {
   return weightedQuantile(points, 0.5);
 }
 

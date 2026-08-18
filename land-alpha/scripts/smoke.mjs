@@ -29,8 +29,10 @@ const ROUTES = process.argv.slice(2).length
       '/admin/scoring',
     ];
 
-const browser = await chromium.launch({ executablePath:
-    process.env.PLAYWRIGHT_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const browser = await chromium.launch({
+  executablePath:
+    process.env.PLAYWRIGHT_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+});
 const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
 const page = await context.newPage();
 
@@ -63,7 +65,10 @@ for (const [index, route] of ROUTES.entries()) {
     timeout: 45_000,
   });
   const status = response?.status() ?? 0;
-  const bodyText = await page.locator('body').innerText().catch(() => '');
+  const bodyText = await page
+    .locator('body')
+    .innerText()
+    .catch(() => '');
   const looksBroken =
     status >= 400 ||
     /Application error|Unhandled Runtime Error|This page could not be found/i.test(bodyText);
@@ -96,16 +101,20 @@ if (hrefs.length === 0) {
 } else {
   const target = hrefs[0];
   const before = problems.length;
-  const response = await page.goto(`${BASE}${target}`, { waitUntil: 'networkidle', timeout: 45_000 });
+  const response = await page.goto(`${BASE}${target}`, {
+    waitUntil: 'networkidle',
+    timeout: 45_000,
+  });
   const status = response?.status() ?? 0;
-  const bodyText = await page.locator('body').innerText().catch(() => '');
+  const bodyText = await page
+    .locator('body')
+    .innerText()
+    .catch(() => '');
   const newProblems = problems.slice(before);
 
   // The detail page must actually render underwriting content, not just 200.
   const rendered =
-    /Land Alpha/i.test(bodyText) &&
-    /Quick sale value/i.test(bodyText) &&
-    /Access/i.test(bodyText);
+    /Land Alpha/i.test(bodyText) && /Quick sale value/i.test(bodyText) && /Access/i.test(bodyText);
 
   if (status !== 200 || newProblems.length > 0 || !rendered) {
     failures += 1;

@@ -84,9 +84,7 @@ export function assessEnvironment(
     ? (observations.flood.overlapFraction ?? null)
     : null;
   const sfhaZones = floodZones.filter(isSpecialFloodHazardZone);
-  const inSpecialFloodHazardArea = observations.flood?.available
-    ? sfhaZones.length > 0
-    : null;
+  const inSpecialFloodHazardArea = observations.flood?.available ? sfhaZones.length > 0 : null;
 
   if (observations.flood?.available) {
     if (sfhaZones.length > 0) {
@@ -110,7 +108,9 @@ export function assessEnvironment(
   }
 
   // ---- Wetlands ------------------------------------------------------------
-  const wetlandTypes = observations.wetlands?.available ? [...(observations.wetlands.types ?? [])] : [];
+  const wetlandTypes = observations.wetlands?.available
+    ? [...(observations.wetlands.types ?? [])]
+    : [];
   const wetlandOverlapFraction = observations.wetlands?.available
     ? (observations.wetlands.overlapFraction ?? null)
     : null;
@@ -119,7 +119,9 @@ export function assessEnvironment(
     if (wetlandTypes.length > 0) {
       evidence.push(
         `National Wetlands Inventory maps ${wetlandTypes.join(', ')} on the parcel${
-          wetlandOverlapFraction != null ? `, covering ~${pct(wetlandOverlapFraction)} of its area` : ''
+          wetlandOverlapFraction != null
+            ? `, covering ~${pct(wetlandOverlapFraction)} of its area`
+            : ''
         } (${observations.wetlands.source}).`,
       );
       unknowns.push(
@@ -189,7 +191,9 @@ export function assessEnvironment(
   if (terrain) {
     evidence.push(
       `Elevation ranges ${fmt(terrain.minElevationMeters)}–${fmt(terrain.maxElevationMeters)} m${
-        terrain.meanSlopePercent != null ? ` with a mean slope of ${terrain.meanSlopePercent.toFixed(1)}%` : ''
+        terrain.meanSlopePercent != null
+          ? ` with a mean slope of ${terrain.meanSlopePercent.toFixed(1)}%`
+          : ''
       } (${terrain.source}).`,
     );
   } else {

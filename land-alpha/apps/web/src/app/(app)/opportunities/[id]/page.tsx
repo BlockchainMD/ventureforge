@@ -1,12 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
-import {
-  getParcelDetail,
-  spatial,
-  toCents,
-  getActiveScoringConfig,
-} from '@land-alpha/db';
+import { getParcelDetail, spatial, toCents, getActiveScoringConfig } from '@land-alpha/db';
 import {
   ACCESS_CLASS_LABELS,
   centsToDollars,
@@ -20,7 +15,11 @@ import {
   metersToFeet,
 } from '@land-alpha/shared';
 import { maximumBidForTargetRatio } from '@land-alpha/valuation';
-import { ACCESS_DISCLAIMER, BUILDABILITY_DISCLAIMER, ENVIRONMENTAL_DISCLAIMER } from '@land-alpha/core';
+import {
+  ACCESS_DISCLAIMER,
+  BUILDABILITY_DISCLAIMER,
+  ENVIRONMENTAL_DISCLAIMER,
+} from '@land-alpha/core';
 import { TITLE_DISCLAIMER } from '@land-alpha/title-research';
 import { PageHeader } from '@/components/layout/shell';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
@@ -49,7 +48,9 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
   const canAct = user != null && hasRole(user, 'ANALYST');
 
   const acquisitionPriceCents =
-    toCents(parcel.askingPrice) ?? toCents(parcel.minimumBid) ?? toCents(parcel.estimatedAcquisitionCost);
+    toCents(parcel.askingPrice) ??
+    toCents(parcel.minimumBid) ??
+    toCents(parcel.estimatedAcquisitionCost);
   const quickSaleValueCents = toCents(parcel.quickSaleValue);
 
   const recommendedMaxBidCents =
@@ -194,7 +195,10 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
               {parcel.shapeFlags.length > 0 ? (
                 <div className="mt-3 flex flex-wrap gap-1">
                   {parcel.shapeFlags.map((flag) => (
-                    <Badge key={flag} tone={flag.includes('REMNANT') || flag === 'SLIVER' ? 'bad' : 'warn'}>
+                    <Badge
+                      key={flag}
+                      tone={flag.includes('REMNANT') || flag === 'SLIVER' ? 'bad' : 'warn'}
+                    >
                       {flag.replace(/_/g, ' ')}
                     </Badge>
                   ))}
@@ -299,7 +303,11 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
               <MetricGrid columns={4}>
                 <Metric label="Access class">{parcel.accessClass}</Metric>
                 <Metric label="Physical access score">
-                  <Value>{parcel.physicalAccessScore == null ? null : Math.round(parcel.physicalAccessScore)}</Value>
+                  <Value>
+                    {parcel.physicalAccessScore == null
+                      ? null
+                      : Math.round(parcel.physicalAccessScore)}
+                  </Value>
                 </Metric>
                 <Metric label="Legal access status" tone="text-warn">
                   {humanizeEnum(parcel.legalAccessStatus)}
@@ -324,7 +332,10 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                 <Metric label="Nearest paved road">
                   <Value>{parcel.nearestPavedRoadName}</Value>
                 </Metric>
-                <Metric label="Potentially landlocked" tone={parcel.potentiallyLandlocked ? 'text-bad' : undefined}>
+                <Metric
+                  label="Potentially landlocked"
+                  tone={parcel.potentiallyLandlocked ? 'text-bad' : undefined}
+                >
                   {parcel.potentiallyLandlocked == null
                     ? '—'
                     : parcel.potentiallyLandlocked
@@ -354,7 +365,9 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                 </Metric>
                 <Metric label="Minimum lot size">
                   <Value>
-                    {parcel.minimumLotSizeAcres == null ? null : formatAcres(parcel.minimumLotSizeAcres)}
+                    {parcel.minimumLotSizeAcres == null
+                      ? null
+                      : formatAcres(parcel.minimumLotSizeAcres)}
                   </Value>
                 </Metric>
                 <Metric label="Property class">
@@ -401,7 +414,9 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                 </Metric>
                 <Metric label="Mean slope">
                   <Value>
-                    {parcel.meanSlopePercent == null ? null : `${parcel.meanSlopePercent.toFixed(1)}%`}
+                    {parcel.meanSlopePercent == null
+                      ? null
+                      : `${parcel.meanSlopePercent.toFixed(1)}%`}
                   </Value>
                 </Metric>
                 <Metric label="Elevation range">
@@ -524,8 +539,8 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
             title={parcel.listing?.title ?? null}
             published={parcel.listing?.published ?? false}
             withheldClaims={
-              ((parcel.listing?.variants?.[0]?.metadata as { withheldClaims?: string[] } | null)
-                ?.withheldClaims ?? [])
+              (parcel.listing?.variants?.[0]?.metadata as { withheldClaims?: string[] } | null)
+                ?.withheldClaims ?? []
             }
           />
 
@@ -554,7 +569,8 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                 <p className="rule-label">Source</p>
                 <p className="mt-0.5 text-xs text-ink">{parcel.source.name}</p>
                 <p className="mt-0.5 text-[11px] text-ink-faint">
-                  {humanizeEnum(parcel.source.sourceType)} · {humanizeEnum(parcel.source.ingestionMethod)}
+                  {humanizeEnum(parcel.source.sourceType)} ·{' '}
+                  {humanizeEnum(parcel.source.ingestionMethod)}
                 </p>
                 {parcel.sourceUrl ? (
                   <a
@@ -602,15 +618,30 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
           </Panel>
 
           <Panel>
-            <PanelHeader title="Cost breakdown" subtitle="Every dollar between the bid and resale" />
+            <PanelHeader
+              title="Cost breakdown"
+              subtitle="Every dollar between the bid and resale"
+            />
             <PanelBody className="space-y-1">
               <KeyValue label="Acquisition" value={formatCents(acquisitionPriceCents)} />
               <KeyValue label="Government fees" value={formatCents(toCents(parcel.fees))} />
-              <KeyValue label="Recording" value={formatCents(toCents(parcel.estimatedRecordingCost))} />
+              <KeyValue
+                label="Recording"
+                value={formatCents(toCents(parcel.estimatedRecordingCost))}
+              />
               <KeyValue label="Title" value={formatCents(toCents(parcel.estimatedTitleCost))} />
-              <KeyValue label="Curative" value={formatCents(toCents(parcel.estimatedCurativeCost))} />
-              <KeyValue label="Carrying" value={formatCents(toCents(parcel.estimatedCarryingCost))} />
-              <KeyValue label="Marketing" value={formatCents(toCents(parcel.estimatedMarketingCost))} />
+              <KeyValue
+                label="Curative"
+                value={formatCents(toCents(parcel.estimatedCurativeCost))}
+              />
+              <KeyValue
+                label="Carrying"
+                value={formatCents(toCents(parcel.estimatedCarryingCost))}
+              />
+              <KeyValue
+                label="Marketing"
+                value={formatCents(toCents(parcel.estimatedMarketingCost))}
+              />
               <div className="border-t border-line pt-1">
                 <KeyValue
                   label="All-in basis"
@@ -640,7 +671,9 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
             />
             {parcel.legalDescription ? (
               <PanelBody>
-                <p className="text-[11px] leading-relaxed text-ink-muted">{parcel.legalDescription}</p>
+                <p className="text-[11px] leading-relaxed text-ink-muted">
+                  {parcel.legalDescription}
+                </p>
               </PanelBody>
             ) : null}
           </Panel>
@@ -658,7 +691,9 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                   <div key={change.id} className="flex items-baseline justify-between gap-2">
                     <span className="text-[11px] text-ink-muted">
                       {humanizeEnum(change.kind)}
-                      {change.field ? <span className="text-ink-faint"> · {change.field}</span> : null}
+                      {change.field ? (
+                        <span className="text-ink-faint"> · {change.field}</span>
+                      ) : null}
                     </span>
                     <span className="num text-[10px] text-ink-faint">
                       {formatDate(change.detectedAt)}
@@ -687,7 +722,13 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                 <div key={row.id} className="border-b border-line/50 pb-1.5 last:border-0">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="num text-[11px] text-ink">{row.field}</span>
-                    <Badge tone={row.confidence === 'VERIFIED' || row.confidence === 'HIGH' ? 'good' : 'muted'}>
+                    <Badge
+                      tone={
+                        row.confidence === 'VERIFIED' || row.confidence === 'HIGH'
+                          ? 'good'
+                          : 'muted'
+                      }
+                    >
                       {row.confidence}
                     </Badge>
                   </div>
@@ -719,7 +760,9 @@ function KeyValue({
   return (
     <div className="flex items-baseline justify-between gap-2">
       <span className="rule-label">{label}</span>
-      <span className={`num ${emphasis ? 'text-sm font-semibold text-ink' : 'text-xs text-ink-muted'}`}>
+      <span
+        className={`num ${emphasis ? 'text-sm font-semibold text-ink' : 'text-xs text-ink-muted'}`}
+      >
         <Value>{value}</Value>
       </span>
     </div>

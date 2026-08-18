@@ -68,10 +68,34 @@ export function FilterBar({ counties }: { counties: { state: string; county: str
           />
         </label>
 
-        <NumberFilter label="Alpha ≥" value={filter.minAlphaScore} onChange={(v) => update('minAlphaScore', v)} placeholder="0" width="w-16" />
-        <NumberFilter label="Price ≤ ($)" value={filter.maxPrice == null ? undefined : filter.maxPrice / 100} onChange={(v) => update('maxPrice', v == null ? null : String(Number(v) * 100))} placeholder="any" width="w-20" />
-        <NumberFilter label="Acres ≥" value={filter.minAcreage} onChange={(v) => update('minAcreage', v)} placeholder="0" width="w-16" />
-        <NumberFilter label="Acres ≤" value={filter.maxAcreage} onChange={(v) => update('maxAcreage', v)} placeholder="any" width="w-16" />
+        <NumberFilter
+          label="Alpha ≥"
+          value={filter.minAlphaScore}
+          onChange={(v) => update('minAlphaScore', v)}
+          placeholder="0"
+          width="w-16"
+        />
+        <NumberFilter
+          label="Price ≤ ($)"
+          value={filter.maxPrice == null ? undefined : filter.maxPrice / 100}
+          onChange={(v) => update('maxPrice', v == null ? null : String(Number(v) * 100))}
+          placeholder="any"
+          width="w-20"
+        />
+        <NumberFilter
+          label="Acres ≥"
+          value={filter.minAcreage}
+          onChange={(v) => update('minAcreage', v)}
+          placeholder="0"
+          width="w-16"
+        />
+        <NumberFilter
+          label="Acres ≤"
+          value={filter.maxAcreage}
+          onChange={(v) => update('maxAcreage', v)}
+          placeholder="any"
+          width="w-16"
+        />
         <NumberFilter
           label="Basis/QSV ≤ (%)"
           value={filter.maxBasisToQsv == null ? undefined : Math.round(filter.maxBasisToQsv * 100)}
@@ -79,7 +103,13 @@ export function FilterBar({ counties }: { counties: { state: string; county: str
           placeholder="any"
           width="w-20"
         />
-        <NumberFilter label="Title ≤" value={filter.maxTitleRisk} onChange={(v) => update('maxTitleRisk', v)} placeholder="100" width="w-16" />
+        <NumberFilter
+          label="Title ≤"
+          value={filter.maxTitleRisk}
+          onChange={(v) => update('maxTitleRisk', v)}
+          placeholder="100"
+          width="w-16"
+        />
 
         <label className="block w-24">
           <span className="rule-label">State</span>
@@ -165,7 +195,9 @@ export function FilterBar({ counties }: { counties: { state: string; county: str
 
         <NumberFilter
           label="Flood ≤ (%)"
-          value={filter.maxFloodOverlap == null ? undefined : Math.round(filter.maxFloodOverlap * 100)}
+          value={
+            filter.maxFloodOverlap == null ? undefined : Math.round(filter.maxFloodOverlap * 100)
+          }
           onChange={(v) => update('maxFloodOverlap', v == null ? null : String(Number(v) / 100))}
           placeholder="any"
           width="w-20"
@@ -173,7 +205,9 @@ export function FilterBar({ counties }: { counties: { state: string; county: str
         <NumberFilter
           label="Wetland ≤ (%)"
           value={
-            filter.maxWetlandOverlap == null ? undefined : Math.round(filter.maxWetlandOverlap * 100)
+            filter.maxWetlandOverlap == null
+              ? undefined
+              : Math.round(filter.maxWetlandOverlap * 100)
           }
           onChange={(v) => update('maxWetlandOverlap', v == null ? null : String(Number(v) / 100))}
           placeholder="any"
@@ -188,9 +222,21 @@ export function FilterBar({ counties }: { counties: { state: string; county: str
         />
 
         <div className="flex items-center gap-2 pb-0.5">
-          <Toggle label="OTC only" active={filter.otcOnly === true} onToggle={() => update('otcOnly', filter.otcOnly ? null : 'true')} />
-          <Toggle label="No reserve" active={filter.noReserveOnly === true} onToggle={() => update('noReserveOnly', filter.noReserveOnly ? null : 'true')} />
-          <Toggle label="Watchlist" active={filter.watchlistedOnly === true} onToggle={() => update('watchlistedOnly', filter.watchlistedOnly ? null : 'true')} />
+          <Toggle
+            label="OTC only"
+            active={filter.otcOnly === true}
+            onToggle={() => update('otcOnly', filter.otcOnly ? null : 'true')}
+          />
+          <Toggle
+            label="No reserve"
+            active={filter.noReserveOnly === true}
+            onToggle={() => update('noReserveOnly', filter.noReserveOnly ? null : 'true')}
+          />
+          <Toggle
+            label="Watchlist"
+            active={filter.watchlistedOnly === true}
+            onToggle={() => update('watchlistedOnly', filter.watchlistedOnly ? null : 'true')}
+          />
           <Toggle
             label="Show rejected"
             active={filter.includeRejected === true}

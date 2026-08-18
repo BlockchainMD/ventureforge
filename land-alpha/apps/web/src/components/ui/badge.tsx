@@ -29,7 +29,9 @@ export function Badge({
 }
 
 /** Map a domain status onto a tone so status colouring is consistent everywhere. */
-export function statusTone(status: string): NonNullable<VariantProps<typeof badgeVariants>['tone']> {
+export function statusTone(
+  status: string,
+): NonNullable<VariantProps<typeof badgeVariants>['tone']> {
   switch (status) {
     case 'ACQUIRED':
     case 'SOLD':

@@ -57,7 +57,13 @@ export async function fetchFloodHazard(
     }>(`${baseUrl}/${FLOOD_HAZARD_LAYER}/query?${params.toString()}`);
 
     if (response.error || !response.features) {
-      return { zones: [], polygons: [], available: false, source, note: 'service returned an error' };
+      return {
+        zones: [],
+        polygons: [],
+        available: false,
+        source,
+        note: 'service returned an error',
+      };
     }
 
     const zones = new Set<string>();

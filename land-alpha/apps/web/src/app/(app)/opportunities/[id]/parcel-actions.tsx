@@ -41,11 +41,20 @@ export function ParcelActions({
   return (
     <div className="flex items-center gap-1.5">
       {message ? <span className="mr-1 text-[11px] text-good">{message}</span> : null}
-      <Button size="sm" variant="ghost" disabled={pending} onClick={() => run(() => refreshParcelAction(parcelId))}>
+      <Button
+        size="sm"
+        variant="ghost"
+        disabled={pending}
+        onClick={() => run(() => refreshParcelAction(parcelId))}
+      >
         <RefreshCw className="size-3" />
         Re-score
       </Button>
-      <Button size="sm" disabled={pending} onClick={() => run(() => toggleWatchlistAction(parcelId))}>
+      <Button
+        size="sm"
+        disabled={pending}
+        onClick={() => run(() => toggleWatchlistAction(parcelId))}
+      >
         {watchlisted ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
         {watchlisted ? 'Unwatch' : 'Watch'}
       </Button>
@@ -90,7 +99,11 @@ export function MaxBidControl({
   canAct: boolean;
 }) {
   const [value, setValue] = useState(
-    approvedDollars != null ? String(approvedDollars) : recommendedDollars != null ? String(recommendedDollars) : '',
+    approvedDollars != null
+      ? String(approvedDollars)
+      : recommendedDollars != null
+        ? String(recommendedDollars)
+        : '',
   );
   const [acknowledged, setAcknowledged] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -117,7 +130,9 @@ export function MaxBidControl({
         <Button
           size="default"
           variant="default"
-          disabled={pending || !Number.isFinite(amount) || amount <= 0 || (highValue && !acknowledged)}
+          disabled={
+            pending || !Number.isFinite(amount) || amount <= 0 || (highValue && !acknowledged)
+          }
           onClick={() =>
             startTransition(async () => {
               const result = await approveMaxBidAction(parcelId, amount, acknowledged);

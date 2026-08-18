@@ -53,7 +53,15 @@ const VEHICULAR_HIGHWAYS = [
 ];
 
 const PAVED_SURFACES = new Set(['asphalt', 'paved', 'concrete', 'chipseal', 'paving_stones']);
-const UNPAVED_SURFACES = new Set(['gravel', 'dirt', 'ground', 'unpaved', 'sand', 'grass', 'compacted']);
+const UNPAVED_SURFACES = new Set([
+  'gravel',
+  'dirt',
+  'ground',
+  'unpaved',
+  'sand',
+  'grass',
+  'compacted',
+]);
 
 export async function fetchRoads(
   ctx: EnrichmentContext,
@@ -110,10 +118,22 @@ async function fetchCountyRoads(
       if (!paths || paths.length === 0) continue;
       const attributes = feature.attributes ?? {};
       roads.push({
-        name: pickString(attributes, ['STREETNAME', 'ROADNAME', 'NAME', 'FULLNAME', 'LABEL', 'STREET']),
+        name: pickString(attributes, [
+          'STREETNAME',
+          'ROADNAME',
+          'NAME',
+          'FULLNAME',
+          'LABEL',
+          'STREET',
+        ]),
         isPublic: inferPublicMaintenance(attributes),
         isPaved: inferPaved(attributes),
-        classification: pickString(attributes, ['ROADCLASS', 'CLASS', 'FUNCTIONAL_CLASS', 'ROUTE_TYPE']),
+        classification: pickString(attributes, [
+          'ROADCLASS',
+          'CLASS',
+          'FUNCTIONAL_CLASS',
+          'ROUTE_TYPE',
+        ]),
         geometry:
           paths.length === 1
             ? { type: 'LineString', coordinates: paths[0] as Position[] }
@@ -179,7 +199,10 @@ async function fetchOsmRoads(
   }
 }
 
-function envelopeAround(centroid: Position, radiusMeters: number): [number, number, number, number] {
+function envelopeAround(
+  centroid: Position,
+  radiusMeters: number,
+): [number, number, number, number] {
   const [lon, lat] = centroid;
   const degLat = radiusMeters / 110_574;
   const degLon = radiusMeters / (111_320 * Math.cos((lat * Math.PI) / 180));
@@ -238,7 +261,5 @@ function inferPavedFromOsm(tags: Record<string, string>): boolean | null {
 /** True when mapped data suggests a driveway or track reaches the parcel. */
 export function hasApparentDriveway(roads: readonly RoadFeature[]): boolean | null {
   if (roads.length === 0) return null;
-  return roads.some(
-    (road) => road.classification === 'service' || road.classification === 'track',
-  );
+  return roads.some((road) => road.classification === 'service' || road.classification === 'track');
 }

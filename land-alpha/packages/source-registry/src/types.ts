@@ -25,7 +25,11 @@ export const registryEntrySchema = z.object({
   state: z.string().length(2),
   county: z.string().nullable(),
   municipality: z.string().nullable().default(null),
-  fipsCode: z.string().regex(/^\d{5}$/).nullable().default(null),
+  fipsCode: z
+    .string()
+    .regex(/^\d{5}$/)
+    .nullable()
+    .default(null),
   timezone: z.string().default('America/Chicago'),
 
   name: z.string().min(3),

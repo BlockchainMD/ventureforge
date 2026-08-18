@@ -88,7 +88,10 @@ export function listingSlug(input: {
 }): string {
   const acreagePart =
     input.acreage != null && input.acreage > 0
-      ? `${input.acreage.toFixed(2).replace(/\.?0+$/, '').replace('.', '-')}-acres`
+      ? `${input.acreage
+          .toFixed(2)
+          .replace(/\.?0+$/, '')
+          .replace('.', '-')}-acres`
       : 'land';
   const place = slugify(`${input.county}-county-${input.state}`);
   return `${slugify(acreagePart)}-${place}-${shortHash(input.parcelId, 8)}`;

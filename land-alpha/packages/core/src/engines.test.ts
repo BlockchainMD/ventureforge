@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { assessAccess, type RoadObservation } from './access';
-import { assessEnvironment, computeEnvironmentalRisk, isSpecialFloodHazardZone } from './environmental';
+import {
+  assessEnvironment,
+  computeEnvironmentalRisk,
+  isSpecialFloodHazardZone,
+} from './environmental';
 import { assessBuildability } from './buildability';
 import { scoreParcel, evaluateRejectionRules, type ScoringInputs } from './scoring';
 import {
@@ -54,7 +58,9 @@ function shape(overrides: Partial<ShapeMetrics> = {}): ShapeMetrics {
   };
 }
 
-function cleanEnvironment(overrides: Partial<EnvironmentalAssessment> = {}): EnvironmentalAssessment {
+function cleanEnvironment(
+  overrides: Partial<EnvironmentalAssessment> = {},
+): EnvironmentalAssessment {
   return {
     floodZones: ['X'],
     floodOverlapFraction: 0,
@@ -96,7 +102,9 @@ describe('assessAccess', () => {
     // The whole point: physical adjacency never implies a legal right.
     expect(result.legalAccessStatus).toBe('UNKNOWN');
     expect(result.legalAccessConfidence).toBe('UNKNOWN');
-    expect(result.unknowns.some((u) => u.includes('Legal access has not been verified'))).toBe(true);
+    expect(result.unknowns.some((u) => u.includes('Legal access has not been verified'))).toBe(
+      true,
+    );
   });
 
   it('grades adjacency to a road of unknown maintenance status as B, not A', () => {
@@ -206,9 +214,9 @@ describe('assessEnvironment', () => {
         source: 'USDA NRCS SSURGO',
       },
     });
-    expect(
-      result.unknowns.some((u) => u.includes('does not establish septic suitability')),
-    ).toBe(true);
+    expect(result.unknowns.some((u) => u.includes('does not establish septic suitability'))).toBe(
+      true,
+    );
   });
 
   it('does not penalise a parcel for layers it has not measured', () => {
@@ -461,8 +469,20 @@ function economics(overrides: Partial<OpportunityEconomics> = {}): OpportunityEc
 
 function valuation(overrides: Partial<ValuationResult> = {}): ValuationResult {
   return {
-    retail: { low: 2_800_000, mid: 3_400_000, high: 4_000_000, confidence: 'HIGH', method: 'comps' },
-    quickSale: { low: 2_100_000, mid: 2_600_000, high: 3_000_000, confidence: 'HIGH', method: 'qsv' },
+    retail: {
+      low: 2_800_000,
+      mid: 3_400_000,
+      high: 4_000_000,
+      confidence: 'HIGH',
+      method: 'comps',
+    },
+    quickSale: {
+      low: 2_100_000,
+      mid: 2_600_000,
+      high: 3_000_000,
+      confidence: 'HIGH',
+      method: 'qsv',
+    },
     investorLiquidation: {
       low: 1_400_000,
       mid: 1_700_000,
@@ -654,7 +674,10 @@ describe('scoreParcel', () => {
 
 describe('evaluateRejectionRules', () => {
   it('rejects a parcel below the minimum acreage', () => {
-    const reasons = evaluateRejectionRules(scoringInputs({ acreage: 0.01 }), DEFAULT_SCORING_CONFIG);
+    const reasons = evaluateRejectionRules(
+      scoringInputs({ acreage: 0.01 }),
+      DEFAULT_SCORING_CONFIG,
+    );
     expect(reasons.map((r) => r.rule)).toContain('PARCEL_TOO_SMALL');
   });
 

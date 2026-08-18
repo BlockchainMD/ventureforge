@@ -52,7 +52,13 @@ export async function fetchWetlands(
     }>(`${env().USFWS_WETLANDS_URL}/${WETLANDS_LAYER}/query?${params.toString()}`);
 
     if (response.error || !response.features) {
-      return { types: [], polygons: [], available: false, source, note: 'service returned an error' };
+      return {
+        types: [],
+        polygons: [],
+        available: false,
+        source,
+        note: 'service returned an error',
+      };
     }
 
     const types = new Set<string>();
@@ -68,6 +74,12 @@ export async function fetchWetlands(
 
     return { types: [...types], polygons, available: true, source, note: null };
   } catch (error) {
-    return { types: [], polygons: [], available: false, source, note: `unavailable: ${String(error)}` };
+    return {
+      types: [],
+      polygons: [],
+      available: false,
+      source,
+      note: `unavailable: ${String(error)}`,
+    };
   }
 }

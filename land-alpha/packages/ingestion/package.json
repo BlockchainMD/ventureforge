@@ -13,5 +13,14 @@
     "build": "echo \"[@land-alpha/ingestion] source-only internal package\"",
     "test": "vitest run --root ../.. --include 'packages/ingestion/src/**/*.test.ts'"
   },
-  "dependencies": { "@land-alpha/shared": "workspace:*", "@land-alpha/db": "workspace:*", "@land-alpha/gis": "workspace:*", "@land-alpha/source-registry": "workspace:*", "cheerio": "^1.1.2", "csv-parse": "^6.1.0", "exceljs": "^4.4.0", "unpdf": "^1.4.0" }
+  "dependencies": {
+    "@land-alpha/shared": "workspace:*",
+    "@land-alpha/db": "workspace:*",
+    "@land-alpha/gis": "workspace:*",
+    "@land-alpha/source-registry": "workspace:*",
+    "cheerio": "^1.1.2",
+    "csv-parse": "^6.1.0",
+    "exceljs": "^4.4.0",
+    "unpdf": "^1.4.0"
+  }
 }

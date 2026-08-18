@@ -210,10 +210,14 @@ export class PostgresJobQueue implements JobQueue, JobConsumer {
 async function delay(ms: number, signal?: AbortSignal): Promise<void> {
   await new Promise<void>((resolve) => {
     const timer = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
-      clearTimeout(timer);
-      resolve();
-    }, { once: true });
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
   });
 }
 

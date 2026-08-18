@@ -36,17 +36,36 @@ const WEIGHT_LABELS: { key: keyof ScoringWeights; label: string; rationale: stri
     label: 'Title simplicity',
     rationale: 'Curative work is cost and delay, and sometimes a dead end.',
   },
-  { key: 'liquidity', label: 'Liquidity', rationale: 'How readily it resells, and to how many buyers.' },
-  { key: 'carryingCost', label: 'Carrying cost', rationale: 'Taxes and capital cost over the hold.' },
-  { key: 'shape', label: 'Shape and topography', rationale: 'Whether the geometry is usable at all.' },
+  {
+    key: 'liquidity',
+    label: 'Liquidity',
+    rationale: 'How readily it resells, and to how many buyers.',
+  },
+  {
+    key: 'carryingCost',
+    label: 'Carrying cost',
+    rationale: 'Taxes and capital cost over the hold.',
+  },
+  {
+    key: 'shape',
+    label: 'Shape and topography',
+    rationale: 'Whether the geometry is usable at all.',
+  },
   {
     key: 'desirability',
     label: 'Unique desirability',
-    rationale: 'Failed auctions, stale inventory, standing OTC stock — where competition is absent.',
+    rationale:
+      'Failed auctions, stale inventory, standing OTC stock — where competition is absent.',
   },
 ];
 
-export function ScoringEditor({ config, canEdit }: { config: ScoringConfigValue; canEdit: boolean }) {
+export function ScoringEditor({
+  config,
+  canEdit,
+}: {
+  config: ScoringConfigValue;
+  canEdit: boolean;
+}) {
   const [weights, setWeights] = useState<ScoringWeights>(config.weights);
   const [thresholds, setThresholds] = useState<ScoringThresholds>(config.thresholds);
   const [costModel, setCostModel] = useState<CostModel>(config.costModel);
@@ -65,9 +84,7 @@ export function ScoringEditor({ config, canEdit }: { config: ScoringConfigValue;
           <PanelHeader
             title="Alpha Score weights"
             subtitle="Must sum to 1.00. Saving creates a new immutable version rather than editing this one."
-            actions={
-              <Badge tone={balanced ? 'good' : 'bad'}>sum {sum.toFixed(3)}</Badge>
-            }
+            actions={<Badge tone={balanced ? 'good' : 'bad'}>sum {sum.toFixed(3)}</Badge>}
           />
           <PanelBody className="space-y-2">
             {WEIGHT_LABELS.map(({ key, label, rationale }) => (
@@ -137,7 +154,10 @@ export function ScoringEditor({ config, canEdit }: { config: ScoringConfigValue;
         {canEdit ? (
           <Panel>
             <PanelBody className="space-y-2">
-              <Field label="What changed and why" hint="Recorded against this configuration version.">
+              <Field
+                label="What changed and why"
+                hint="Recorded against this configuration version."
+              >
                 <Input
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}

@@ -57,8 +57,7 @@ interface AdapterConfig {
 
 export const arcgisTaxSalePointsAdapter: SourceAdapter = {
   key: 'arcgis-tax-sale-points',
-  description:
-    'County tax deed / Lands Available inventory published as an ArcGIS point layer.',
+  description: 'County tax deed / Lands Available inventory published as an ArcGIS point layer.',
   parserVersion: '1',
 
   async discover(ctx: AdapterContext): Promise<DiscoveredArtifact[]> {
@@ -263,7 +262,9 @@ export function parcelIdCandidates(apn: string): string[] {
     // section-township-range -> township-range-section
     candidates.push([parts[1], parts[2], parts[0], ...tail].join(''));
   }
-  return [...new Set(candidates.map((value) => value.replace(/[^A-Za-z0-9]/g, '')).filter(Boolean))];
+  return [
+    ...new Set(candidates.map((value) => value.replace(/[^A-Za-z0-9]/g, '')).filter(Boolean)),
+  ];
 }
 
 /**

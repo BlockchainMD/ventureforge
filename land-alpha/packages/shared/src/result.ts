@@ -33,9 +33,10 @@ export interface RejectedItem {
   readonly raw?: unknown;
 }
 
-export function partition<T>(
-  results: readonly Result<T, string>[],
-): { items: T[]; rejected: RejectedItem[] } {
+export function partition<T>(results: readonly Result<T, string>[]): {
+  items: T[];
+  rejected: RejectedItem[];
+} {
   const items: T[] = [];
   const rejected: RejectedItem[] = [];
   results.forEach((result, index) => {

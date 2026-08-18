@@ -124,15 +124,19 @@ export async function enrichParcel(
       },
     });
 
-    evidence.addDerived('shapeMetrics', {
-      compactness: Number(shape.compactness.toFixed(3)),
-      aspectRatio: Number(shape.aspectRatio.toFixed(2)),
-      flags: shape.flags,
-    }, {
-      engine: 'GIS shape analysis (PostGIS + turf)',
-      confidence: 'HIGH',
-      inputs: ['parcel polygon'],
-    });
+    evidence.addDerived(
+      'shapeMetrics',
+      {
+        compactness: Number(shape.compactness.toFixed(3)),
+        aspectRatio: Number(shape.aspectRatio.toFixed(2)),
+        flags: shape.flags,
+      },
+      {
+        engine: 'GIS shape analysis (PostGIS + turf)',
+        confidence: 'HIGH',
+        inputs: ['parcel polygon'],
+      },
+    );
     stagesRun.push('geometry');
   }
 
@@ -371,7 +375,10 @@ export async function enrichParcel(
   await recordEvidence(parcelId, evidence.all());
   await prisma.parcelOpportunity.update({
     where: { id: parcelId },
-    data: { enrichedAt: new Date(), status: parcel.status === 'DISCOVERED' ? 'ENRICHING' : parcel.status },
+    data: {
+      enrichedAt: new Date(),
+      status: parcel.status === 'DISCOVERED' ? 'ENRICHING' : parcel.status,
+    },
   });
 
   logger.info('enriched parcel', { parcelId, stages: stagesRun, warnings: warnings.length });

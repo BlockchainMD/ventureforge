@@ -100,10 +100,7 @@ export function OpportunityTable({
                 </Td>
                 {showSource ? (
                   <Td>
-                    <span
-                      className="text-[11px] text-ink-faint"
-                      title={row.sourceName}
-                    >
+                    <span className="text-[11px] text-ink-faint" title={row.sourceName}>
                       {humanizeEnum(row.sourceType)}
                     </span>
                   </Td>
@@ -142,9 +139,7 @@ export function OpportunityTable({
                         : undefined
                     }
                   >
-                    {row.buildability === 'GREEN'
-                      ? 'GREEN*'
-                      : (row.buildability ?? '—')}
+                    {row.buildability === 'GREEN' ? 'GREEN*' : (row.buildability ?? '—')}
                   </span>
                 </Td>
                 <Td align="right">

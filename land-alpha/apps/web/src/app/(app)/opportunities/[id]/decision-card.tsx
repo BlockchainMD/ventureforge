@@ -84,10 +84,14 @@ export function DecisionCard({
         </div>
         <div className="text-right">
           <p className="rule-label">Score</p>
-          <p className={`num text-3xl font-semibold leading-none ${alphaScoreTone(parcel.alphaScore)}`}>
+          <p
+            className={`num text-3xl font-semibold leading-none ${alphaScoreTone(parcel.alphaScore)}`}
+          >
             <Value>{parcel.alphaScore == null ? null : Math.round(parcel.alphaScore)}</Value>
           </p>
-          <p className={`mt-1 text-[10px] uppercase tracking-wider ${confidenceTone(parcel.confidenceLevel)}`}>
+          <p
+            className={`mt-1 text-[10px] uppercase tracking-wider ${confidenceTone(parcel.confidenceLevel)}`}
+          >
             {parcel.confidenceLevel} confidence
           </p>
         </div>
@@ -122,7 +126,11 @@ export function DecisionCard({
             tone="text-ink-muted"
           />
           <Row label="Quick sale value" value={formatCents(parcel.quickSaleValueCents)} />
-          <Row label="Retail value" value={formatCents(parcel.retailValueCents)} tone="text-ink-muted" />
+          <Row
+            label="Retail value"
+            value={formatCents(parcel.retailValueCents)}
+            tone="text-ink-muted"
+          />
           <div className="my-2 border-t border-line" />
           <Row
             label="Basis / QSV"
@@ -176,7 +184,9 @@ export function DecisionCard({
               parcel.buildability === 'UNKNOWN' ? null : (
                 <>
                   {parcel.buildability}
-                  {parcel.buildability === 'GREEN' ? <span className="text-ink-faint">*</span> : null}
+                  {parcel.buildability === 'GREEN' ? (
+                    <span className="text-ink-faint">*</span>
+                  ) : null}
                 </>
               )
             }
@@ -184,7 +194,9 @@ export function DecisionCard({
           />
           <Row
             label="Title risk"
-            value={parcel.titleRiskScore == null ? null : `${Math.round(parcel.titleRiskScore)} / 100`}
+            value={
+              parcel.titleRiskScore == null ? null : `${Math.round(parcel.titleRiskScore)} / 100`
+            }
             tone={titleRiskTone(parcel.titleRiskScore)}
           />
           <Row
@@ -223,8 +235,8 @@ export function DecisionCard({
               emphasis
             />
             <p className="mt-1 text-[10px] leading-relaxed text-ink-faint">
-              The bid at which the all-in basis still lands inside the target basis/QSV ratio. Not an
-              instruction to bid.
+              The bid at which the all-in basis still lands inside the target basis/QSV ratio. Not
+              an instruction to bid.
             </p>
           </div>
         </div>
@@ -268,7 +280,8 @@ export function DecisionCard({
           <p className="text-[10px] leading-relaxed text-ink-faint">
             <span className="text-ink-muted">*</span> Buildability is a preliminary screening
             conclusion, not a zoning determination, permit or septic approval. Land Alpha never
-            submits a bid or binds a purchase — every acquisition step requires explicit human action.
+            submits a bid or binds a purchase — every acquisition step requires explicit human
+            action.
           </p>
           <div className="flex shrink-0 items-center gap-1.5">{actions}</div>
         </footer>

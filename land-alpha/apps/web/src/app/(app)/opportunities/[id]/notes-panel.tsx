@@ -14,7 +14,13 @@ export function NotesPanel({
   canAct,
 }: {
   parcelId: string;
-  notes: { id: string; body: string; pinned: boolean; createdAt: Date; user: { name: string } | null }[];
+  notes: {
+    id: string;
+    body: string;
+    pinned: boolean;
+    createdAt: Date;
+    user: { name: string } | null;
+  }[];
   canAct: boolean;
 }) {
   const [body, setBody] = useState('');

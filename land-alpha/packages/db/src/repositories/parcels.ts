@@ -70,7 +70,8 @@ export function buildWhere(filter: OpportunityFilter): Prisma.ParcelOpportunityW
 
   if (filter.minAcreage != null) and.push({ acreage: { gte: filter.minAcreage } });
   if (filter.maxAcreage != null) and.push({ acreage: { lte: filter.maxAcreage } });
-  if (filter.maxBasisToQsv != null) and.push({ basisToQsv: { lte: filter.maxBasisToQsv, not: null } });
+  if (filter.maxBasisToQsv != null)
+    and.push({ basisToQsv: { lte: filter.maxBasisToQsv, not: null } });
   if (filter.minQuickSaleValue != null) {
     and.push({ quickSaleValue: { gte: toDecimal(filter.minQuickSaleValue)! } });
   }
@@ -83,7 +84,10 @@ export function buildWhere(filter: OpportunityFilter): Prisma.ParcelOpportunityW
   // opposite of what an analyst screening for fresh opportunities wants.
   if (filter.maxFloodOverlap != null) {
     and.push({
-      OR: [{ floodOverlapFraction: { lte: filter.maxFloodOverlap } }, { floodOverlapFraction: null }],
+      OR: [
+        { floodOverlapFraction: { lte: filter.maxFloodOverlap } },
+        { floodOverlapFraction: null },
+      ],
     });
   }
   if (filter.maxWetlandOverlap != null) {
@@ -422,7 +426,9 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
 }
 
 /** Distinct counties present in inventory, for the filter bar. */
-export async function availableCounties(states?: string[]): Promise<{ state: string; county: string; count: number }[]> {
+export async function availableCounties(
+  states?: string[],
+): Promise<{ state: string; county: string; count: number }[]> {
   const rows = await prisma.parcelOpportunity.groupBy({
     by: ['state', 'county'],
     where: states?.length ? { state: { in: states } } : undefined,

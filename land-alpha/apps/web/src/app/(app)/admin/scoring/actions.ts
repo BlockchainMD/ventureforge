@@ -2,7 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { getQueue, prisma, saveScoringConfig, validateWeights } from '@land-alpha/db';
-import type { CostModel, RejectionRuleConfig, ScoringThresholds, ScoringWeights } from '@land-alpha/shared';
+import type {
+  CostModel,
+  RejectionRuleConfig,
+  ScoringThresholds,
+  ScoringWeights,
+} from '@land-alpha/shared';
 import { requireRole } from '@/server/auth';
 import { recordActivity } from '@/server/activity';
 

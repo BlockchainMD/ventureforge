@@ -103,13 +103,23 @@ export const DEFAULT_COST_MODEL: CostModel = {
 
 export const DEFAULT_REJECTION_RULES: RejectionRuleConfig[] = [
   { key: 'ROADWAY_REMNANT', enabled: true, overridable: true },
-  { key: 'NO_ACCESS_WITHOUT_EXCEPTIONAL_DISCOUNT', enabled: true, overridable: true, params: { maxBasisToQsv: 0.08 } },
+  {
+    key: 'NO_ACCESS_WITHOUT_EXCEPTIONAL_DISCOUNT',
+    enabled: true,
+    overridable: true,
+    params: { maxBasisToQsv: 0.08 },
+  },
   { key: 'BASIS_EXCEEDS_QSV', enabled: true, overridable: true },
   { key: 'SEVERE_TITLE_RISK', enabled: true, overridable: true, params: { threshold: 80 } },
   { key: 'CONTAMINATED_SITE', enabled: true, overridable: true, params: { distanceMeters: 150 } },
   { key: 'PARCEL_TOO_SMALL', enabled: true, overridable: true, params: { minAcreage: 0.08 } },
   { key: 'DUPLICATE_PARCEL', enabled: true, overridable: false },
-  { key: 'SUBMERGED_OR_FULL_WETLAND', enabled: true, overridable: true, params: { fraction: 0.95 } },
+  {
+    key: 'SUBMERGED_OR_FULL_WETLAND',
+    enabled: true,
+    overridable: true,
+    params: { fraction: 0.95 },
+  },
 ];
 
 export const DEFAULT_SCORING_CONFIG: ScoringConfigValue = {

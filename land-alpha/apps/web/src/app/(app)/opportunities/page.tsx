@@ -1,9 +1,5 @@
 import Link from 'next/link';
-import {
-  availableCounties,
-  listOpportunities,
-  countMatching,
-} from '@land-alpha/db';
+import { availableCounties, listOpportunities, countMatching } from '@land-alpha/db';
 import {
   activeFilterCount,
   filterFromSearchParams,
@@ -84,11 +80,7 @@ export default async function OpportunitiesPage({
   );
 }
 
-function SortControls({
-  filter,
-}: {
-  filter: ReturnType<typeof filterFromSearchParams>;
-}) {
+function SortControls({ filter }: { filter: ReturnType<typeof filterFromSearchParams> }) {
   return (
     <div className="flex items-center gap-1">
       <span className="rule-label">Sort</span>

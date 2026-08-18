@@ -53,10 +53,7 @@ export interface ScoringInputs {
 
 const NEUTRAL = 50;
 
-export function scoreParcel(
-  inputs: ScoringInputs,
-  config: ScoringConfigValue,
-): AlphaScoreResult {
+export function scoreParcel(inputs: ScoringInputs, config: ScoringConfigValue): AlphaScoreResult {
   const rejectionReasons = evaluateRejectionRules(inputs, config);
   const overriddenRule = inputs.analystOverride?.rule;
   const effectiveRejections = rejectionReasons.filter(
@@ -85,35 +82,91 @@ export function scoreParcel(
 
   // ---- 30% Discount to conservative quick-sale value -----------------------
   const value = scoreDiscountToQsv(inputs, config);
-  push('discountToQsv', 'Discount to quick-sale value', config.weights.discountToQsv, value.score, value.rationale, value.confidence);
+  push(
+    'discountToQsv',
+    'Discount to quick-sale value',
+    config.weights.discountToQsv,
+    value.score,
+    value.rationale,
+    value.confidence,
+  );
 
   // ---- 20% Access -----------------------------------------------------------
   const access = scoreAccess(inputs.access);
-  push('access', 'Access', config.weights.access, access.score, access.rationale, access.confidence);
+  push(
+    'access',
+    'Access',
+    config.weights.access,
+    access.score,
+    access.rationale,
+    access.confidence,
+  );
 
   // ---- 15% Buildability ------------------------------------------------------
   const buildability = scoreBuildability(inputs.buildability);
-  push('buildability', 'Buildability', config.weights.buildability, buildability.score, buildability.rationale, buildability.confidence);
+  push(
+    'buildability',
+    'Buildability',
+    config.weights.buildability,
+    buildability.score,
+    buildability.rationale,
+    buildability.confidence,
+  );
 
   // ---- 10% Title simplicity --------------------------------------------------
   const title = scoreTitleSimplicity(inputs.title);
-  push('titleSimplicity', 'Title simplicity', config.weights.titleSimplicity, title.score, title.rationale, title.confidence);
+  push(
+    'titleSimplicity',
+    'Title simplicity',
+    config.weights.titleSimplicity,
+    title.score,
+    title.rationale,
+    title.confidence,
+  );
 
   // ---- 10% Liquidity ---------------------------------------------------------
   const liquidity = scoreLiquidity(inputs);
-  push('liquidity', 'Liquidity', config.weights.liquidity, liquidity.score, liquidity.rationale, liquidity.confidence);
+  push(
+    'liquidity',
+    'Liquidity',
+    config.weights.liquidity,
+    liquidity.score,
+    liquidity.rationale,
+    liquidity.confidence,
+  );
 
   // ---- 5% Carrying cost ------------------------------------------------------
   const carrying = scoreCarryingCost(inputs.economics);
-  push('carryingCost', 'Carrying cost', config.weights.carryingCost, carrying.score, carrying.rationale, carrying.confidence);
+  push(
+    'carryingCost',
+    'Carrying cost',
+    config.weights.carryingCost,
+    carrying.score,
+    carrying.rationale,
+    carrying.confidence,
+  );
 
   // ---- 5% Shape / topography -------------------------------------------------
   const shape = scoreShape(inputs);
-  push('shape', 'Shape and topography', config.weights.shape, shape.score, shape.rationale, shape.confidence);
+  push(
+    'shape',
+    'Shape and topography',
+    config.weights.shape,
+    shape.score,
+    shape.rationale,
+    shape.confidence,
+  );
 
   // ---- 5% Unique desirability -------------------------------------------------
   const desirability = scoreDesirability(inputs);
-  push('desirability', 'Unique desirability', config.weights.desirability, desirability.score, desirability.rationale, desirability.confidence);
+  push(
+    'desirability',
+    'Unique desirability',
+    config.weights.desirability,
+    desirability.score,
+    desirability.rationale,
+    desirability.confidence,
+  );
 
   const weightSum = breakdown.reduce((sum, entry) => sum + entry.weight, 0);
   const rawAlpha =
@@ -179,8 +232,11 @@ function scoreDiscountToQsv(inputs: ScoringInputs, config: ScoringConfigValue): 
   }
 
   const ratio = economics.basisToQsv;
-  const { exceptionalBasisToQsv: exceptional, strongBasisToQsv: strong, potentialBasisToQsv: potential } =
-    config.thresholds;
+  const {
+    exceptionalBasisToQsv: exceptional,
+    strongBasisToQsv: strong,
+    potentialBasisToQsv: potential,
+  } = config.thresholds;
 
   let score: number;
   if (ratio <= exceptional) {
@@ -332,8 +388,7 @@ function scoreCarryingCost(economics: OpportunityEconomics | null): ComponentSco
   if (!economics) {
     return { score: NEUTRAL, rationale: 'Carrying cost not modelled.', confidence: 'UNKNOWN' };
   }
-  const share =
-    economics.allInBasis > 0 ? economics.carryingCost / economics.allInBasis : 0;
+  const share = economics.allInBasis > 0 ? economics.carryingCost / economics.allInBasis : 0;
   // 0% of basis -> 100, 25% of basis -> 0.
   const score = clamp(100 - share * 400);
   return {
@@ -405,7 +460,9 @@ function scoreDesirability(inputs: ScoringInputs): ComponentScore {
 
   return {
     score,
-    rationale: notes.length ? capitalize(notes.join('; ')) + '.' : 'No distinguishing characteristics identified.',
+    rationale: notes.length
+      ? capitalize(notes.join('; ')) + '.'
+      : 'No distinguishing characteristics identified.',
     confidence: 'MEDIUM',
   };
 }
@@ -544,7 +601,8 @@ function buildWhyInteresting(
         : `failed ${inputs.failedSaleCount} prior auctions`,
     );
   }
-  if (inputs.isStandingInventory) points.push('over-the-counter acquisition, no auction competition');
+  if (inputs.isStandingInventory)
+    points.push('over-the-counter acquisition, no auction competition');
 
   const economics = inputs.economics;
   if (economics?.basisToQsv != null && economics.basisToQsv <= 0.3) {
@@ -560,7 +618,10 @@ function buildWhyInteresting(
   if (inputs.shape && !inputs.shape.isIrregular && !inputs.shape.isNarrowStrip) {
     points.push('conventional parcel geometry');
   }
-  if (inputs.environmental?.environmentalRiskScore != null && inputs.environmental.environmentalRiskScore <= 10) {
+  if (
+    inputs.environmental?.environmentalRiskScore != null &&
+    inputs.environmental.environmentalRiskScore <= 10
+  ) {
     points.push('no material environmental constraints identified');
   }
   if (inputs.daysOnSource != null && inputs.daysOnSource > 540) {

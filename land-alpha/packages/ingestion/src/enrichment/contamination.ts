@@ -40,7 +40,13 @@ export async function fetchContamination(
 ): Promise<ContaminationObservation> {
   const source = 'EPA Facility Registry Service';
   if (ctx.mode === 'fixture') {
-    return { sites: [], searchRadiusMeters: radiusMeters, available: false, source, note: 'fixture mode' };
+    return {
+      sites: [],
+      searchRadiusMeters: radiusMeters,
+      available: false,
+      source,
+      note: 'fixture mode',
+    };
   }
 
   const [lon, lat] = target.centroid;
@@ -99,7 +105,8 @@ function classifyProgram(record: FrsRecord): ContaminatedSiteHit['program'] | nu
   const interests = `${record.INTEREST_TYPES ?? ''} ${record.SITE_TYPE_NAME ?? ''}`.toUpperCase();
   if (interests.includes('SUPERFUND') || interests.includes('NPL')) return 'SUPERFUND';
   if (interests.includes('BROWNFIELD')) return 'BROWNFIELD';
-  if (interests.includes('CORRECTIVE ACTION') || interests.includes('RCRA')) return 'RCRA_CORRECTIVE';
+  if (interests.includes('CORRECTIVE ACTION') || interests.includes('RCRA'))
+    return 'RCRA_CORRECTIVE';
   if (interests.includes('CLEANUP') || interests.includes('REMEDIATION')) return 'STATE_CLEANUP';
   return null;
 }

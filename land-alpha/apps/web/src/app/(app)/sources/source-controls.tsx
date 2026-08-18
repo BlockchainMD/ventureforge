@@ -28,7 +28,9 @@ export function SourceControls({
         <Button
           size="sm"
           disabled={pending || manualOnly}
-          title={manualOnly ? 'Manual-only source — import through the analyst workflow' : undefined}
+          title={
+            manualOnly ? 'Manual-only source — import through the analyst workflow' : undefined
+          }
           onClick={() =>
             startTransition(async () => {
               const result = await triggerIngestionAction(sourceId);

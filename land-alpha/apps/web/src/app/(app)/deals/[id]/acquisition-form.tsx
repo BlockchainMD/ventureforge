@@ -25,7 +25,11 @@ export function AcquisitionForm({ parcelId, canAct }: { parcelId: string; canAct
           <Input type="number" value={price} onChange={(event) => setPrice(event.target.value)} />
         </Field>
         <Field label="Closing costs ($)">
-          <Input type="number" value={closing} onChange={(event) => setClosing(event.target.value)} />
+          <Input
+            type="number"
+            value={closing}
+            onChange={(event) => setClosing(event.target.value)}
+          />
         </Field>
         <Field label="Acquired on">
           <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} />

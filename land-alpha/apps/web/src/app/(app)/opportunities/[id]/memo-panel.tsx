@@ -7,11 +7,7 @@ import { formatDateTime } from '@land-alpha/shared';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  generateListingAction,
-  generateMemoAction,
-  setListingPublishedAction,
-} from './actions';
+import { generateListingAction, generateMemoAction, setListingPublishedAction } from './actions';
 
 export interface MemoView {
   version: number;

@@ -91,14 +91,23 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ i
                         <Badge tone={statusTone(run.status)}>{run.status}</Badge>
                       </Td>
                       <Td align="right">{formatNumber(run.recordsDiscovered)}</Td>
-                      <Td align="right" className={run.recordsCreated > 0 ? 'text-good' : undefined}>
+                      <Td
+                        align="right"
+                        className={run.recordsCreated > 0 ? 'text-good' : undefined}
+                      >
                         {formatNumber(run.recordsCreated)}
                       </Td>
                       <Td align="right">{formatNumber(run.recordsChanged)}</Td>
-                      <Td align="right" className={run.recordsRemoved > 0 ? 'text-warn' : undefined}>
+                      <Td
+                        align="right"
+                        className={run.recordsRemoved > 0 ? 'text-warn' : undefined}
+                      >
                         {formatNumber(run.recordsRemoved)}
                       </Td>
-                      <Td align="right" className={run.recordsRejected > 0 ? 'text-bad' : undefined}>
+                      <Td
+                        align="right"
+                        className={run.recordsRejected > 0 ? 'text-bad' : undefined}
+                      >
                         {formatNumber(run.recordsRejected)}
                       </Td>
                       <Td align="right" className="text-ink-faint">
@@ -169,7 +178,9 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ i
                   Official source <ExternalLink className="size-3" />
                 </a>
                 {source.attribution ? (
-                  <p className="mt-1 text-[10px] text-ink-faint">Attribution: {source.attribution}</p>
+                  <p className="mt-1 text-[10px] text-ink-faint">
+                    Attribution: {source.attribution}
+                  </p>
                 ) : null}
               </div>
             </PanelBody>
@@ -189,7 +200,7 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ i
             </Panel>
           ) : null}
 
-          {source.notes ?? registryEntry?.notes ? (
+          {(source.notes ?? registryEntry?.notes) ? (
             <Panel>
               <PanelHeader title="Engineering notes" />
               <PanelBody>

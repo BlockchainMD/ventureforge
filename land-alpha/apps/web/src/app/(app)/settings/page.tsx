@@ -28,7 +28,17 @@ export default async function SettingsPage() {
   const [postgis, users, activity, counts] = await Promise.all([
     spatial.postgisVersion(),
     hasRole(user, 'ADMIN')
-      ? prisma.user.findMany({ orderBy: { role: 'asc' }, select: { id: true, email: true, name: true, role: true, isActive: true, lastLoginAt: true } })
+      ? prisma.user.findMany({
+          orderBy: { role: 'asc' },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            isActive: true,
+            lastLoginAt: true,
+          },
+        })
       : Promise.resolve([]),
     prisma.activityLog.findMany({ orderBy: { createdAt: 'desc' }, take: 25 }),
     prisma.$transaction([
@@ -43,7 +53,10 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" subtitle="System configuration, integrations and audit history" />
+      <PageHeader
+        title="Settings"
+        subtitle="System configuration, integrations and audit history"
+      />
 
       <div className="space-y-3 p-4">
         <Panel>
@@ -56,7 +69,9 @@ export default async function SettingsPage() {
               </Metric>
               <Metric label="Comparable sales">{formatNumber(counts[2])}</Metric>
               <Metric label="Change events">{formatNumber(counts[3])}</Metric>
-              <Metric label="Registered sources">{coverage.active + coverage.candidates + coverage.manualOnly}</Metric>
+              <Metric label="Registered sources">
+                {coverage.active + coverage.candidates + coverage.manualOnly}
+              </Metric>
               <Metric label="Counties">{coverage.counties}</Metric>
             </MetricGrid>
           </PanelBody>

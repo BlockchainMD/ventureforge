@@ -86,7 +86,13 @@ export async function seedComparables(now = new Date()): Promise<number> {
       // Size curve: smaller parcels trade at a higher rate per acre.
       const sizeMultiplier = Math.pow(REFERENCE_ACRES / Math.max(acreage, 0.2), SIZE_ELASTICITY);
 
-      const accessClass = random.bool(0.72) ? (random.bool(0.6) ? 'A' : 'B') : random.bool(0.6) ? 'C' : 'D';
+      const accessClass = random.bool(0.72)
+        ? random.bool(0.6)
+          ? 'A'
+          : 'B'
+        : random.bool(0.6)
+          ? 'C'
+          : 'D';
       const accessMultiplier =
         accessClass === 'A' ? 1.12 : accessClass === 'B' ? 1.0 : accessClass === 'C' ? 0.74 : 0.45;
 

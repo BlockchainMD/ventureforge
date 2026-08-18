@@ -129,7 +129,9 @@ describe('generateListing', () => {
 
   it('always includes the due-diligence disclosure', async () => {
     const listing = await generateListing(facts());
-    expect(listing.dueDiligenceDisclosure).toMatch(/no representation that this parcel is buildable/i);
+    expect(listing.dueDiligenceDisclosure).toMatch(
+      /no representation that this parcel is buildable/i,
+    );
     expect(listing.dueDiligenceDisclosure).toMatch(/not a survey/i);
   });
 

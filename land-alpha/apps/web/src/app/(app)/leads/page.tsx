@@ -39,7 +39,10 @@ export default async function LeadsPage() {
     <>
       <PageHeader
         title="Leads"
-        subtitle={counts.map((row) => `${row._count._all} ${row.status.toLowerCase()}`).join(' · ') || 'No enquiries yet'}
+        subtitle={
+          counts.map((row) => `${row._count._all} ${row.status.toLowerCase()}`).join(' · ') ||
+          'No enquiries yet'
+        }
       />
       <div className="p-4">
         <Panel>

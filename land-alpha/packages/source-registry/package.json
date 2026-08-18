@@ -13,5 +13,8 @@
     "build": "echo \"[@land-alpha/source-registry] source-only internal package\"",
     "test": "vitest run --root ../.. --include 'packages/source-registry/src/**/*.test.ts'"
   },
-  "dependencies": { "@land-alpha/shared": "workspace:*", "zod": "^3.25.76" }
+  "dependencies": {
+    "@land-alpha/shared": "workspace:*",
+    "zod": "^3.25.76"
+  }
 }

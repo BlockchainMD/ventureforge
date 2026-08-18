@@ -321,21 +321,22 @@ export function renderDeterministicMemo(facts: MemoFacts): Record<string, string
       .filter(Boolean)
       .join(' '),
 
-    'KEY RISKS': [
-      ...facts.rejectionReasons.map((reason) => `- REJECTION RULE: ${reason}`),
-      ...facts.buildabilityBlockers.map((line) => `- ${line}`),
-      facts.valuationConfidence === 'LOW' || facts.valuationConfidence === 'UNKNOWN'
-        ? '- Valuation rests on thin or absent comparable data.'
-        : '',
-      facts.legalAccessStatus === 'UNKNOWN'
-        ? '- Legal access is unverified. The parcel may be unusable regardless of physical adjacency.'
-        : '',
-      facts.titleRiskScore != null && facts.titleRiskScore > 40
-        ? '- Title pre-screen indicates professional review is required before acquisition.'
-        : '',
-    ]
-      .filter(Boolean)
-      .join('\n') || '- No blocking risks identified by the screening rules.',
+    'KEY RISKS':
+      [
+        ...facts.rejectionReasons.map((reason) => `- REJECTION RULE: ${reason}`),
+        ...facts.buildabilityBlockers.map((line) => `- ${line}`),
+        facts.valuationConfidence === 'LOW' || facts.valuationConfidence === 'UNKNOWN'
+          ? '- Valuation rests on thin or absent comparable data.'
+          : '',
+        facts.legalAccessStatus === 'UNKNOWN'
+          ? '- Legal access is unverified. The parcel may be unusable regardless of physical adjacency.'
+          : '',
+        facts.titleRiskScore != null && facts.titleRiskScore > 40
+          ? '- Title pre-screen indicates professional review is required before acquisition.'
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n') || '- No blocking risks identified by the screening rules.',
 
     'UNANSWERED QUESTIONS':
       collectUnknowns(facts)
@@ -394,14 +395,26 @@ function renderFactSheet(facts: MemoFacts): string {
   push('failed prior sales', facts.failedSaleCount);
   push('over-the-counter eligible', facts.otcEligible);
   push('days listed', facts.daysOnSource);
-  push('acquisition price', facts.acquisitionPriceCents == null ? null : formatCents(facts.acquisitionPriceCents));
+  push(
+    'acquisition price',
+    facts.acquisitionPriceCents == null ? null : formatCents(facts.acquisitionPriceCents),
+  );
   push('all-in basis', facts.allInBasisCents == null ? null : formatCents(facts.allInBasisCents));
-  push('quick-sale value', facts.quickSaleValueCents == null ? null : formatCents(facts.quickSaleValueCents));
+  push(
+    'quick-sale value',
+    facts.quickSaleValueCents == null ? null : formatCents(facts.quickSaleValueCents),
+  );
   push('retail value', facts.retailValueCents == null ? null : formatCents(facts.retailValueCents));
   push('basis/QSV', facts.basisToQsv == null ? null : formatPercent(facts.basisToQsv, 1));
-  push('gross profit at QSV', facts.grossProfitCents == null ? null : formatCents(facts.grossProfitCents));
+  push(
+    'gross profit at QSV',
+    facts.grossProfitCents == null ? null : formatCents(facts.grossProfitCents),
+  );
   push('economics tier', facts.economicsTier);
-  push('recommended maximum bid', facts.recommendedMaxBidCents == null ? null : formatCents(facts.recommendedMaxBidCents));
+  push(
+    'recommended maximum bid',
+    facts.recommendedMaxBidCents == null ? null : formatCents(facts.recommendedMaxBidCents),
+  );
   push('access class', facts.accessClass);
   push('legal access status', facts.legalAccessStatus);
   push('road frontage (m)', facts.roadFrontageMeters);

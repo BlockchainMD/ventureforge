@@ -13,5 +13,8 @@
     "build": "echo \"[@land-alpha/listing-engine] source-only internal package\"",
     "test": "vitest run --root ../.. --include 'packages/listing-engine/src/**/*.test.ts'"
   },
-  "dependencies": { "@land-alpha/shared": "workspace:*", "@land-alpha/ai": "workspace:*" }
+  "dependencies": {
+    "@land-alpha/shared": "workspace:*",
+    "@land-alpha/ai": "workspace:*"
+  }
 }

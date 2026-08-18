@@ -6,7 +6,13 @@ import {
   type ValuationResult,
 } from '@land-alpha/shared';
 import { MINIMUM_PLAUSIBLE_PARCEL_VALUE_CENTS } from './acreage-curve';
-import { analyzeComps, type CompCandidate, type CompsConfig, type SubjectProfile, DEFAULT_COMPS_CONFIG } from './comps';
+import {
+  analyzeComps,
+  type CompCandidate,
+  type CompsConfig,
+  type SubjectProfile,
+  DEFAULT_COMPS_CONFIG,
+} from './comps';
 
 /**
  * Three values, three different questions.

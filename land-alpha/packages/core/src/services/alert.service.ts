@@ -24,7 +24,9 @@ export interface AlertEvaluation {
   readonly notified: number;
 }
 
-export async function evaluateAlertRules(options: { ruleId?: string } = {}): Promise<AlertEvaluation[]> {
+export async function evaluateAlertRules(
+  options: { ruleId?: string } = {},
+): Promise<AlertEvaluation[]> {
   const rules = await prisma.alertRule.findMany({
     where: { enabled: true, ...(options.ruleId ? { id: options.ruleId } : {}) },
     include: { user: { select: { id: true, email: true } } },
@@ -41,10 +43,7 @@ export async function evaluateAlertRules(options: { ruleId?: string } = {}): Pro
     const since = rule.lastEvaluatedAt;
     const freshWhere: Prisma.ParcelOpportunityWhereInput = since
       ? {
-          AND: [
-            where,
-            { OR: [{ firstSeenAt: { gte: since } }, { scoredAt: { gte: since } }] },
-          ],
+          AND: [where, { OR: [{ firstSeenAt: { gte: since } }, { scoredAt: { gte: since } }] }],
         }
       : where;
 
@@ -86,7 +85,9 @@ export async function evaluateAlertRules(options: { ruleId?: string } = {}): Pro
             parcel.alphaScore == null ? null : `Alpha ${Math.round(parcel.alphaScore)}`,
             parcel.acreage == null ? null : `${parcel.acreage.toFixed(2)} ac`,
             price == null ? null : formatCents(Math.round(Number(price) * 100)),
-            parcel.basisToQsv == null ? null : `basis ${formatPercent(parcel.basisToQsv, 0)} of QSV`,
+            parcel.basisToQsv == null
+              ? null
+              : `basis ${formatPercent(parcel.basisToQsv, 0)} of QSV`,
           ]
             .filter(Boolean)
             .join(' · '),
@@ -100,9 +101,7 @@ export async function evaluateAlertRules(options: { ruleId?: string } = {}): Pro
       where: { id: rule.id },
       data: {
         lastEvaluatedAt: new Date(),
-        ...(notified > 0
-          ? { lastMatchAt: new Date(), matchCount: { increment: notified } }
-          : {}),
+        ...(notified > 0 ? { lastMatchAt: new Date(), matchCount: { increment: notified } } : {}),
       },
     });
 

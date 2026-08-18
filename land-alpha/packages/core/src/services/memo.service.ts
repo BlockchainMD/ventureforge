@@ -61,7 +61,9 @@ export async function generateMemoForParcel(
     daysOnSource: Math.floor((Date.now() - parcel.firstSeenAt.getTime()) / 86_400_000),
 
     acquisitionPriceCents:
-      toCents(parcel.askingPrice) ?? toCents(parcel.minimumBid) ?? toCents(parcel.estimatedAcquisitionCost),
+      toCents(parcel.askingPrice) ??
+      toCents(parcel.minimumBid) ??
+      toCents(parcel.estimatedAcquisitionCost),
     allInBasisCents: toCents(parcel.estimatedAllInBasis),
     quickSaleValueCents,
     retailValueCents: toCents(parcel.retailValue),

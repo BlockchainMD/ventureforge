@@ -249,7 +249,11 @@ describe('computeEconomics', () => {
   it('computes the brief’s worked example to the right tier', () => {
     // $3,140 acquisition against a $26,000 QSV should land near 19% and STRONG.
     const economics = computeEconomics(
-      { acquisitionPriceCents: 314_000, quickSaleValueCents: 2_600_000, retailValueCents: 3_400_000 },
+      {
+        acquisitionPriceCents: 314_000,
+        quickSaleValueCents: 2_600_000,
+        retailValueCents: 3_400_000,
+      },
       COSTS,
       THRESHOLDS,
     );

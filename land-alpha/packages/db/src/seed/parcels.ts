@@ -157,8 +157,7 @@ function buildParcelData(
     meanSlopePercent: e.meanSlopePercent,
     nearestContaminatedSiteMeters: e.nearestContaminatedSiteMeters,
     environmentalConfidence: (e.floodOverlapFraction == null ? 'UNKNOWN' : 'HIGH') as
-      | 'UNKNOWN'
-      | 'HIGH',
+      'UNKNOWN' | 'HIGH',
     titleRiskScore: e.titleRiskScore,
 
     firstSeenAt,

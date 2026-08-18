@@ -76,9 +76,10 @@ export interface SourceAdapter {
  * rejected with a reason and counted, never silently dropped and never repaired
  * by inventing a value.
  */
-export function validateNormalized(
-  items: readonly ParcelOpportunityInput[],
-): { items: ParcelOpportunityInput[]; rejected: RejectedItem[] } {
+export function validateNormalized(items: readonly ParcelOpportunityInput[]): {
+  items: ParcelOpportunityInput[];
+  rejected: RejectedItem[];
+} {
   const accepted: ParcelOpportunityInput[] = [];
   const rejected: RejectedItem[] = [];
   const seenKeys = new Set<string>();

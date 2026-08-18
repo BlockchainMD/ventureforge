@@ -257,7 +257,8 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
     sourceType: 'TAX_FORECLOSURE',
     sourceUrl:
       'https://gis.miottawa.org/arcgis/rest/services/HostedServices/ParcelsPublic/FeatureServer/0',
-    discoveryUrl: 'https://gis.miottawa.org/arcgis/rest/services/HostedServices/ParcelsPublic/FeatureServer/0',
+    discoveryUrl:
+      'https://gis.miottawa.org/arcgis/rest/services/HostedServices/ParcelsPublic/FeatureServer/0',
     ingestionMethod: 'ARCGIS_REST',
     inventoryFormat: 'GIS',
     updateFrequency: 'WEEKLY',
@@ -376,7 +377,9 @@ export function registryCoverage(): {
 } {
   const states = [...new Set(SOURCE_REGISTRY.map((entry) => entry.state))].sort();
   const counties = new Set(
-    SOURCE_REGISTRY.filter((entry) => entry.county).map((entry) => `${entry.state}-${entry.county}`),
+    SOURCE_REGISTRY.filter((entry) => entry.county).map(
+      (entry) => `${entry.state}-${entry.county}`,
+    ),
   ).size;
   return {
     states,

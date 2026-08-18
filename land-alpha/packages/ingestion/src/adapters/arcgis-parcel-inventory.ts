@@ -204,7 +204,8 @@ export const arcgisParcelInventoryAdapter: SourceAdapter = {
       addEvidence('landAssessedValue', num(record[map.landAssessedValue ?? '']));
       addEvidence('assessedValue', num(record[map.assessedValue ?? '']));
       addEvidence('propertyClass', propertyClass ?? classDescription);
-      if (geometry) addEvidence('geometry', `${geometry.type} from county parcel layer`, 'VERIFIED');
+      if (geometry)
+        addEvidence('geometry', `${geometry.type} from county parcel layer`, 'VERIFIED');
 
       items.push({
         sourceId: ctx.sourceId,
@@ -284,7 +285,8 @@ function str(value: unknown): string | null {
 
 function num(value: unknown): number | null {
   if (value == null || value === '') return null;
-  const parsed = typeof value === 'number' ? value : Number.parseFloat(String(value).replace(/[$,]/g, ''));
+  const parsed =
+    typeof value === 'number' ? value : Number.parseFloat(String(value).replace(/[$,]/g, ''));
   return Number.isFinite(parsed) ? parsed : null;
 }
 

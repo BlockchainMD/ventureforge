@@ -1,6 +1,13 @@
 import Link from 'next/link';
 import { prisma, toCents } from '@land-alpha/db';
-import { addCents, formatAcres, formatCents, formatDate, formatNumber, formatPercent } from '@land-alpha/shared';
+import {
+  addCents,
+  formatAcres,
+  formatCents,
+  formatDate,
+  formatNumber,
+  formatPercent,
+} from '@land-alpha/shared';
 import { PageHeader } from '@/components/layout/shell';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { DataTable, EmptyRow, Td, Th, Thead, Tr } from '@/components/ui/table';
@@ -58,7 +65,10 @@ export default async function PortfolioPage() {
     (sum, asset) => sum + (toCents(asset.parcel.quickSaleValue) ?? 0),
     0,
   );
-  const realisedProfitCents = sold.reduce((sum, asset) => sum + (toCents(asset.realizedProfit) ?? 0), 0);
+  const realisedProfitCents = sold.reduce(
+    (sum, asset) => sum + (toCents(asset.realizedProfit) ?? 0),
+    0,
+  );
   const averageDaysHeld =
     sold.length === 0
       ? null
@@ -139,9 +149,7 @@ export default async function PortfolioPage() {
                   );
                   const qsv = toCents(asset.parcel.quickSaleValue);
                   const unrealised = qsv == null ? null : qsv - invested;
-                  const days = Math.floor(
-                    (Date.now() - asset.acquiredAt.getTime()) / 86_400_000,
-                  );
+                  const days = Math.floor((Date.now() - asset.acquiredAt.getTime()) / 86_400_000);
                   return (
                     <Tr key={asset.id}>
                       <Td>
@@ -212,7 +220,9 @@ export default async function PortfolioPage() {
                     <Td align="right">{formatCents(toCents(asset.salePrice))}</Td>
                     <Td
                       align="right"
-                      className={(toCents(asset.realizedProfit) ?? 0) > 0 ? 'text-good' : 'text-bad'}
+                      className={
+                        (toCents(asset.realizedProfit) ?? 0) > 0 ? 'text-good' : 'text-bad'
+                      }
                     >
                       {formatCents(toCents(asset.realizedProfit))}
                     </Td>

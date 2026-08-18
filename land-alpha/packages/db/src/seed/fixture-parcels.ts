@@ -87,7 +87,8 @@ export const FIXTURE_PARCELS: FixtureParcel[] = [
     annualTaxDollars: 118,
     zoning: 'RR',
     minimumLotSizeAcres: 2,
-    legalDescription: 'NE1/4 of SW1/4, Section 12, Township 55N, Range 15W, 5.23 acres more or less',
+    legalDescription:
+      'NE1/4 of SW1/4, Section 12, Township 55N, Range 15W, 5.23 acres more or less',
     failedSaleCount: 1,
     otcEligible: true,
     saleType: 'OVER_THE_COUNTER',
@@ -474,7 +475,8 @@ export const FIXTURE_PARCELS: FixtureParcel[] = [
     annualTaxDollars: 260,
     zoning: 'RR',
     minimumLotSizeAcres: 2,
-    legalDescription: 'The South Half of the NW1/4 of the SE1/4, Section 19, Township 53N, Range 15W',
+    legalDescription:
+      'The South Half of the NW1/4 of the SE1/4, Section 19, Township 53N, Range 15W',
     failedSaleCount: 1,
     otcEligible: true,
     saleType: 'OVER_THE_COUNTER',

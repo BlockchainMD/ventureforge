@@ -150,10 +150,7 @@ export function shapeScore(input: {
   // against it rather than against a circle nobody will ever plat.
   const compactnessComponent = Math.min(1, input.compactness / 0.785) * 70;
 
-  const aspectPenalty =
-    input.aspectRatio <= 2
-      ? 0
-      : Math.min(30, (input.aspectRatio - 2) * 5);
+  const aspectPenalty = input.aspectRatio <= 2 ? 0 : Math.min(30, (input.aspectRatio - 2) * 5);
 
   const usabilityBonus = input.acreage >= 1 ? 30 : input.acreage >= 0.25 ? 22 : 12;
 
@@ -183,12 +180,10 @@ export function orientedExtents(geometry: ParcelGeometry): {
   const metersPerDegLat = 111_132.92 - 559.82 * Math.cos(2 * latRad) + 1.175 * Math.cos(4 * latRad);
   const metersPerDegLon = 111_412.84 * Math.cos(latRad) - 93.5 * Math.cos(3 * latRad);
 
-  const local = points.map(
-    ([lon, lat]): [number, number] => [
-      (lon - origin[0]) * metersPerDegLon,
-      (lat - origin[1]) * metersPerDegLat,
-    ],
-  );
+  const local = points.map(([lon, lat]): [number, number] => [
+    (lon - origin[0]) * metersPerDegLon,
+    (lat - origin[1]) * metersPerDegLat,
+  ]);
 
   let best = { width: Infinity, height: Infinity, area: Infinity, angle: 0 };
   for (let deg = 0; deg < 90; deg += 3) {

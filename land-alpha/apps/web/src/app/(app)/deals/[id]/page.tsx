@@ -1,11 +1,17 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { prisma, toCents } from '@land-alpha/db';
-import { formatAcres, formatCents, formatDate, formatPercent, humanizeEnum } from '@land-alpha/shared';
+import {
+  formatAcres,
+  formatCents,
+  formatDate,
+  formatPercent,
+  humanizeEnum,
+} from '@land-alpha/shared';
 import { PageHeader } from '@/components/layout/shell';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { Metric, MetricGrid, Value } from '@/components/ui/value';
-import { Badge, statusTone } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
 import { getSessionUser, hasRole } from '@/server/auth';
 import { guidanceFor } from '@/server/deal-checklist';
 import { Checklist } from './checklist';
@@ -44,9 +50,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
           <span className="num">
             APN <Value>{deal.parcel.apn}</Value>
             <span className="mx-2 text-line-strong">·</span>
-            <Value>
-              {deal.parcel.acreage == null ? null : formatAcres(deal.parcel.acreage)}
-            </Value>
+            <Value>{deal.parcel.acreage == null ? null : formatAcres(deal.parcel.acreage)}</Value>
             <span className="mx-2 text-line-strong">·</span>
             opened {formatDate(deal.openedAt)}
           </span>
@@ -130,7 +134,8 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
               </MetricGrid>
               {deal.dueDiligenceAcknowledgedAt ? (
                 <p className="mt-3 border-t border-line pt-2 text-[11px] text-good">
-                  Due-diligence acknowledgement recorded {formatDate(deal.dueDiligenceAcknowledgedAt)}.
+                  Due-diligence acknowledgement recorded{' '}
+                  {formatDate(deal.dueDiligenceAcknowledgedAt)}.
                 </p>
               ) : null}
             </PanelBody>

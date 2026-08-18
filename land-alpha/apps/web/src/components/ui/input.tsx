@@ -1,18 +1,19 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
-export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
-  ({ className, ...props }, ref) => (
-    <input
-      ref={ref}
-      className={cn(
-        'h-7 w-full rounded-sm border border-line-strong bg-surface px-2 text-xs text-ink placeholder:text-ink-faint focus-ring disabled:opacity-50',
-        className,
-      )}
-      {...props}
-    />
-  ),
-);
+export const Input = React.forwardRef<
+  HTMLInputElement,
+  React.InputHTMLAttributes<HTMLInputElement>
+>(({ className, ...props }, ref) => (
+  <input
+    ref={ref}
+    className={cn(
+      'h-7 w-full rounded-sm border border-line-strong bg-surface px-2 text-xs text-ink placeholder:text-ink-faint focus-ring disabled:opacity-50',
+      className,
+    )}
+    {...props}
+  />
+));
 Input.displayName = 'Input';
 
 export const Textarea = React.forwardRef<

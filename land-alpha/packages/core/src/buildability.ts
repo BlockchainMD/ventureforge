@@ -117,12 +117,17 @@ export function assessBuildability(inputs: BuildabilityInputs): BuildabilityAsse
   // ---- Supporting evidence -------------------------------------------------
 
   if (inputs.acreage != null) {
-    if (inputs.zoning.minimumLotSizeAcres != null && inputs.acreage >= inputs.zoning.minimumLotSizeAcres) {
+    if (
+      inputs.zoning.minimumLotSizeAcres != null &&
+      inputs.acreage >= inputs.zoning.minimumLotSizeAcres
+    ) {
       reasons.push(
         `Acreage (${inputs.acreage.toFixed(2)} ac) meets the apparent zoning minimum of ${inputs.zoning.minimumLotSizeAcres.toFixed(2)} ac.`,
       );
     } else if (inputs.zoning.minimumLotSizeAcres == null && inputs.acreage >= 1) {
-      reasons.push(`Parcel size (${inputs.acreage.toFixed(2)} ac) is typical for rural residential use.`);
+      reasons.push(
+        `Parcel size (${inputs.acreage.toFixed(2)} ac) is typical for rural residential use.`,
+      );
     }
   } else {
     unknowns.push('Parcel acreage is unknown.');
@@ -148,7 +153,10 @@ export function assessBuildability(inputs: BuildabilityInputs): BuildabilityAsse
     reasons.push('Parcel geometry is conventional and can accommodate a building envelope.');
   }
 
-  if (inputs.utilities.publicWaterAvailable === true && inputs.utilities.publicSewerAvailable === true) {
+  if (
+    inputs.utilities.publicWaterAvailable === true &&
+    inputs.utilities.publicSewerAvailable === true
+  ) {
     reasons.push('Public water and sewer appear to be available.');
   }
 
@@ -210,7 +218,9 @@ export function assessBuildability(inputs: BuildabilityInputs): BuildabilityAsse
 
   if (!inputs.zoning.code) {
     unknowns.push('Zoning district is unknown.');
-    requiresHumanVerification.push('Zoning district and permitted uses, confirmed with the county.');
+    requiresHumanVerification.push(
+      'Zoning district and permitted uses, confirmed with the county.',
+    );
     confidence = minConfidence(confidence, 'LOW');
   } else {
     confidence = minConfidence(confidence, inputs.zoning.confidence);
@@ -282,7 +292,11 @@ function decideRating(input: {
 
   // GREEN requires positive evidence across access, zoning and environment —
   // not merely the absence of bad news.
-  if (input.zoningKnown && (input.accessClass === 'A' || input.accessClass === 'B') && input.reasons.length >= 3) {
+  if (
+    input.zoningKnown &&
+    (input.accessClass === 'A' || input.accessClass === 'B') &&
+    input.reasons.length >= 3
+  ) {
     return 'GREEN';
   }
   return 'YELLOW';

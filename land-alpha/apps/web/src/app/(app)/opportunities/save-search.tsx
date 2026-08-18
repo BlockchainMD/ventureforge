@@ -56,10 +56,20 @@ export function SaveSearchButton({ filter }: { filter: OpportunityFilter }) {
           if (event.key === 'Escape') setOpen(false);
         }}
       />
-      <Button size="sm" variant="default" disabled={pending || !name.trim()} onClick={() => submit(false)}>
+      <Button
+        size="sm"
+        variant="default"
+        disabled={pending || !name.trim()}
+        onClick={() => submit(false)}
+      >
         Save
       </Button>
-      <Button size="sm" variant="outline" disabled={pending || !name.trim()} onClick={() => submit(true)}>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={pending || !name.trim()}
+        onClick={() => submit(true)}
+      >
         <BellPlus className="size-3" />
         Save + alert
       </Button>

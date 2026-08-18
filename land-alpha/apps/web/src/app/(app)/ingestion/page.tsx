@@ -48,10 +48,7 @@ export default async function IngestionPage() {
 
   return (
     <>
-      <PageHeader
-        title="Ingestion"
-        subtitle="Pipeline health, run history and the job queue."
-      />
+      <PageHeader title="Ingestion" subtitle="Pipeline health, run history and the job queue." />
 
       <div className="space-y-3 p-4">
         <Panel>
@@ -89,7 +86,10 @@ export default async function IngestionPage() {
             <PanelBody className="space-y-1.5">
               {failing.map((source) => (
                 <div key={source.id} className="flex items-center justify-between gap-3">
-                  <Link href={`/sources/${source.id}`} className="text-xs text-ink hover:text-alpha">
+                  <Link
+                    href={`/sources/${source.id}`}
+                    className="text-xs text-ink hover:text-alpha"
+                  >
                     {source.name}
                   </Link>
                   <div className="flex items-center gap-2">
@@ -199,7 +199,10 @@ export default async function IngestionPage() {
                     <Td align="right">
                       {job.attempts} / {job.maxAttempts}
                     </Td>
-                    <Td className="max-w-md truncate text-[11px] text-bad" title={job.lastError ?? ''}>
+                    <Td
+                      className="max-w-md truncate text-[11px] text-bad"
+                      title={job.lastError ?? ''}
+                    >
                       {job.lastError ?? ''}
                     </Td>
                   </Tr>

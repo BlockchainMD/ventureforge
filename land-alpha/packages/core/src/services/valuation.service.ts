@@ -178,9 +178,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
 
   // ---- Persist -------------------------------------------------------------
   const valuationConfidence: ConfidenceLevel =
-    acquisitionPriceCents === 0
-      ? minConfidence(valuation.confidence, 'LOW')
-      : valuation.confidence;
+    acquisitionPriceCents === 0 ? minConfidence(valuation.confidence, 'LOW') : valuation.confidence;
 
   if (acquisitionPriceCents === 0) {
     warnings.push(

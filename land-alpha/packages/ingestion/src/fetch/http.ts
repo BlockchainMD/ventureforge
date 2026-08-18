@@ -5,7 +5,13 @@ import { sleep, withRetry } from '@land-alpha/shared/retry';
 import { env } from '@land-alpha/shared/env';
 import { createLogger } from '@land-alpha/shared/logger';
 import { contentHash } from '@land-alpha/shared/ids';
-import { isAllowed, crawlDelayMs, parseRobotsTxt, PERMISSIVE_ROBOTS, type RobotsTxt } from './robots';
+import {
+  isAllowed,
+  crawlDelayMs,
+  parseRobotsTxt,
+  PERMISSIVE_ROBOTS,
+  type RobotsTxt,
+} from './robots';
 
 /**
  * The ingestion HTTP client.
@@ -54,7 +60,10 @@ export interface HttpClientOptions {
 /** Bodies matching these are challenge pages, not data. */
 const CHALLENGE_MARKERS: { pattern: RegExp; kind: AccessRestrictedError['restriction'] }[] = [
   { pattern: /sgcaptcha|\/\.well-known\/captcha|hcaptcha|recaptcha|g-recaptcha/i, kind: 'CAPTCHA' },
-  { pattern: /cf-browser-verification|cf_chl_opt|__cf_chl_|Checking your browser before/i, kind: 'CAPTCHA' },
+  {
+    pattern: /cf-browser-verification|cf_chl_opt|__cf_chl_|Checking your browser before/i,
+    kind: 'CAPTCHA',
+  },
   { pattern: /Incapsula incident ID|_Incapsula_Resource/i, kind: 'BLOCKED' },
   { pattern: /Request unsuccessful\. Bot Manager/i, kind: 'BLOCKED' },
 ];
@@ -145,7 +154,11 @@ export class IngestHttpClient {
     try {
       return JSON.parse(text) as T;
     } catch (cause) {
-      throw new NetworkError('Response was not valid JSON', { url, preview: text.slice(0, 200) }, cause);
+      throw new NetworkError(
+        'Response was not valid JSON',
+        { url, preview: text.slice(0, 200) },
+        cause,
+      );
     }
   }
 

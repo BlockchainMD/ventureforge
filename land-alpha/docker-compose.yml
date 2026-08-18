@@ -1,0 +1,68 @@
+# Local dependencies for Land Alpha.
+#
+#   docker compose up -d          Postgres/PostGIS, Redis, MinIO
+#   pnpm setup                    migrate + seed
+#   pnpm dev                      the analyst terminal
+#   pnpm worker                   the ingestion/enrichment worker
+#
+# Redis and MinIO are optional: the default queue is Postgres-backed and the
+# default object store is the filesystem. They are here so production parity can
+# be exercised locally when you want it.
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: land-alpha-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: landalpha
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres-init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d landalpha']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: land-alpha-redis
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    profiles: ['full']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: land-alpha-minio
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: landalpha
+      MINIO_ROOT_PASSWORD: landalpha-dev-secret
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio-data:/data
+    profiles: ['full']
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:

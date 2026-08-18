@@ -28,8 +28,18 @@ export function verifyPassword(password: string, stored: string): boolean {
 
 const SEED_USERS: { email: string; name: string; role: UserRole; password: string }[] = [
   { email: 'admin@landalpha.local', name: 'Alex Admin', role: 'ADMIN', password: 'landalpha-dev' },
-  { email: 'analyst@landalpha.local', name: 'Avery Analyst', role: 'ANALYST', password: 'landalpha-dev' },
-  { email: 'viewer@landalpha.local', name: 'Val Viewer', role: 'VIEWER', password: 'landalpha-dev' },
+  {
+    email: 'analyst@landalpha.local',
+    name: 'Avery Analyst',
+    role: 'ANALYST',
+    password: 'landalpha-dev',
+  },
+  {
+    email: 'viewer@landalpha.local',
+    name: 'Val Viewer',
+    role: 'VIEWER',
+    password: 'landalpha-dev',
+  },
 ];
 
 export async function seedUsers(): Promise<number> {

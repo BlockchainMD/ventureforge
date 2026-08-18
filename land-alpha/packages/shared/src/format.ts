@@ -65,7 +65,10 @@ export function formatRelative(value: Date | string | null | undefined, now = ne
   return 'just now';
 }
 
-export function daysUntil(value: Date | string | null | undefined, now = new Date()): number | null {
+export function daysUntil(
+  value: Date | string | null | undefined,
+  now = new Date(),
+): number | null {
   if (!value) return null;
   const date = typeof value === 'string' ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) return null;

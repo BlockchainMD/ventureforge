@@ -132,7 +132,10 @@ export default async function DashboardPage() {
               </Link>
             }
           />
-          <OpportunityTable rows={top.rows} emptyMessage="No parcel currently scores 60 or better. Run ingestion and the pipeline, or lower the bar on the opportunities screen." />
+          <OpportunityTable
+            rows={top.rows}
+            emptyMessage="No parcel currently scores 60 or better. Run ingestion and the pipeline, or lower the bar on the opportunities screen."
+          />
         </Panel>
 
         <div className="grid grid-cols-2 gap-3">
@@ -236,9 +239,9 @@ export default async function DashboardPage() {
 
         <p className="px-1 text-[10px] leading-relaxed text-ink-faint">
           Buildability ratings are preliminary screening conclusions, not zoning determinations or
-          permits. Title figures are automated pre-screens, not title opinions or commitments. Access
-          classes describe the strength of evidence for physical access and are not determinations of
-          legal access.{' '}
+          permits. Title figures are automated pre-screens, not title opinions or commitments.
+          Access classes describe the strength of evidence for physical access and are not
+          determinations of legal access.{' '}
           <span className={basisRatioTone(0.15)}>Verify everything before bidding.</span>
         </p>
       </div>

@@ -40,9 +40,7 @@ function emit(level: LogLevel, message: string, context: LogContext): void {
 function formatHuman(level: LogLevel, message: string, context: LogContext): string {
   const keys = Object.keys(context);
   const suffix =
-    keys.length === 0
-      ? ''
-      : ' ' + keys.map((k) => `${k}=${compact(context[k])}`).join(' ');
+    keys.length === 0 ? '' : ' ' + keys.map((k) => `${k}=${compact(context[k])}`).join(' ');
   return `${level.toUpperCase().padEnd(5)} ${message}${suffix}`;
 }
 

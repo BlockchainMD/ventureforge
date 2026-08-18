@@ -50,7 +50,10 @@ export interface Feature<G extends AnyGeometry = AnyGeometry, P = Record<string,
   id?: string | number;
 }
 
-export interface FeatureCollection<G extends AnyGeometry = AnyGeometry, P = Record<string, unknown>> {
+export interface FeatureCollection<
+  G extends AnyGeometry = AnyGeometry,
+  P = Record<string, unknown>,
+> {
   type: 'FeatureCollection';
   features: Feature<G, P>[];
 }

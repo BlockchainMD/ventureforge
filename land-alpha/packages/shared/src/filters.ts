@@ -118,11 +118,30 @@ export function filterFromSearchParams(
   assignNumber(filter as Record<string, unknown>, 'minQuickSaleValue', get('minQuickSaleValue'), 0);
   assignNumber(filter as Record<string, unknown>, 'maxTitleRisk', get('maxTitleRisk'), 0, 100);
   assignNumber(filter as Record<string, unknown>, 'maxFloodOverlap', get('maxFloodOverlap'), 0, 1);
-  assignNumber(filter as Record<string, unknown>, 'maxWetlandOverlap', get('maxWetlandOverlap'), 0, 1);
-  assignNumber(filter as Record<string, unknown>, 'minFailedSaleCount', get('minFailedSaleCount'), 0);
-  assignNumber(filter as Record<string, unknown>, 'minConfidenceScore', get('minConfidenceScore'), 0, 100);
+  assignNumber(
+    filter as Record<string, unknown>,
+    'maxWetlandOverlap',
+    get('maxWetlandOverlap'),
+    0,
+    1,
+  );
+  assignNumber(
+    filter as Record<string, unknown>,
+    'minFailedSaleCount',
+    get('minFailedSaleCount'),
+    0,
+  );
+  assignNumber(
+    filter as Record<string, unknown>,
+    'minConfidenceScore',
+    get('minConfidenceScore'),
+    0,
+    100,
+  );
 
-  const states = getAll('states').map((s) => s.toUpperCase()).filter((s) => /^[A-Z]{2}$/.test(s));
+  const states = getAll('states')
+    .map((s) => s.toUpperCase())
+    .filter((s) => /^[A-Z]{2}$/.test(s));
   if (states.length) filter.states = states;
 
   const counties = getAll('counties').filter(Boolean);
@@ -158,7 +177,8 @@ export function filterFromSearchParams(
   if (get('hasGeometry') === 'true') filter.hasGeometry = true;
 
   const auctionBefore = get('auctionBefore');
-  if (auctionBefore && !Number.isNaN(Date.parse(auctionBefore))) filter.auctionBefore = auctionBefore;
+  if (auctionBefore && !Number.isNaN(Date.parse(auctionBefore)))
+    filter.auctionBefore = auctionBefore;
   const auctionAfter = get('auctionAfter');
   if (auctionAfter && !Number.isNaN(Date.parse(auctionAfter))) filter.auctionAfter = auctionAfter;
   const firstSeenAfter = get('firstSeenAfter');
@@ -238,37 +258,40 @@ function assignNumber(
  * The starter saved searches described in the brief. Seeded for every new user
  * so the product is immediately useful rather than an empty filter bar.
  */
-export const STARTER_SAVED_SEARCHES: { name: string; description: string; filters: OpportunityFilter }[] =
-  [
-    {
-      name: 'Micro Acquisition',
-      description: 'Cheap enough to buy without a committee. Price ≤ $2,500, Alpha ≥ 80, access A/B.',
-      filters: {
-        ...DEFAULT_FILTER,
-        maxPrice: 250_000,
-        minAlphaScore: 80,
-        accessClasses: ['A', 'B'],
-      },
+export const STARTER_SAVED_SEARCHES: {
+  name: string;
+  description: string;
+  filters: OpportunityFilter;
+}[] = [
+  {
+    name: 'Micro Acquisition',
+    description: 'Cheap enough to buy without a committee. Price ≤ $2,500, Alpha ≥ 80, access A/B.',
+    filters: {
+      ...DEFAULT_FILTER,
+      maxPrice: 250_000,
+      minAlphaScore: 80,
+      accessClasses: ['A', 'B'],
     },
-    {
-      name: 'Strong Flip',
-      description: 'Basis ≤ 20% of QSV, QSV ≥ $20,000, Alpha ≥ 85.',
-      filters: {
-        ...DEFAULT_FILTER,
-        maxBasisToQsv: 0.2,
-        minQuickSaleValue: 2_000_000,
-        minAlphaScore: 85,
-      },
+  },
+  {
+    name: 'Strong Flip',
+    description: 'Basis ≤ 20% of QSV, QSV ≥ $20,000, Alpha ≥ 85.',
+    filters: {
+      ...DEFAULT_FILTER,
+      maxBasisToQsv: 0.2,
+      minQuickSaleValue: 2_000_000,
+      minAlphaScore: 85,
     },
-    {
-      name: 'Failed Auction',
-      description: 'Inventory nobody bought, now available over the counter.',
-      filters: {
-        ...DEFAULT_FILTER,
-        minFailedSaleCount: 1,
-        otcOnly: true,
-        sort: 'basisToQsv',
-        direction: 'asc',
-      },
+  },
+  {
+    name: 'Failed Auction',
+    description: 'Inventory nobody bought, now available over the counter.',
+    filters: {
+      ...DEFAULT_FILTER,
+      minFailedSaleCount: 1,
+      otcOnly: true,
+      sort: 'basisToQsv',
+      direction: 'asc',
     },
-  ];
+  },
+];

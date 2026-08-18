@@ -26,8 +26,7 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
   if (!email || !password) return { error: 'Enter an email address and password.' };
 
   const user = await prisma.user.findUnique({ where: { email } });
-  const DUMMY_HASH =
-    'scrypt$0000000000000000000000000000000000000000000000000000000000000000$00';
+  const DUMMY_HASH = 'scrypt$0000000000000000000000000000000000000000000000000000000000000000$00';
   const valid = verifyPassword(password, user?.passwordHash ?? DUMMY_HASH);
 
   if (!user || !valid || !user.isActive) {

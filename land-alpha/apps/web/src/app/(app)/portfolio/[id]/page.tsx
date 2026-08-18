@@ -38,9 +38,7 @@ export default async function PortfolioAssetPage({ params }: { params: Promise<{
           <span className="num">
             APN <Value>{asset.parcel.apn}</Value>
             <span className="mx-2 text-line-strong">·</span>
-            <Value>
-              {asset.parcel.acreage == null ? null : formatAcres(asset.parcel.acreage)}
-            </Value>
+            <Value>{asset.parcel.acreage == null ? null : formatAcres(asset.parcel.acreage)}</Value>
             <span className="mx-2 text-line-strong">·</span>
             acquired {formatDate(asset.acquiredAt)}
           </span>

@@ -98,7 +98,9 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
 
   const session = await prisma.session.findUnique({
     where: { tokenHash: hashToken(token) },
-    include: { user: { select: { id: true, email: true, name: true, role: true, isActive: true } } },
+    include: {
+      user: { select: { id: true, email: true, name: true, role: true, isActive: true } },
+    },
   });
 
   if (!session || session.expiresAt < new Date() || !session.user.isActive) return null;

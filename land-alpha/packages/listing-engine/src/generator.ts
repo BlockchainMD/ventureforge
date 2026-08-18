@@ -182,7 +182,9 @@ function buildKeyFeatures(facts: ListingFacts): string[] {
     );
   }
   if (facts.zoning) {
-    features.push(`Mapped zoning district ${facts.zoning}${facts.zoningSource ? ` per ${facts.zoningSource}` : ''}`);
+    features.push(
+      `Mapped zoning district ${facts.zoning}${facts.zoningSource ? ` per ${facts.zoningSource}` : ''}`,
+    );
   }
   if (facts.inSpecialFloodHazardArea === false) {
     features.push('No FEMA Special Flood Hazard Area mapped on the parcel');
@@ -347,7 +349,10 @@ function buildVariants(
     {
       channel: 'classified',
       title: truncate(title, 70),
-      body: truncate(`${shortDescription} ${facts.apn ? `APN ${facts.apn}.` : ''} Buyer to verify all information.`, 500),
+      body: truncate(
+        `${shortDescription} ${facts.apn ? `APN ${facts.apn}.` : ''} Buyer to verify all information.`,
+        500,
+      ),
     },
     {
       channel: 'email',
@@ -374,7 +379,11 @@ export function stripUnsupportedClaims(text: string, facts: ListingFacts): strin
     /\bno restrictions\b/i,
   ];
   if (facts.knownUtilities.length === 0) {
-    forbidden.push(/\bpower (is )?available\b/i, /\butilities (are )?available\b/i, /\bcity water\b/i);
+    forbidden.push(
+      /\bpower (is )?available\b/i,
+      /\butilities (are )?available\b/i,
+      /\bcity water\b/i,
+    );
   }
   if (
     facts.legalAccessStatus !== 'RECORDED_FRONTAGE' &&

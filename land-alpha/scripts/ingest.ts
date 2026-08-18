@@ -36,9 +36,7 @@ async function main(): Promise<void> {
   const source = await prisma.source.findUnique({ where: { registryKey: key } });
   if (!source) throw new Error(`Source ${key} was not synced`);
 
-  const effective = limit
-    ? { ...entry, config: { ...entry.config, maxFeatures: limit } }
-    : entry;
+  const effective = limit ? { ...entry, config: { ...entry.config, maxFeatures: limit } } : entry;
 
   logger.info('starting ingestion', { key, limit });
   const outcome = await runSource(source.id, effective, { triggeredBy: 'cli' });

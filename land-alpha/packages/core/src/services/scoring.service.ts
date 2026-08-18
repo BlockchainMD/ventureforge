@@ -34,7 +34,8 @@ export async function scoreParcelById(parcelId: string): Promise<AlphaScoreResul
 
   // Duplicate detection needs geometry; a point-only parcel cannot be checked
   // this way and is not assumed clean.
-  const duplicates = parcel.compactness != null ? await spatial.findGeometricDuplicates(parcelId) : [];
+  const duplicates =
+    parcel.compactness != null ? await spatial.findGeometricDuplicates(parcelId) : [];
 
   const access: AccessAssessment | null =
     parcel.accessClass === 'UNKNOWN' && parcel.physicalAccessScore == null
@@ -203,9 +204,7 @@ export async function scoreParcelById(parcelId: string): Promise<AlphaScoreResul
           warnings: parcel.valuationWarnings,
         };
 
-  const daysOnSource = Math.floor(
-    (Date.now() - parcel.firstSeenAt.getTime()) / 86_400_000,
-  );
+  const daysOnSource = Math.floor((Date.now() - parcel.firstSeenAt.getTime()) / 86_400_000);
 
   const result = scoreParcel(
     {
@@ -253,7 +252,9 @@ export async function scoreParcelById(parcelId: string): Promise<AlphaScoreResul
         // Only advance the funnel from the pre-review states; an analyst's own
         // decision is never overwritten by a re-score.
         status: result.rejected
-          ? parcel.status === 'DISCOVERED' || parcel.status === 'ENRICHING' || parcel.status === 'SCORED'
+          ? parcel.status === 'DISCOVERED' ||
+            parcel.status === 'ENRICHING' ||
+            parcel.status === 'SCORED'
             ? 'REJECTED'
             : parcel.status
           : parcel.status === 'DISCOVERED' || parcel.status === 'ENRICHING'

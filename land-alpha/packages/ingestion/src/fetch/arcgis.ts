@@ -66,7 +66,9 @@ export class ArcGisClient {
   async layerInfo(layerUrl: string): Promise<ArcGisLayerInfo> {
     const raw = await this.http.getJson<Record<string, unknown>>(`${layerUrl}?f=json`);
     if (raw.error) {
-      throw new ParseError(`ArcGIS layer metadata error: ${JSON.stringify(raw.error)}`, { layerUrl });
+      throw new ParseError(`ArcGIS layer metadata error: ${JSON.stringify(raw.error)}`, {
+        layerUrl,
+      });
     }
     return {
       name: String(raw.name ?? 'unknown'),
@@ -87,7 +89,8 @@ export class ArcGisClient {
       f: 'json',
     }).toString()}`;
     const raw = await this.http.getJson<{ count?: number; error?: unknown }>(url);
-    if (raw.error) throw new ParseError(`ArcGIS count error: ${JSON.stringify(raw.error)}`, { layerUrl });
+    if (raw.error)
+      throw new ParseError(`ArcGIS count error: ${JSON.stringify(raw.error)}`, { layerUrl });
     return Number(raw.count ?? 0);
   }
 
@@ -118,7 +121,9 @@ export class ArcGisClient {
       // the service may reorder between pages and silently drop or duplicate rows.
       params.set('orderByFields', options.orderByFields ?? 'OBJECTID');
 
-      const raw = await this.http.getJson<RawQueryResponse>(`${layerUrl}/query?${params.toString()}`);
+      const raw = await this.http.getJson<RawQueryResponse>(
+        `${layerUrl}/query?${params.toString()}`,
+      );
       if (raw.error) {
         throw new ParseError(`ArcGIS query error: ${raw.error.message}`, {
           layerUrl,

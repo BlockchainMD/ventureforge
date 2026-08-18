@@ -27,5 +27,12 @@ export default tseslint.config(
       'prefer-const': 'error',
     },
   },
+  {
+    // Plain Node scripts, not TypeScript sources.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly', URL: 'readonly' },
+    },
+  },
   prettier,
 );

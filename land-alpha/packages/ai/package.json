@@ -13,5 +13,10 @@
     "build": "echo \"[@land-alpha/ai] source-only internal package\"",
     "test": "vitest run --root ../.. --include 'packages/ai/src/**/*.test.ts'"
   },
-  "dependencies": { "@land-alpha/shared": "workspace:*", "@anthropic-ai/sdk": "^0.68.0", "openai": "^6.10.0", "zod": "^3.25.76" }
+  "dependencies": {
+    "@land-alpha/shared": "workspace:*",
+    "@anthropic-ai/sdk": "^0.68.0",
+    "openai": "^6.10.0",
+    "zod": "^3.25.76"
+  }
 }

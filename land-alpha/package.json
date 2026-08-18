@@ -2,7 +2,7 @@
   "name": "land-alpha",
   "private": true,
   "version": "0.1.0",
-  "description": "Land Alpha — land-acquisition intelligence platform",
+  "description": "Land Alpha \u2014 land-acquisition intelligence platform",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=22"
@@ -22,7 +22,11 @@
     "db:push": "pnpm --filter @land-alpha/db push",
     "db:seed": "pnpm --filter @land-alpha/db seed",
     "db:reset": "pnpm --filter @land-alpha/db reset",
-    "verify": "pnpm typecheck && pnpm lint && pnpm test"
+    "verify": "pnpm typecheck && pnpm lint && pnpm test",
+    "setup": "pnpm db:generate && pnpm db:migrate && pnpm db:seed",
+    "ingest": "tsx scripts/ingest.ts",
+    "pipeline": "tsx scripts/pipeline.ts",
+    "smoke": "node scripts/smoke.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

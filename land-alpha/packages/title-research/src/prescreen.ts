@@ -41,11 +41,7 @@ export interface TitlePreScreenInputs {
   readonly recorderRequiresManualSearch: boolean;
   /** How the government came to own it — drives which encumbrances survive. */
   readonly acquisitionMechanism:
-    | 'TAX_FORFEITURE'
-    | 'TAX_FORECLOSURE'
-    | 'SURPLUS'
-    | 'LAND_BANK'
-    | 'UNKNOWN';
+    'TAX_FORFEITURE' | 'TAX_FORECLOSURE' | 'SURPLUS' | 'LAND_BANK' | 'UNKNOWN';
   readonly hasLegalDescription: boolean;
   readonly ownerNameMatchesRecord: boolean | null;
 }
@@ -64,7 +60,8 @@ const SEVERITY_POINTS: Record<
   TAX_LIEN: {
     points: 12,
     severity: 'MODERATE',
-    summary: 'Tax lien of record. Often extinguished by the forfeiture itself, but must be confirmed.',
+    summary:
+      'Tax lien of record. Often extinguished by the forfeiture itself, but must be confirmed.',
   },
   MORTGAGE: {
     points: 18,
@@ -101,7 +98,8 @@ const SEVERITY_POINTS: Record<
   EASEMENT: {
     points: 4,
     severity: 'INFO',
-    summary: 'Recorded easement. Usually survives any conveyance; check whether it burdens the buildable area.',
+    summary:
+      'Recorded easement. Usually survives any conveyance; check whether it burdens the buildable area.',
   },
   PLAT: { points: 0, severity: 'INFO', summary: 'Recorded plat.' },
   DEED: { points: 0, severity: 'INFO', summary: 'Deed in the chain of title.' },
@@ -122,7 +120,12 @@ const MECHANISM_LIEN_DISCOUNT: Record<TitlePreScreenInputs['acquisitionMechanism
 };
 
 /** Encumbrances that survive regardless of mechanism and are never discounted. */
-const SURVIVES_TAX_SALE = new Set(['FEDERAL_LIEN', 'EASEMENT', 'RESTRICTIVE_COVENANT', 'HOA_REFERENCE']);
+const SURVIVES_TAX_SALE = new Set([
+  'FEDERAL_LIEN',
+  'EASEMENT',
+  'RESTRICTIVE_COVENANT',
+  'HOA_REFERENCE',
+]);
 
 export function preScreenTitle(inputs: TitlePreScreenInputs): TitlePreScreen {
   const findings: TitleFinding[] = [];

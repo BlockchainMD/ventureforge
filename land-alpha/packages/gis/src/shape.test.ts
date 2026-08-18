@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeShape, acreageAgreement, orientedExtents, shapeScore } from './shape';
-import { syntheticParcel, esriPolygonToGeoJson, normalizeParcelGeometry, toWgs84 } from './geometry';
+import {
+  syntheticParcel,
+  esriPolygonToGeoJson,
+  normalizeParcelGeometry,
+  toWgs84,
+} from './geometry';
 import { sqMetersToAcres } from '@land-alpha/shared';
 import type { ParcelGeometry, Position } from '@land-alpha/shared';
 
@@ -171,7 +176,10 @@ describe('esriPolygonToGeoJson', () => {
       [-92.35, 47.43],
       [-92.35, 47.42],
     ];
-    const geometry = esriPolygonToGeoJson({ rings: [outer, hole], spatialReference: { wkid: 4326 } });
+    const geometry = esriPolygonToGeoJson({
+      rings: [outer, hole],
+      spatialReference: { wkid: 4326 },
+    });
     expect(geometry?.type).toBe('Polygon');
     expect((geometry as { coordinates: Position[][] }).coordinates).toHaveLength(2);
   });

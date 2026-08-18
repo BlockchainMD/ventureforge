@@ -30,7 +30,7 @@ export function createRandom(seed: number): {
     next,
     int: (min, max) => Math.floor(next() * (max - min + 1)) + min,
     float: (min, max) => next() * (max - min) + min,
-    pick: <T,>(values: readonly T[]): T => values[Math.floor(next() * values.length)]!,
+    pick: <T>(values: readonly T[]): T => values[Math.floor(next() * values.length)]!,
     bool: (probability = 0.5) => next() < probability,
     jitter: (value, fraction) => value * (1 + (next() * 2 - 1) * fraction),
   };

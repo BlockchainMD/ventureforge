@@ -17,7 +17,12 @@ import {
 import type { RegistryEntry } from '@land-alpha/source-registry';
 import { getAdapter, type AdapterContext } from './adapter';
 import { IngestHttpClient } from './fetch/http';
-import { detectChanges, isPriceReduction, requiresRescore, type ComparableSnapshot } from './change-detection';
+import {
+  detectChanges,
+  isPriceReduction,
+  requiresRescore,
+  type ComparableSnapshot,
+} from './change-detection';
 
 /**
  * The ingestion pipeline.
@@ -72,7 +77,11 @@ export async function runSource(
 
   if (registryEntry.ingestionMethod === 'MANUAL_SOURCE') {
     logger.info('source is manual-only; nothing to automate');
-    const runId = await recordRunStart(sourceId, adapter.parserVersion, options.triggeredBy ?? 'scheduler');
+    const runId = await recordRunStart(
+      sourceId,
+      adapter.parserVersion,
+      options.triggeredBy ?? 'scheduler',
+    );
     await recordRunCompletion(runId, sourceId, {
       status: 'SKIPPED',
       recordsDiscovered: 0,
@@ -91,7 +100,11 @@ export async function runSource(
     return emptyOutcome(runId, 'SKIPPED');
   }
 
-  const runId = await recordRunStart(sourceId, adapter.parserVersion, options.triggeredBy ?? 'scheduler');
+  const runId = await recordRunStart(
+    sourceId,
+    adapter.parserVersion,
+    options.triggeredBy ?? 'scheduler',
+  );
   const http = options.http ?? new IngestHttpClient({ signal: options.signal });
   const storage = getStorage();
 

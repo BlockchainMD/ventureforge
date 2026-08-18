@@ -13,5 +13,7 @@
     "build": "echo \"[@land-alpha/title-research] source-only internal package\"",
     "test": "vitest run --root ../.. --include 'packages/title-research/src/**/*.test.ts'"
   },
-  "dependencies": { "@land-alpha/shared": "workspace:*" }
+  "dependencies": {
+    "@land-alpha/shared": "workspace:*"
+  }
 }

@@ -1,11 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from './client';
-import type {
-  AnyGeometry,
-  BBox,
-  ParcelGeometry,
-  Position,
-} from '@land-alpha/shared';
+import type { AnyGeometry, BBox, ParcelGeometry, Position } from '@land-alpha/shared';
 
 /**
  * Every PostGIS interaction in Land Alpha lives here.
@@ -382,8 +377,9 @@ export async function measureRoadAdjacency(params: {
   if (params.roads.length === 0) return null;
   const tolerance = params.toleranceMeters ?? 12;
 
-  const roadRows = params.roads.map((road, index) =>
-    Prisma.sql`SELECT
+  const roadRows = params.roads.map(
+    (road, index) =>
+      Prisma.sql`SELECT
       ${index}::int AS idx,
       ${road.name ?? null}::text AS name,
       ${road.paved}::boolean AS paved,

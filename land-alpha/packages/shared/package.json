@@ -13,5 +13,7 @@
     "build": "echo \"[@land-alpha/shared] source-only internal package\"",
     "test": "vitest run --root ../.. --include 'packages/shared/src/**/*.test.ts'"
   },
-  "dependencies": { "zod": "^3.25.76" }
+  "dependencies": {
+    "zod": "^3.25.76"
+  }
 }
