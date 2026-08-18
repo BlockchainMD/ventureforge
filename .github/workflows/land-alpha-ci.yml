@@ -1,0 +1,93 @@
+name: Land Alpha CI
+
+# Scoped to the land-alpha/ tree so it does not run for VentureForge changes.
+on:
+  push:
+    branches: [main]
+    paths: ["land-alpha/**", ".github/workflows/land-alpha-ci.yml"]
+  pull_request:
+    paths: ["land-alpha/**", ".github/workflows/land-alpha-ci.yml"]
+
+concurrency:
+  group: land-alpha-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: land-alpha
+
+jobs:
+  verify:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Real PostGIS, so the integration tests actually exercise the spatial layer
+    # rather than skipping themselves.
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: landalpha
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d landalpha"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/landalpha?schema=public
+      AUTH_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
+      NODE_ENV: development
+      # Never call federal services or a model provider from CI.
+      ENRICHMENT_MODE: fixture
+      AI_PROVIDER: fixture
+      INGEST_OFFLINE: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: land-alpha/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Apply migrations
+        run: pnpm db:migrate
+
+      - name: Seed
+        run: pnpm db:seed
+
+      - name: Enrich, value and score the fixture inventory
+        # The integration suite asserts against scored parcels, so the pipeline
+        # has to have run for those assertions to mean anything.
+        run: pnpm pipeline
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm --filter @land-alpha/web build
