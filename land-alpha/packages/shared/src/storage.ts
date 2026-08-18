@@ -189,10 +189,14 @@ export class S3Storage implements ObjectStorage {
     if (this.client && this.commands) return { client: this.client, commands: this.commands };
     let mod: Record<string, unknown>;
     try {
-      // Bare specifier kept out of the static import graph: the SDK is an
-      // optional peer, so a filesystem-only deployment never installs it.
+      // The AWS SDK is an optional peer: a filesystem-only deployment never
+      // installs it, and this branch never runs there. The magic comments tell
+      // each bundler to leave the import alone rather than trying (and failing)
+      // to resolve a package that is legitimately absent.
       const specifier = '@aws-sdk/client-s3';
-      mod = (await import(/* @vite-ignore */ specifier)) as unknown as Record<string, unknown>;
+      mod = (await import(
+        /* webpackIgnore: true */ /* turbopackIgnore: true */ /* @vite-ignore */ specifier
+      )) as unknown as Record<string, unknown>;
     } catch (cause) {
       throw new ConfigurationError(
         'STORAGE_DRIVER=s3 requires the optional dependency @aws-sdk/client-s3. Install it with `pnpm add -w @aws-sdk/client-s3`.',

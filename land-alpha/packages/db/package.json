@@ -25,7 +25,8 @@
   "dependencies": {
     "@land-alpha/shared": "workspace:*",
     "@prisma/client": "^6.19.1",
-    "bullmq": "^5.63.0"
+    "bullmq": "^5.63.0",
+    "@land-alpha/source-registry": "workspace:*"
   },
   "devDependencies": {
     "prisma": "^6.19.1",

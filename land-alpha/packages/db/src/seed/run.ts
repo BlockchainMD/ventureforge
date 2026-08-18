@@ -6,6 +6,7 @@ import {
   DEFAULT_WEIGHTS,
 } from '@land-alpha/shared';
 import { seedUsers } from './users';
+import { syncRegistry } from './sources';
 import { seedComparables } from './comparables';
 import { seedFixtureParcels } from './parcels';
 
@@ -50,11 +51,20 @@ async function main(): Promise<void> {
 
   if (minimal) return;
 
+  // Sources must exist before fixture parcels can attach to them.
+  const registry = await syncRegistry();
+  console.log(`  sources             ${registry.created} created, ${registry.updated} updated`);
+
   const comps = await seedComparables();
   console.log(`  comparable sales    ${comps}`);
 
   const parcels = await seedFixtureParcels();
   console.log(`  fixture parcels     ${parcels.created} created, ${parcels.updated} updated`);
+  if (parcels.skipped.length > 0) {
+    // Never let a seed silently produce nothing.
+    console.warn(`\n  WARNING: ${parcels.skipped.length} fixtures were skipped:`);
+    for (const reason of parcels.skipped.slice(0, 5)) console.warn(`   - ${reason}`);
+  }
 }
 
 main()
