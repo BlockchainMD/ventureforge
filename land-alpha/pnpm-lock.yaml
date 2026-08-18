@@ -211,6 +211,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@land-alpha/ai':
+        specifier: workspace:*
+        version: link:../ai
       '@land-alpha/db':
         specifier: workspace:*
         version: link:../db
@@ -220,6 +223,9 @@ importers:
       '@land-alpha/ingestion':
         specifier: workspace:*
         version: link:../ingestion
+      '@land-alpha/listing-engine':
+        specifier: workspace:*
+        version: link:../listing-engine
       '@land-alpha/shared':
         specifier: workspace:*
         version: link:../shared

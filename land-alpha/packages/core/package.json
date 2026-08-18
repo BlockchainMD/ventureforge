@@ -20,6 +20,8 @@
     "@land-alpha/db": "workspace:*",
     "@land-alpha/ingestion": "workspace:*",
     "@land-alpha/title-research": "workspace:*",
-    "@land-alpha/source-registry": "workspace:*"
+    "@land-alpha/source-registry": "workspace:*",
+    "@land-alpha/ai": "workspace:*",
+    "@land-alpha/listing-engine": "workspace:*"
   }
 }

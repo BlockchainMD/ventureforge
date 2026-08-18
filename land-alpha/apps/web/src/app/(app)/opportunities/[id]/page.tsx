@@ -32,6 +32,7 @@ import { getSessionUser, hasRole } from '@/server/auth';
 import { DecisionCard } from './decision-card';
 import { MaxBidControl, ParcelActions, RejectionOverride } from './parcel-actions';
 import { NotesPanel } from './notes-panel';
+import { ListingPanel, MemoPanel } from './memo-panel';
 
 export const dynamic = 'force-dynamic';
 
@@ -497,6 +498,36 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
               <Disclaimer>{TITLE_DISCLAIMER}</Disclaimer>
             </PanelBody>
           </Panel>
+
+          <MemoPanel
+            parcelId={parcel.id}
+            canAct={canAct}
+            memo={
+              parcel.memos[0]
+                ? {
+                    version: parcel.memos[0].version,
+                    provider: parcel.memos[0].provider,
+                    model: parcel.memos[0].model,
+                    recommendation: parcel.memos[0].recommendation,
+                    createdAt: parcel.memos[0].createdAt,
+                    sections: parcel.memos[0].sections as unknown as Record<string, string>,
+                    unknowns: parcel.memos[0].unknowns,
+                  }
+                : null
+            }
+          />
+
+          <ListingPanel
+            parcelId={parcel.id}
+            canAct={canAct}
+            slug={parcel.publicSlug}
+            title={parcel.listing?.title ?? null}
+            published={parcel.listing?.published ?? false}
+            withheldClaims={
+              ((parcel.listing?.variants?.[0]?.metadata as { withheldClaims?: string[] } | null)
+                ?.withheldClaims ?? [])
+            }
+          />
 
           <NotesPanel parcelId={parcel.id} notes={parcel.notes} canAct={canAct} />
         </div>

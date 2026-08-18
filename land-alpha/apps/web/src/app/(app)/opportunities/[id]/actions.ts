@@ -256,3 +256,65 @@ export async function refreshParcelAction(parcelId: string): Promise<ActionResul
     return { ok: false, message: `Refresh failed: ${String(error).slice(0, 200)}` };
   }
 }
+
+/** Generate an investment memo for this parcel, synchronously. */
+export async function generateMemoAction(parcelId: string): Promise<ActionResult> {
+  const user = await requireRole('ANALYST');
+  try {
+    const { generateMemoForParcel } = await import('@land-alpha/core');
+    const result = await generateMemoForParcel(parcelId, user.email);
+    revalidatePath(`/opportunities/${parcelId}`);
+    return {
+      ok: true,
+      message: `Memo v${result.version} generated${result.deterministic ? ' (deterministic — no AI provider configured)' : ''}.`,
+    };
+  } catch (error) {
+    return { ok: false, message: `Memo generation failed: ${String(error).slice(0, 200)}` };
+  }
+}
+
+/**
+ * Generate a public marketing package.
+ *
+ * Generating is not publishing: the listing is created unpublished and a human
+ * must publish it explicitly.
+ */
+export async function generateListingAction(parcelId: string): Promise<ActionResult> {
+  const user = await requireRole('ANALYST');
+  try {
+    const { generateListingForParcel } = await import('@land-alpha/core');
+    const result = await generateListingForParcel(parcelId, user.email);
+    await recordActivity(user, {
+      action: 'listing.generate',
+      entityType: 'ParcelOpportunity',
+      entityId: parcelId,
+      summary: `Generated a listing (${result.withheldClaims.length} claims withheld as unsupported)`,
+    });
+    revalidatePath(`/opportunities/${parcelId}`);
+    return {
+      ok: true,
+      message: `Listing generated at /properties/${result.slug}. ${result.withheldClaims.length} claims were withheld as unsupported. Review before publishing.`,
+    };
+  } catch (error) {
+    return { ok: false, message: `Listing generation failed: ${String(error).slice(0, 200)}` };
+  }
+}
+
+/** Publish or unpublish a listing. Always an explicit human act. */
+export async function setListingPublishedAction(
+  parcelId: string,
+  published: boolean,
+): Promise<ActionResult> {
+  const user = await requireRole('ANALYST');
+  const { setListingPublished } = await import('@land-alpha/core');
+  await setListingPublished(parcelId, published);
+  await recordActivity(user, {
+    action: published ? 'listing.publish' : 'listing.unpublish',
+    entityType: 'ParcelOpportunity',
+    entityId: parcelId,
+    summary: `${published ? 'Published' : 'Unpublished'} the public listing`,
+  });
+  revalidatePath(`/opportunities/${parcelId}`);
+  revalidatePath('/properties');
+  return { ok: true, message: published ? 'Listing published.' : 'Listing unpublished.' };
+}
