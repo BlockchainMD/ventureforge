@@ -10,6 +10,10 @@ import type {
 /**
  * Every PostGIS interaction in Land Alpha lives here.
  *
+ * Note on ids: Prisma maps `String @id @default(uuid())` to a `text` column,
+ * not Postgres `uuid`. Parameters are therefore bound as text with no cast —
+ * adding `::uuid` produces `operator does not exist: text = uuid` at runtime.
+ *
  * Two rules, both load-bearing:
  *
  *  1. Geometry is always SRID 4326. Anything arriving in another projection is
@@ -110,7 +114,7 @@ export async function writeParcelGeometry(
       "centroid" = ST_PointOnSurface(
         ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(${json}::text), 4326))
       )
-    WHERE "id" = ${parcelId}::uuid
+    WHERE "id" = ${parcelId}
   `;
   return measureGeometry(geometry);
 }
@@ -120,7 +124,7 @@ export async function writeParcelPoint(parcelId: string, position: Position): Pr
   await prisma.$executeRaw`
     UPDATE "ParcelOpportunity"
     SET "centroid" = ST_SetSRID(ST_MakePoint(${position[0]}::double precision, ${position[1]}::double precision), 4326)
-    WHERE "id" = ${parcelId}::uuid
+    WHERE "id" = ${parcelId}
   `;
 }
 
@@ -128,7 +132,7 @@ export async function readParcelGeometry(parcelId: string): Promise<ParcelGeomet
   const rows = await prisma.$queryRaw<{ geojson: string | null }[]>`
     SELECT ST_AsGeoJSON("geometry") AS geojson
     FROM "ParcelOpportunity"
-    WHERE "id" = ${parcelId}::uuid
+    WHERE "id" = ${parcelId}
   `;
   const raw = rows[0]?.geojson;
   return raw ? (JSON.parse(raw) as ParcelGeometry) : null;
@@ -141,7 +145,7 @@ export async function readParcelGeometries(
   const rows = await prisma.$queryRaw<{ id: string; geojson: string | null }[]>`
     SELECT "id", ST_AsGeoJSON("geometry") AS geojson
     FROM "ParcelOpportunity"
-    WHERE "id" IN (${Prisma.join(parcelIds.map((id) => Prisma.sql`${id}::uuid`))})
+    WHERE "id" IN (${Prisma.join(parcelIds.map((id) => Prisma.sql`${id}`))})
       AND "geometry" IS NOT NULL
   `;
   const out = new Map<string, ParcelGeometry>();
@@ -280,7 +284,7 @@ export async function writeComparableCentroid(
   await prisma.$executeRaw`
     UPDATE "ComparableSale"
     SET "centroid" = ST_SetSRID(ST_MakePoint(${position[0]}::double precision, ${position[1]}::double precision), 4326)
-    WHERE "id" = ${comparableId}::uuid
+    WHERE "id" = ${comparableId}
   `;
 }
 
@@ -299,7 +303,7 @@ export async function overlayCoverageFraction(
   const json = geoJsonParam(overlay);
   const rows = await prisma.$queryRaw<{ fraction: number | null }[]>`
     WITH parcel AS (
-      SELECT "geometry" AS geom FROM "ParcelOpportunity" WHERE "id" = ${parcelId}::uuid
+      SELECT "geometry" AS geom FROM "ParcelOpportunity" WHERE "id" = ${parcelId}
     ),
     ov AS (
       SELECT ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(${json}::text), 4326)) AS geom
@@ -334,7 +338,7 @@ export async function overlayCoverageFractionMany(
   });
   const rows = await prisma.$queryRaw<{ fraction: number | null }[]>`
     WITH parcel AS (
-      SELECT "geometry" AS geom FROM "ParcelOpportunity" WHERE "id" = ${parcelId}::uuid
+      SELECT "geometry" AS geom FROM "ParcelOpportunity" WHERE "id" = ${parcelId}
     ),
     ov AS (
       SELECT ST_UnaryUnion(
@@ -396,7 +400,7 @@ export async function measureRoadAdjacency(params: {
     }[]
   >`
     WITH parcel AS (
-      SELECT "geometry" AS geom FROM "ParcelOpportunity" WHERE "id" = ${params.parcelId}::uuid
+      SELECT "geometry" AS geom FROM "ParcelOpportunity" WHERE "id" = ${params.parcelId}
     ),
     roads AS (
       ${Prisma.join(roadRows, ' UNION ALL ')}
@@ -445,12 +449,12 @@ export async function findAdjacentParcels(
 ): Promise<{ id: string; apn: string | null; acreage: number | null }[]> {
   return prisma.$queryRaw<{ id: string; apn: string | null; acreage: number | null }[]>`
     WITH target AS (
-      SELECT "geometry" AS geom FROM "ParcelOpportunity" WHERE "id" = ${parcelId}::uuid
+      SELECT "geometry" AS geom FROM "ParcelOpportunity" WHERE "id" = ${parcelId}
     )
     SELECT p."id", p."apn", p."acreage"
     FROM "ParcelOpportunity" p, target t
     WHERE t.geom IS NOT NULL
-      AND p."id" <> ${parcelId}::uuid
+      AND p."id" <> ${parcelId}
       AND p."geometry" IS NOT NULL
       AND ST_DWithin(p."geometry"::geography, t.geom::geography, 5)
     LIMIT ${limit}
@@ -468,7 +472,7 @@ export async function findGeometricDuplicates(
 ): Promise<{ id: string; overlap: number }[]> {
   return prisma.$queryRaw<{ id: string; overlap: number }[]>`
     WITH target AS (
-      SELECT "geometry" AS geom FROM "ParcelOpportunity" WHERE "id" = ${parcelId}::uuid
+      SELECT "geometry" AS geom FROM "ParcelOpportunity" WHERE "id" = ${parcelId}
     )
     SELECT
       p."id",
@@ -476,7 +480,7 @@ export async function findGeometricDuplicates(
         / NULLIF(ST_Area(t.geom::geography), 0) AS overlap
     FROM "ParcelOpportunity" p, target t
     WHERE t.geom IS NOT NULL
-      AND p."id" <> ${parcelId}::uuid
+      AND p."id" <> ${parcelId}
       AND p."geometry" IS NOT NULL
       AND p."geometry" && t.geom
       AND ST_Area(ST_Intersection(p."geometry", t.geom)::geography)
