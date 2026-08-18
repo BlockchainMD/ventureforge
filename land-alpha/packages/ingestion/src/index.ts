@@ -6,3 +6,4 @@ export * from './fetch/http.js';
 export * from './fetch/robots.js';
 export * from './fetch/arcgis.js';
 export * from './adapters/index.js';
+export * as enrichment from './enrichment/index.js';

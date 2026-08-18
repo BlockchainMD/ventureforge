@@ -205,12 +205,24 @@ importers:
 
   packages/core:
     dependencies:
+      '@land-alpha/db':
+        specifier: workspace:*
+        version: link:../db
       '@land-alpha/gis':
         specifier: workspace:*
         version: link:../gis
+      '@land-alpha/ingestion':
+        specifier: workspace:*
+        version: link:../ingestion
       '@land-alpha/shared':
         specifier: workspace:*
         version: link:../shared
+      '@land-alpha/source-registry':
+        specifier: workspace:*
+        version: link:../source-registry
+      '@land-alpha/title-research':
+        specifier: workspace:*
+        version: link:../title-research
       '@land-alpha/valuation':
         specifier: workspace:*
         version: link:../valuation

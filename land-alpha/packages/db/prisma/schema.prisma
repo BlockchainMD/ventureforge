@@ -544,6 +544,10 @@ model ParcelOpportunity {
   physicalAccessScore    Float?
   legalAccessStatus      LegalAccessStatus @default(UNKNOWN)
   legalAccessConfidence  ConfidenceLevel   @default(UNKNOWN)
+  /// Confidence in the *physical adjacency* assessment. Deliberately distinct
+  /// from legalAccessConfidence: we can be highly confident a parcel adjoins a
+  /// mapped county road while knowing nothing about its legal right of access.
+  accessConfidence       ConfidenceLevel   @default(UNKNOWN)
   touchesPublicRoad      Boolean?
   touchesNamedRoad       Boolean?
   apparentDriveway       Boolean?

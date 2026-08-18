@@ -13,5 +13,13 @@
     "build": "echo \"[@land-alpha/core] source-only internal package\"",
     "test": "vitest run --root ../.. --include 'packages/core/src/**/*.test.ts'"
   },
-  "dependencies": { "@land-alpha/shared": "workspace:*", "@land-alpha/gis": "workspace:*", "@land-alpha/valuation": "workspace:*" }
+  "dependencies": {
+    "@land-alpha/shared": "workspace:*",
+    "@land-alpha/gis": "workspace:*",
+    "@land-alpha/valuation": "workspace:*",
+    "@land-alpha/db": "workspace:*",
+    "@land-alpha/ingestion": "workspace:*",
+    "@land-alpha/title-research": "workspace:*",
+    "@land-alpha/source-registry": "workspace:*"
+  }
 }
