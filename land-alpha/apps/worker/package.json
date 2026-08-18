@@ -1,0 +1,29 @@
+{
+  "name": "@land-alpha/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch ./src/index.ts",
+    "start": "tsx ./src/index.ts",
+    "build": "echo \"[worker] runs via tsx\"",
+    "enqueue": "tsx ./src/cli.ts"
+  },
+  "dependencies": {
+    "@land-alpha/ai": "workspace:*",
+    "@land-alpha/core": "workspace:*",
+    "@land-alpha/db": "workspace:*",
+    "@land-alpha/gis": "workspace:*",
+    "@land-alpha/ingestion": "workspace:*",
+    "@land-alpha/shared": "workspace:*",
+    "@land-alpha/source-registry": "workspace:*",
+    "@land-alpha/title-research": "workspace:*",
+    "@land-alpha/valuation": "workspace:*",
+    "bullmq": "^5.63.0",
+    "ioredis": "^5.9.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6"
+  }
+}

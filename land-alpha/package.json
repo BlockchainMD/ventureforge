@@ -1,0 +1,36 @@
+{
+  "name": "land-alpha",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Land Alpha — land-acquisition intelligence platform",
+  "packageManager": "pnpm@10.33.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "pnpm -r --filter \"./packages/**\" build && pnpm --filter @land-alpha/web build",
+    "dev": "pnpm --filter @land-alpha/web dev",
+    "worker": "pnpm --filter @land-alpha/worker dev",
+    "typecheck": "tsc --noEmit --pretty && pnpm --filter @land-alpha/web typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "pnpm --filter @land-alpha/db generate",
+    "db:migrate": "pnpm --filter @land-alpha/db migrate",
+    "db:push": "pnpm --filter @land-alpha/db push",
+    "db:seed": "pnpm --filter @land-alpha/db seed",
+    "db:reset": "pnpm --filter @land-alpha/db reset",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^22.20.0",
+    "eslint": "^9.39.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^3.2.4"
+  }
+}
