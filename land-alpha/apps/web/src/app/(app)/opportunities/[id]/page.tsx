@@ -19,6 +19,7 @@ import {
   ACCESS_DISCLAIMER,
   BUILDABILITY_DISCLAIMER,
   ENVIRONMENTAL_DISCLAIMER,
+  previewFinancing,
 } from '@land-alpha/core';
 import { TITLE_DISCLAIMER } from '@land-alpha/title-research';
 import { PageHeader } from '@/components/layout/shell';
@@ -32,16 +33,18 @@ import { DecisionCard } from './decision-card';
 import { MaxBidControl, ParcelActions, RejectionOverride } from './parcel-actions';
 import { NotesPanel } from './notes-panel';
 import { ListingPanel, MemoPanel } from './memo-panel';
+import { FinancingPanel } from './financing-panel';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ParcelPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [parcel, geometry, user, config] = await Promise.all([
+  const [parcel, geometry, user, config, financing] = await Promise.all([
     getParcelDetail(id),
     spatial.readParcelGeometry(id),
     getSessionUser(),
     getActiveScoringConfig(),
+    previewFinancing(id),
   ]);
 
   if (!parcel) notFound();
@@ -531,6 +534,14 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
               <Disclaimer>{TITLE_DISCLAIMER}</Disclaimer>
             </PanelBody>
           </Panel>
+
+          {financing ? (
+            <FinancingPanel
+              terms={financing.terms}
+              schedule={financing.schedule}
+              comparison={financing.comparison}
+            />
+          ) : null}
 
           <MemoPanel
             parcelId={parcel.id}

@@ -1,8 +1,16 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { prisma, getActiveScoringConfig, spatial, toCents } from '@land-alpha/db';
 import { FIXTURE_PARCELS } from '@land-alpha/db/seed/fixture-parcels';
-import { collectRealisedOutcomes, scoreParcelById, valuateParcel } from '@land-alpha/core';
-import { calibrateFromOutcomes } from '@land-alpha/valuation';
+import {
+  collectRealisedOutcomes,
+  createNote,
+  previewFinancing,
+  recordPayment,
+  refreshNoteStanding,
+  scoreParcelById,
+  valuateParcel,
+} from '@land-alpha/core';
+import { buildAmortizationSchedule, calibrateFromOutcomes } from '@land-alpha/valuation';
 import { normalizeApn } from '@land-alpha/shared/ids';
 
 /**
@@ -335,6 +343,202 @@ describe('calibration loop', () => {
     });
     if (fixtureSold > 0) {
       expect(outcomes.length).toBeLessThan(fixtureSold + outcomes.length + 1);
+    }
+  });
+});
+
+/**
+ * Seller financing, end to end.
+ *
+ * The interesting behaviour is not the amortisation — that is unit-tested — but
+ * what the ledger does with partial and missed payments, because that is where
+ * a note quietly reports the wrong balance.
+ */
+describe('seller financing', () => {
+  const FIN_APN = 'FIN-TEST-0001';
+
+  const makeParcel = async (): Promise<string> => {
+    const template = await prisma.parcelOpportunity.findFirst({
+      where: { apn: { startsWith: 'FX-' } },
+      select: { sourceId: true, jurisdictionId: true },
+    });
+    await prisma.parcelOpportunity.deleteMany({ where: { apn: FIN_APN } });
+    const parcel = await prisma.parcelOpportunity.create({
+      data: {
+        apn: FIN_APN,
+        apnNormalized: normalizeApn(FIN_APN),
+        naturalKey: `ZZ/Finance/${normalizeApn(FIN_APN)}`,
+        state: 'ZZ',
+        county: 'Finance',
+        sourceId: template!.sourceId,
+        jurisdictionId: template!.jurisdictionId,
+        acreage: 2,
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+        retailValue: '15000',
+        quickSaleValue: '11000',
+        estimatedAllInBasis: '5000',
+        expectedHoldDays: 400,
+      },
+      select: { id: true },
+    });
+    return parcel.id;
+  };
+
+  spec('tracks a note from signing through payments to payoff', async () => {
+    const parcelId = await makeParcel();
+    try {
+      const terms = {
+        salePriceCents: 1_500_000,
+        downPaymentCents: 150_000,
+        annualRate: 0.1,
+        termMonths: 12,
+        documentFeeCents: 25_000,
+        monthlyFeeCents: 1_000,
+      };
+      const firstPayment = new Date('2026-01-01T00:00:00Z');
+      const noteId = await createNote({ parcelId, terms, firstPaymentDate: firstPayment });
+      await prisma.financeNote.update({ where: { id: noteId }, data: { status: 'ACTIVE' } });
+
+      const schedule = buildAmortizationSchedule(terms, firstPayment);
+      const instalment = schedule.payments[0]!.paymentCents;
+
+      // Three instalments paid on time, checked as of the third due date.
+      for (let i = 0; i < 3; i += 1) {
+        await recordPayment({
+          noteId,
+          amountCents: schedule.payments[i]!.paymentCents,
+          receivedAt: schedule.payments[i]!.dueDate,
+          asOf: schedule.payments[i]!.dueDate,
+        });
+      }
+      let standing = await refreshNoteStanding(noteId, new Date('2026-03-02T00:00:00Z'));
+      expect(standing.paymentsMade).toBe(3);
+      expect(standing.arrearsCents).toBe(0);
+      expect(standing.status).toBe('ACTIVE');
+      expect(standing.principalBalanceCents).toBeLessThan(schedule.financedCents);
+
+      // Miss two months entirely.
+      standing = await refreshNoteStanding(noteId, new Date('2026-05-15T00:00:00Z'));
+      expect(standing.arrearsCents).toBeGreaterThan(instalment);
+      expect(standing.daysPastDue).toBeGreaterThan(30);
+      expect(standing.status).toBe('DELINQUENT');
+
+      // Past ninety days the note defaults, and says forfeiture is a legal
+      // process rather than something this software can perform.
+      standing = await refreshNoteStanding(noteId, new Date('2026-08-01T00:00:00Z'));
+      expect(standing.status).toBe('DEFAULTED');
+      expect(standing.warnings.join(' ')).toContain('varies by state');
+
+      // Paying everything off cures the default: a land contract reinstates on
+      // cure, so the status must be able to come back.
+      const outstanding = schedule.payments.slice(3).reduce((sum, p) => sum + p.paymentCents, 0);
+      await recordPayment({
+        noteId,
+        amountCents: outstanding,
+        receivedAt: new Date('2026-08-02T00:00:00Z'),
+        kind: 'PAYOFF',
+        asOf: new Date('2026-08-02T00:00:00Z'),
+      });
+      standing = await refreshNoteStanding(noteId, new Date('2027-02-01T00:00:00Z'));
+      expect(standing.principalBalanceCents).toBe(0);
+      expect(standing.status).toBe('PAID_OFF');
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: FIN_APN } });
+    }
+  });
+
+  spec('does not credit a down payment against the amortising balance', async () => {
+    const parcelId = await makeParcel();
+    try {
+      const terms = {
+        salePriceCents: 1_500_000,
+        downPaymentCents: 150_000,
+        annualRate: 0.1,
+        termMonths: 12,
+        documentFeeCents: 25_000,
+        monthlyFeeCents: 1_000,
+      };
+      const noteId = await createNote({
+        parcelId,
+        terms,
+        firstPaymentDate: new Date('2026-01-01T00:00:00Z'),
+      });
+      await prisma.financeNote.update({ where: { id: noteId }, data: { status: 'ACTIVE' } });
+
+      // The deposit and the document fee are not instalments. Crediting them
+      // would report a balance $1,750 lower than the buyer actually owes.
+      await recordPayment({
+        noteId,
+        amountCents: 150_000,
+        receivedAt: new Date('2025-12-15T00:00:00Z'),
+        kind: 'DOWN_PAYMENT',
+        asOf: new Date('2025-12-20T00:00:00Z'),
+      });
+      await recordPayment({
+        noteId,
+        amountCents: 25_000,
+        receivedAt: new Date('2025-12-15T00:00:00Z'),
+        kind: 'DOCUMENT_FEE',
+        asOf: new Date('2025-12-20T00:00:00Z'),
+      });
+
+      const standing = await refreshNoteStanding(noteId, new Date('2025-12-20T00:00:00Z'));
+      expect(standing.paidToDateCents).toBe(0);
+      expect(standing.paymentsMade).toBe(0);
+      expect(standing.principalBalanceCents).toBe(1_350_000);
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: FIN_APN } });
+    }
+  });
+
+  spec('applies a partial payment to fees and interest before principal', async () => {
+    const parcelId = await makeParcel();
+    try {
+      const terms = {
+        salePriceCents: 1_500_000,
+        downPaymentCents: 0,
+        annualRate: 0.12,
+        termMonths: 24,
+        documentFeeCents: 0,
+        monthlyFeeCents: 1_000,
+      };
+      const firstPayment = new Date('2026-01-01T00:00:00Z');
+      const noteId = await createNote({ parcelId, terms, firstPaymentDate: firstPayment });
+      await prisma.financeNote.update({ where: { id: noteId }, data: { status: 'ACTIVE' } });
+
+      const schedule = buildAmortizationSchedule(terms, firstPayment);
+      const first = schedule.payments[0]!;
+      // Enough to cover the fee and the interest and nothing more: principal
+      // must not move.
+      await recordPayment({
+        noteId,
+        amountCents: first.feeCents + first.interestCents,
+        receivedAt: firstPayment,
+        asOf: firstPayment,
+      });
+      const standing = await refreshNoteStanding(noteId, firstPayment);
+      expect(standing.principalBalanceCents).toBe(schedule.financedCents);
+      expect(standing.paymentsMade).toBe(0);
+      expect(standing.arrearsCents).toBe(first.principalCents);
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: FIN_APN } });
+    }
+  });
+
+  spec('prices financing off retail and compares it against the cash exit', async () => {
+    const parcelId = await makeParcel();
+    try {
+      const preview = await previewFinancing(parcelId);
+      expect(preview).not.toBeNull();
+      // Retail is $15,000; quick sale is $11,000. A monthly buyer is not the
+      // buyer who needs a discount to move today.
+      expect(preview!.terms.salePriceCents).toBe(1_500_000);
+      expect(preview!.schedule.totalReceivedCents).toBeGreaterThan(1_500_000);
+      expect(preview!.comparison.cashProceedsCents).toBe(1_100_000);
+      expect(['CASH', 'FINANCE', 'EITHER']).toContain(preview!.comparison.recommendation);
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: FIN_APN } });
     }
   });
 });

@@ -666,6 +666,7 @@ model ParcelOpportunity {
   scoreSnapshots      ParcelScoreSnapshot[]
   comparableLinks     ComparableLink[]
   deal                Deal?
+  financeNote         FinanceNote?
   portfolioAsset      PortfolioAsset?
   listing             Listing?
   leads               Lead[]
@@ -923,6 +924,94 @@ model TitleResearchTask {
 }
 
 // ===========================================================================
+// Seller financing
+// ===========================================================================
+
+enum FinanceNoteStatus {
+  DRAFT
+  ACTIVE
+  PAID_OFF
+  DELINQUENT
+  DEFAULTED
+  FORFEITED
+  CANCELLED
+}
+
+enum FinancePaymentKind {
+  DOWN_PAYMENT
+  SCHEDULED
+  EXTRA_PRINCIPAL
+  PAYOFF
+  LATE_FEE
+  DOCUMENT_FEE
+  REFUND
+}
+
+/// An executed seller-financed sale: the terms, and where the note stands.
+///
+/// The schedule is derived from the terms rather than stored row by row, so a
+/// note cannot drift out of agreement with its own arithmetic. What is stored
+/// is what actually happened — the payments.
+model FinanceNote {
+  id             String            @id @default(uuid())
+  parcelId       String            @unique
+  buyerLeadId    String?
+  status         FinanceNoteStatus @default(DRAFT)
+
+  salePrice      Decimal  @db.Decimal(14, 2)
+  downPayment    Decimal  @db.Decimal(14, 2)
+  /// Nominal annual rate, e.g. 0.10 for 10%.
+  annualRate     Float
+  termMonths     Int
+  documentFee    Decimal  @db.Decimal(14, 2) @default(0)
+  monthlyFee     Decimal  @db.Decimal(14, 2) @default(0)
+  /// Charged when a payment is late by more than the grace period.
+  lateFee        Decimal  @db.Decimal(14, 2) @default(0)
+  graceDays      Int      @default(10)
+
+  firstPaymentDate DateTime
+  signedAt         DateTime?
+  closedAt         DateTime?
+  /// Why the note ended, when it ended other than by being paid off.
+  closureReason    String?
+
+  /// Recorded at signing so a later change to the engine cannot rewrite what
+  /// was agreed. The note is a contract; the model is not.
+  scheduleSnapshot Json?
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parcel   ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  buyer    Lead?             @relation(fields: [buyerLeadId], references: [id], onDelete: SetNull)
+  payments FinancePayment[]
+
+  @@index([status])
+  @@index([firstPaymentDate])
+}
+
+/// One payment actually received. The ledger, not the plan.
+model FinancePayment {
+  id         String             @id @default(uuid())
+  noteId     String
+  kind       FinancePaymentKind @default(SCHEDULED)
+  amount     Decimal            @db.Decimal(14, 2)
+  receivedAt DateTime
+  /// Which scheduled instalment this was applied to, where it maps to one.
+  appliesToPaymentNumber Int?
+  method     String?
+  reference  String?
+  notes      String?
+  recordedById String?
+  createdAt  DateTime @default(now())
+
+  note FinanceNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId, receivedAt])
+}
+
+// ===========================================================================
 // Deal room / due diligence
 // ===========================================================================
 
@@ -1135,6 +1224,7 @@ model Lead {
   updatedAt   DateTime   @updatedAt
 
   parcel     ParcelOpportunity? @relation(fields: [parcelId], references: [id], onDelete: SetNull)
+  financeNotes FinanceNote[]
   activities LeadActivity[]
 
   @@index([status, createdAt])
