@@ -50,6 +50,9 @@ export function DecisionCard({
     basisToQsv: number | null;
     grossProfitCents: number | null;
     roiAtQsv: number | null;
+    annualizedRoiAtQsv: number | null;
+    expectedHoldDays: number | null;
+    liquidityConfidence: string | null;
     accessClass: AccessClass;
     buildability: BuildabilityRating;
     titleRiskScore: number | null;
@@ -151,6 +154,29 @@ export function DecisionCard({
             label="ROI at QSV"
             value={parcel.roiAtQsv == null ? null : formatPercent(parcel.roiAtQsv, 0)}
             tone={parcel.roiAtQsv != null && parcel.roiAtQsv > 0 ? 'text-good' : 'text-bad'}
+          />
+          <Row
+            label="Expected hold"
+            value={
+              parcel.expectedHoldDays == null
+                ? null
+                : `${(parcel.expectedHoldDays / 30.4).toFixed(1)} mo`
+            }
+            tone="text-ink-muted"
+          />
+          {/* The comparison that matters: return per year of capital tied up,
+              not return per deal. A 50% gain over three years is a worse
+              business than 20% over six months. */}
+          <Row
+            label="Annualised ROI"
+            value={
+              parcel.annualizedRoiAtQsv == null ? null : formatPercent(parcel.annualizedRoiAtQsv, 0)
+            }
+            tone={
+              parcel.annualizedRoiAtQsv != null && parcel.annualizedRoiAtQsv > 0
+                ? 'text-good'
+                : 'text-bad'
+            }
           />
           <div className="mt-2 flex items-center justify-between border-t border-line pt-2">
             <span className="rule-label">Recommendation</span>

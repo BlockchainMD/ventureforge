@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { estimateHoldDays } from '@land-alpha/valuation';
 import { assessAccess, type RoadObservation } from './access';
 import {
   assessEnvironment,
@@ -536,6 +537,14 @@ function scoringInputs(overrides: Partial<ScoringInputs> = {}): ScoringInputs {
     daysOnSource: 400,
     hasDuplicate: false,
     isVacant: true,
+    liquidity: estimateHoldDays({
+      acreage: 5.23,
+      quickSaleValueCents: 2_000_000,
+      accessClass: 'A',
+      buildability: 'GREEN',
+      hasUtilities: null,
+      comparableCount: 9,
+    }),
     ...overrides,
   };
 }

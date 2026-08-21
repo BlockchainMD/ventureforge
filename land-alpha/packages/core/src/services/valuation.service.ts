@@ -18,6 +18,8 @@ import {
   acreageBandFor,
   computeEconomics,
   DEFAULT_COMPS_CONFIG,
+  DEFAULT_LIQUIDITY_CONFIG,
+  estimateHoldDays,
   maximumBidForTargetRatio,
   valueParcel,
   type CompCandidate,
@@ -160,6 +162,23 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
 
   const curativeCents = parcel.titleRiskScore != null ? await curativeCostFor(parcelId) : 0;
 
+  // ---- Liquidity -----------------------------------------------------------
+  // Estimated before economics, because how long the parcel takes to sell sets
+  // the carrying cost and the annualised return the ranking is built on.
+  const liquidity = estimateHoldDays(
+    {
+      acreage,
+      quickSaleValueCents: valuation.quickSale?.mid ?? null,
+      accessClass: parcel.accessClass === 'UNKNOWN' ? null : parcel.accessClass,
+      buildability: parcel.buildability === 'UNKNOWN' ? null : parcel.buildability,
+      hasUtilities: parcel.knownUtilities.length > 0 ? true : null,
+      comparableCount: valuation.compCount,
+    },
+    { ...DEFAULT_LIQUIDITY_CONFIG, calibration: config.holdCalibration ?? {} },
+    `${parcel.state}/${parcel.county}`,
+  );
+  warnings.push(...liquidity.warnings);
+
   const economics =
     valuation.quickSale || valuation.retail
       ? computeEconomics(
@@ -170,6 +189,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
             titleCurativeCents: curativeCents,
             quickSaleValueCents: valuation.quickSale?.mid ?? null,
             retailValueCents: valuation.retail?.mid ?? null,
+            holdDaysOverride: liquidity.holdDays,
           },
           config.costModel,
           config.thresholds,
@@ -226,6 +246,10 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       roiAtQsv: economics?.roiAtQsv ?? null,
       annualizedRoiAtQsv: economics?.annualizedRoiAtQsv ?? null,
       economicsTier: economics?.tier ?? null,
+
+      expectedHoldDays: liquidity.holdDays,
+      liquidityConfidence: liquidity.confidence,
+      liquidityFactors: liquidity.factors as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -241,6 +265,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       detail: {
         pricePerAcreUsed: valuation.pricePerAcreUsed,
         economics: economics as unknown as Prisma.InputJsonValue,
+        liquidity: liquidity as unknown as Prisma.InputJsonValue,
         warnings,
       } as unknown as Prisma.InputJsonValue,
     },
@@ -267,6 +292,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
   logger.info('valued parcel', {
     parcelId,
     comps: valuation.compCount,
+    holdDays: liquidity.holdDays,
     qsv: valuation.quickSale?.mid ?? null,
     basisToQsv: economics?.basisToQsv ?? null,
   });

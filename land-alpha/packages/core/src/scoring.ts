@@ -14,6 +14,7 @@ import {
   type ValuationResult,
 } from '@land-alpha/shared';
 import type { RejectionRuleConfig, ScoringConfigValue } from '@land-alpha/shared';
+import type { LiquidityEstimate } from '@land-alpha/valuation';
 
 /**
  * The Alpha Score.
@@ -53,6 +54,11 @@ export interface ScoringInputs {
    * list that offered it for sale. `null` means nobody has said.
    */
   readonly isVacant: boolean | null;
+  /**
+   * How long this is expected to take to sell, from the liquidity engine.
+   * Return is annualised, so this is not a detail — it is half the answer.
+   */
+  readonly liquidity: LiquidityEstimate | null;
   readonly analystOverride?: { readonly rule: string; readonly by: string } | null;
 }
 
@@ -333,60 +339,45 @@ function scoreTitleSimplicity(title: TitlePreScreen | null): ComponentScore {
  * Liquidity: how readily this can be resold. Driven by size (small rural
  * parcels have the deepest buyer pool), access, comp density and price point.
  */
+/**
+ * Liquidity, scored from the hold estimate rather than re-derived here.
+ *
+ * This component used to approximate time-to-sell from comp counts, acreage and
+ * access — the same signals the liquidity engine now weighs properly. Two
+ * estimates of the same thing drift apart, and the one an analyst reads on the
+ * parcel page should be the one the score is built from, so this reads that
+ * estimate and nothing else.
+ *
+ * The scale is anchored on the baseline hold: a parcel expected to sell in the
+ * baseline period scores neutral, faster scores above, slower below.
+ */
 function scoreLiquidity(inputs: ScoringInputs): ComponentScore {
-  const notes: string[] = [];
-  let score = NEUTRAL;
-  let confidence: ConfidenceLevel = 'MEDIUM';
-
-  const compCount = inputs.valuation?.compCount ?? 0;
-  if (compCount >= 8) {
-    score += 18;
-    notes.push(`${compCount} recent comparable sales indicate an active local market`);
-  } else if (compCount >= 4) {
-    score += 8;
-    notes.push(`${compCount} comparable sales`);
-  } else if (compCount === 0) {
-    score -= 18;
-    notes.push('no comparable sales found, indicating a thin or unrecorded market');
-    confidence = 'LOW';
-  } else {
-    score -= 6;
-    notes.push(`only ${compCount} comparable sales`);
+  const estimate = inputs.liquidity;
+  if (!estimate) {
+    return {
+      score: NEUTRAL,
+      rationale: 'Time to sell has not been estimated.',
+      confidence: 'UNKNOWN',
+    };
   }
 
-  const acreage = inputs.acreage;
-  if (acreage != null) {
-    // 1-20 acres is the sweet spot for retail land buyers.
-    if (acreage >= 1 && acreage <= 20) {
-      score += 12;
-      notes.push('size sits in the most liquid band for retail land buyers');
-    } else if (acreage > 80) {
-      score -= 10;
-      notes.push('large acreage narrows the buyer pool');
-    } else if (acreage < 0.25) {
-      score -= 12;
-      notes.push('very small parcels appeal mainly to adjoining owners');
-    }
-  } else {
-    confidence = 'LOW';
-  }
+  const { holdDays, baselineDays } = estimate;
+  // A parcel twice as slow as baseline scores 0; one half as slow scores 100.
+  const ratio = baselineDays > 0 ? holdDays / baselineDays : 1;
+  const score = clamp(NEUTRAL + (1 - ratio) * 100);
 
-  if (inputs.access?.accessClass === 'D') {
-    score -= 25;
-    notes.push('apparent lack of access severely limits resale');
-  }
+  const drivers = [...estimate.factors]
+    .filter((factor) => Math.abs(factor.multiplier - 1) > 0.01)
+    .sort((a, b) => Math.abs(b.multiplier - 1) - Math.abs(a.multiplier - 1))
+    .slice(0, 2)
+    .map((factor) => factor.rationale.replace(/\.$/, ''));
 
-  const qsv = inputs.valuation?.quickSale?.mid ?? null;
-  if (qsv != null && qsv < 300_000) {
-    score += 6;
-    notes.push('low absolute price point widens the pool of cash buyers');
-  }
+  const months = (holdDays / 30.4).toFixed(1);
+  const rationale = drivers.length
+    ? `Expected to sell in about ${months} months. ${capitalize(drivers.join('; '))}.`
+    : `Expected to sell in about ${months} months.`;
 
-  return {
-    score,
-    rationale: notes.length ? capitalize(notes.join('; ')) + '.' : 'Insufficient data.',
-    confidence,
-  };
+  return { score, rationale, confidence: estimate.confidence };
 }
 
 function scoreCarryingCost(economics: OpportunityEconomics | null): ComponentScore {

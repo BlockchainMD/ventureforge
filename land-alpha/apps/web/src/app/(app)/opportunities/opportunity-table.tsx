@@ -54,6 +54,12 @@ export function OpportunityTable({
           <Th align="right">Basis</Th>
           <Th align="right">QSV</Th>
           <Th align="right">Basis/QSV</Th>
+          <Th align="right" title="Return per year of capital tied up">
+            Ann. ROI
+          </Th>
+          <Th align="right" title="Estimated months to sell">
+            Hold
+          </Th>
           <Th align="center">Access</Th>
           <Th align="center">Build</Th>
           <Th align="right">Title</Th>
@@ -122,6 +128,30 @@ export function OpportunityTable({
                   <span className={`num font-medium ${basisRatioTone(row.basisToQsv)}`}>
                     <Value>
                       {row.basisToQsv == null ? null : formatPercent(row.basisToQsv, 0)}
+                    </Value>
+                  </span>
+                </Td>
+                <Td align="right">
+                  <span
+                    className={`num ${
+                      row.annualizedRoiAtQsv != null && row.annualizedRoiAtQsv > 0
+                        ? 'text-good'
+                        : 'text-ink-muted'
+                    }`}
+                  >
+                    <Value>
+                      {row.annualizedRoiAtQsv == null
+                        ? null
+                        : formatPercent(row.annualizedRoiAtQsv, 0)}
+                    </Value>
+                  </span>
+                </Td>
+                <Td align="right">
+                  <span className="num text-ink-muted">
+                    <Value>
+                      {row.expectedHoldDays == null
+                        ? null
+                        : `${(row.expectedHoldDays / 30.4).toFixed(0)}mo`}
                     </Value>
                   </span>
                 </Td>

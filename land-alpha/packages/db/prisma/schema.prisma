@@ -608,6 +608,14 @@ model ParcelOpportunity {
   annualizedRoiAtQsv      Float?
   economicsTier           String?
 
+  // ---- Liquidity ----------------------------------------------------------
+  // How long this parcel is expected to take to sell, and why. Return is
+  // annualised, so a hold estimate is not a cost-model detail — it decides
+  // the order of the ranked list.
+  expectedHoldDays        Int?
+  liquidityConfidence     ConfidenceLevel @default(UNKNOWN)
+  liquidityFactors        Json?
+
   // ---- Scores -------------------------------------------------------------
   alphaScore            Float?
   valueScore            Float?

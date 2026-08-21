@@ -148,6 +148,10 @@ function buildOrderBy(
       return [{ titleRiskScore: { sort: direction, nulls } }];
     case 'confidenceScore':
       return [{ confidenceScore: { sort: direction, nulls } }];
+    case 'annualizedRoiAtQsv':
+      return [{ annualizedRoiAtQsv: { sort: direction, nulls } }, { alphaScore: 'desc' }];
+    case 'expectedHoldDays':
+      return [{ expectedHoldDays: { sort: direction, nulls } }, { alphaScore: 'desc' }];
     case 'alphaScore':
     default:
       return [{ alphaScore: { sort: direction, nulls } }, { firstSeenAt: 'desc' }];
@@ -166,6 +170,8 @@ const SUMMARY_SELECT = {
   quickSaleValue: true,
   retailValue: true,
   basisToQsv: true,
+  annualizedRoiAtQsv: true,
+  expectedHoldDays: true,
   alphaScore: true,
   accessClass: true,
   buildability: true,
@@ -195,6 +201,8 @@ export function toSummary(row: SummaryRow): OpportunitySummary {
     quickSaleValue: toCents(row.quickSaleValue),
     retailValue: toCents(row.retailValue),
     basisToQsv: row.basisToQsv,
+    annualizedRoiAtQsv: row.annualizedRoiAtQsv,
+    expectedHoldDays: row.expectedHoldDays,
     alphaScore: row.alphaScore,
     accessClass: row.accessClass,
     buildability: row.buildability,

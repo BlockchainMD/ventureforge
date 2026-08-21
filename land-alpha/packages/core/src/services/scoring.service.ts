@@ -11,6 +11,7 @@ import {
 } from '@land-alpha/shared';
 import { createLogger } from '@land-alpha/shared/logger';
 import { getActiveScoringConfig, prisma, spatial, toCents, Prisma } from '@land-alpha/db';
+import { DEFAULT_LIQUIDITY_CONFIG, type LiquidityEstimate } from '@land-alpha/valuation';
 import { scoreParcel } from '../scoring';
 
 /**
@@ -224,6 +225,18 @@ export async function scoreParcelById(parcelId: string): Promise<AlphaScoreResul
       daysOnSource,
       hasDuplicate: duplicates.length > 0,
       isVacant: parcel.isVacant,
+      // Re-read the estimate the valuation stage stored rather than recomputing
+      // it, so the number on the parcel page is the number in the score.
+      liquidity:
+        parcel.expectedHoldDays == null
+          ? null
+          : {
+              holdDays: parcel.expectedHoldDays,
+              baselineDays: DEFAULT_LIQUIDITY_CONFIG.baselineDays,
+              factors: (parcel.liquidityFactors ?? []) as unknown as LiquidityEstimate['factors'],
+              confidence: parcel.liquidityConfidence,
+              warnings: [],
+            },
       analystOverride: parcel.rejectionOverriddenBy
         ? { rule: parcel.rejectionOverrideNote ?? '', by: parcel.rejectionOverriddenBy }
         : null,

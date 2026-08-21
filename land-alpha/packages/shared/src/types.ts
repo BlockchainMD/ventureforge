@@ -295,6 +295,8 @@ export interface OpportunitySummary {
   readonly quickSaleValue: UsdCents | null;
   readonly retailValue: UsdCents | null;
   readonly basisToQsv: number | null;
+  readonly annualizedRoiAtQsv: number | null;
+  readonly expectedHoldDays: number | null;
   readonly alphaScore: number | null;
   readonly accessClass: AccessClass | null;
   readonly buildability: BuildabilityRating | null;

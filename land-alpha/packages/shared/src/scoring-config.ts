@@ -61,6 +61,12 @@ export interface ScoringConfigValue {
   thresholds: ScoringThresholds;
   costModel: CostModel;
   rejectionRules: RejectionRuleConfig[];
+  /**
+   * Per-market hold-time corrections learned from parcels actually sold, keyed
+   * `STATE/County`. Empty until the calibration loop has closed deals to learn
+   * from; written by it, never by hand.
+   */
+  holdCalibration?: Record<string, number>;
 }
 
 /** The starting weights specified in the product brief. */
@@ -131,4 +137,5 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfigValue = {
   thresholds: DEFAULT_THRESHOLDS,
   costModel: DEFAULT_COST_MODEL,
   rejectionRules: DEFAULT_REJECTION_RULES,
+  holdCalibration: {},
 };

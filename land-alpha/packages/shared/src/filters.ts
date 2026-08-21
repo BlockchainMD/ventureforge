@@ -70,6 +70,10 @@ export const OPPORTUNITY_SORTS = [
   'firstSeenAt',
   'titleRiskScore',
   'confidenceScore',
+  // Return per year of capital tied up. The one an investor with finite money
+  // should actually sort by.
+  'annualizedRoiAtQsv',
+  'expectedHoldDays',
 ] as const;
 export type OpportunitySort = (typeof OPPORTUNITY_SORTS)[number];
 
