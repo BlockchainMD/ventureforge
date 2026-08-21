@@ -9,3 +9,4 @@ export * from './services/memo.service';
 export * from './services/listing.service';
 export * from './services/alert.service';
 export * from './services/discovery.service';
+export * from './services/calibration.service';

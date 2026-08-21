@@ -42,6 +42,13 @@ export interface ValuationConfig {
    * land, so this is a weak, clearly-labelled last resort.
    */
   readonly assessedValueMultiplier: number;
+  /**
+   * Correction learned from parcels actually sold in this market. 1 means the
+   * engine has been accurate here, or that nothing has sold yet. Applied to the
+   * price per acre rather than to the comparables: the comps are what the
+   * market did, and any error is in how this engine reads them.
+   */
+  readonly marketCorrection?: number;
 }
 
 export const DEFAULT_VALUATION_CONFIG: ValuationConfig = {
@@ -49,6 +56,7 @@ export const DEFAULT_VALUATION_CONFIG: ValuationConfig = {
   quickSaleDiscount: 0.25,
   investorLiquidationDiscount: 0.5,
   assessedValueMultiplier: 1.15,
+  marketCorrection: 1,
 };
 
 export interface ValuationInputs {
@@ -75,13 +83,19 @@ export function valueParcel(
   warnings.push(...comps.warnings);
 
   if (comps.pricePerAcre != null) {
+    const correction =
+      config.marketCorrection != null && config.marketCorrection > 0 ? config.marketCorrection : 1;
+    const corrected = comps.pricePerAcre * correction;
     const retail = buildEstimate({
-      midPerAcre: comps.pricePerAcre,
-      lowPerAcre: comps.pricePerAcreLow ?? comps.pricePerAcre * 0.75,
-      highPerAcre: comps.pricePerAcreHigh ?? comps.pricePerAcre * 1.25,
+      midPerAcre: corrected,
+      lowPerAcre: (comps.pricePerAcreLow ?? comps.pricePerAcre * 0.75) * correction,
+      highPerAcre: (comps.pricePerAcreHigh ?? comps.pricePerAcre * 1.25) * correction,
       acreage,
       confidence: comps.confidence,
-      method: `Comparable sales (${comps.comps.length} recorded sales, size-adjusted)`,
+      method:
+        correction === 1
+          ? `Comparable sales (${comps.comps.length} recorded sales, size-adjusted)`
+          : `Comparable sales (${comps.comps.length} recorded sales, size-adjusted, corrected ${correction.toFixed(2)}× against realised sales)`,
     });
 
     return {
@@ -94,7 +108,7 @@ export function valueParcel(
       ),
       compCount: comps.comps.length,
       comps: comps.comps,
-      pricePerAcreUsed: comps.pricePerAcre,
+      pricePerAcreUsed: corrected,
       confidence: comps.confidence,
       warnings,
     };

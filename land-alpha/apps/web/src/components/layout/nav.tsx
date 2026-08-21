@@ -14,6 +14,7 @@ import {
   Map,
   Settings,
   SlidersHorizontal,
+  Target,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -56,6 +57,7 @@ const SECTIONS: { heading: string; items: NavItem[] }[] = [
     heading: 'Configuration',
     items: [
       { href: '/admin/scoring', label: 'Scoring model', icon: SlidersHorizontal, minRole: 'ADMIN' },
+      { href: '/admin/calibration', label: 'Calibration', icon: Target, minRole: 'ADMIN' },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],
   },

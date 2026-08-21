@@ -1,7 +1,8 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { prisma, getActiveScoringConfig, spatial, toCents } from '@land-alpha/db';
 import { FIXTURE_PARCELS } from '@land-alpha/db/seed/fixture-parcels';
-import { scoreParcelById, valuateParcel } from '@land-alpha/core';
+import { collectRealisedOutcomes, scoreParcelById, valuateParcel } from '@land-alpha/core';
+import { calibrateFromOutcomes } from '@land-alpha/valuation';
 import { normalizeApn } from '@land-alpha/shared/ids';
 
 /**
@@ -228,6 +229,112 @@ describe('ingestion integrity', () => {
       expect(row.source).toBeTruthy();
       expect(row.extractionMethod).toBeTruthy();
       expect(row.retrievalDate).toBeInstanceOf(Date);
+    }
+  });
+});
+
+/**
+ * The calibration loop, end to end.
+ *
+ * The subtle part is which prediction gets graded: the valuation in force when
+ * the parcel was bought, not today's. Today's valuation has the benefit of
+ * comparables recorded after the purchase, so grading against it would be
+ * marking homework with the answers in front of you. This buys and sells a real
+ * parcel against two snapshots — one before the purchase and one after — and
+ * checks the earlier one is the one used.
+ */
+describe('calibration loop', () => {
+  const CALIBRATION_APN = 'CAL-TEST-0001';
+
+  spec('grades the prediction that informed the purchase, not the latest one', async () => {
+    const template = await prisma.parcelOpportunity.findFirst({
+      where: { apn: { startsWith: 'FX-' } },
+      select: { sourceId: true, jurisdictionId: true },
+    });
+    expect(template, 'a seeded parcel is needed as a template').not.toBeNull();
+
+    await prisma.parcelOpportunity.deleteMany({ where: { apn: CALIBRATION_APN } });
+    const parcel = await prisma.parcelOpportunity.create({
+      data: {
+        apn: CALIBRATION_APN,
+        apnNormalized: normalizeApn(CALIBRATION_APN),
+        naturalKey: `ZZ/Calibration/${normalizeApn(CALIBRATION_APN)}`,
+        state: 'ZZ',
+        county: 'Calibration',
+        sourceId: template!.sourceId,
+        jurisdictionId: template!.jurisdictionId,
+        acreage: 2,
+        firstSeenAt: new Date('2026-01-01T00:00:00Z'),
+        lastSeenAt: new Date('2026-01-01T00:00:00Z'),
+      },
+      select: { id: true },
+    });
+
+    const acquiredAt = new Date('2026-02-01T00:00:00Z');
+    // The prediction that informed the buy: $20,000, 180 days.
+    await prisma.parcelValuationSnapshot.create({
+      data: {
+        parcelId: parcel.id,
+        quickSaleValue: '20000',
+        confidence: 'MEDIUM',
+        comparableCount: 8,
+        method: 'test',
+        createdAt: new Date('2026-01-15T00:00:00Z'),
+        detail: { liquidity: { holdDays: 180 } },
+      },
+    });
+    // A later, better-informed prediction that must be ignored.
+    await prisma.parcelValuationSnapshot.create({
+      data: {
+        parcelId: parcel.id,
+        quickSaleValue: '14000',
+        confidence: 'HIGH',
+        comparableCount: 30,
+        method: 'test',
+        createdAt: new Date('2026-08-01T00:00:00Z'),
+        detail: { liquidity: { holdDays: 300 } },
+      },
+    });
+
+    await prisma.portfolioAsset.create({
+      data: {
+        parcelId: parcel.id,
+        acquiredAt,
+        acquisitionPrice: '4000',
+        soldAt: new Date('2026-08-01T00:00:00Z'),
+        salePrice: '14000',
+        daysHeld: 181,
+      },
+    });
+
+    try {
+      const outcomes = await collectRealisedOutcomes();
+      const mine = outcomes.find((o) => o.parcelId === parcel.id);
+      expect(mine, 'the sold parcel should appear as an outcome').toBeDefined();
+
+      // $20,000 from the January snapshot, not $14,000 from August.
+      expect(mine!.predictedQuickSaleCents).toBe(2_000_000);
+      expect(mine!.predictedHoldDays).toBe(180);
+      expect(mine!.realisedSalePriceCents).toBe(1_400_000);
+      expect(mine!.realisedHoldDays).toBe(181);
+
+      // Six identical outcomes would correct this market down to 0.7x.
+      const report = calibrateFromOutcomes(Array.from({ length: 6 }, () => mine!));
+      expect(report.valueCalibration['ZZ/Calibration']).toBeCloseTo(0.7, 2);
+      expect(report.holdCalibration['ZZ/Calibration']).toBeCloseTo(1.0, 1);
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: CALIBRATION_APN } });
+    }
+  });
+
+  spec('excludes fixture parcels, which would be marking its own homework', async () => {
+    const outcomes = await collectRealisedOutcomes();
+    expect(outcomes.every((o) => !o.parcelId.startsWith('FX-'))).toBe(true);
+    const fixtureSold = await prisma.portfolioAsset.count({
+      where: { soldAt: { not: null }, parcel: { apn: { startsWith: 'FX-' } } },
+    });
+    if (fixtureSold > 0) {
+      expect(outcomes.length).toBeLessThan(fixtureSold + outcomes.length + 1);
     }
   });
 });

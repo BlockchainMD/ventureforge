@@ -67,6 +67,12 @@ export interface ScoringConfigValue {
    * from; written by it, never by hand.
    */
   holdCalibration?: Record<string, number>;
+  /**
+   * Per-market valuation corrections, same provenance. A market where parcels
+   * consistently fetch less than predicted needs its estimates lowered, not a
+   * new comp set.
+   */
+  valueCalibration?: Record<string, number>;
 }
 
 /** The starting weights specified in the product brief. */
@@ -138,4 +144,5 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfigValue = {
   costModel: DEFAULT_COST_MODEL,
   rejectionRules: DEFAULT_REJECTION_RULES,
   holdCalibration: {},
+  valueCalibration: {},
 };

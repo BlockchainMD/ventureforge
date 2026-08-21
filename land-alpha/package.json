@@ -28,7 +28,8 @@
     "pipeline": "tsx scripts/pipeline.ts",
     "smoke": "node scripts/smoke.mjs",
     "audit:responsive": "node scripts/responsive-audit.mjs",
-    "comps": "tsx scripts/ingest-comps.ts"
+    "comps": "tsx scripts/ingest-comps.ts",
+    "calibrate": "tsx scripts/calibrate.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

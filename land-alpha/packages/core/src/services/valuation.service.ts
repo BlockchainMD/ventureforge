@@ -136,6 +136,13 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
     warnings.push('Parcel acreage is unknown, so no comparable-sales valuation is possible.');
   }
 
+  // A market where parcels consistently fetch less than predicted needs its
+  // estimates lowered, and the correction belongs on the value rather than on
+  // the comparables — the comps are what the market did, the error is in how we
+  // read them.
+  const marketKey = `${parcel.state}/${parcel.county}`;
+  const valueCorrection = config.valueCalibration?.[marketKey];
+
   const valuation = valueParcel(
     {
       subject: {
@@ -152,9 +159,17 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       quickSaleDiscount: config.costModel.quickSaleDiscountFromRetail,
       investorLiquidationDiscount: config.costModel.investorLiquidationDiscountFromRetail,
       assessedValueMultiplier: 1.15,
+      marketCorrection: valueCorrection ?? 1,
     },
   );
   warnings.push(...valuation.warnings);
+  if (valueCorrection != null && Math.abs(valueCorrection - 1) > 0.02) {
+    warnings.push(
+      valueCorrection < 1
+        ? `Values in ${marketKey} are corrected down ${((1 - valueCorrection) * 100).toFixed(0)}% because parcels sold here have fetched less than this engine predicted.`
+        : `Values in ${marketKey} are corrected up ${((valueCorrection - 1) * 100).toFixed(0)}% because parcels sold here have fetched more than this engine predicted.`,
+    );
+  }
 
   // ---- Economics -----------------------------------------------------------
   const acquisitionPriceCents =

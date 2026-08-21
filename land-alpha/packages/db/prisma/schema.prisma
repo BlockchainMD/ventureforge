@@ -838,6 +838,13 @@ model ScoringConfig {
   thresholds     Json
   rejectionRules Json
   costModel      Json
+  /**
+   * Per-market corrections learned from parcels actually bought and sold,
+   * keyed `STATE/County`. Written by the calibration run, never by hand — the
+   * whole point is that the numbers come from outcomes rather than opinion.
+   */
+  holdCalibration  Json?
+  valueCalibration Json?
   description    String?
   createdById    String?
   createdAt      DateTime @default(now())
