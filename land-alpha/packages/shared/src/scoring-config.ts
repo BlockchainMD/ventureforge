@@ -114,6 +114,9 @@ export const DEFAULT_REJECTION_RULES: RejectionRuleConfig[] = [
   { key: 'CONTAMINATED_SITE', enabled: true, overridable: true, params: { distanceMeters: 150 } },
   { key: 'PARCEL_TOO_SMALL', enabled: true, overridable: true, params: { minAcreage: 0.08 } },
   { key: 'DUPLICATE_PARCEL', enabled: true, overridable: false },
+  // Overridable because a demolition play is a real strategy — but it must be
+  // a decision an analyst makes, not one the pipeline makes silently.
+  { key: 'IMPROVEMENTS_PRESENT', enabled: true, overridable: true },
   {
     key: 'SUBMERGED_OR_FULL_WETLAND',
     enabled: true,

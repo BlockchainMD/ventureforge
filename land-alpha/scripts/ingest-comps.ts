@@ -4,14 +4,29 @@
  *   pnpm comps                        list registered sources and coverage
  *   pnpm comps mn-grant-sales         ingest one source
  *   pnpm comps --all                  ingest every enabled source
+ *   pnpm comps --enrich-fl Orange     fill parcel facts from the Florida roll
  */
 import { prisma } from '@land-alpha/db';
-import { comps } from '@land-alpha/ingestion';
+import { comps, IngestHttpClient } from '@land-alpha/ingestion';
 
 async function main(): Promise<void> {
   const key = process.argv[2];
   const limitFlag = process.argv.indexOf('--limit');
   const limit = limitFlag > -1 ? Number(process.argv[limitFlag + 1]) : undefined;
+
+  if (key === '--enrich-fl') {
+    const county = process.argv[3];
+    if (!county) throw new Error('Usage: pnpm comps --enrich-fl <County>');
+    const result = await comps.enrichFloridaParcels(new IngestHttpClient(), { county });
+    console.log(`\n─── Florida roll enrichment: ${county} County ───`);
+    console.log(`  parcels examined  ${result.examined}`);
+    console.log(`  found on the roll ${result.matched}`);
+    console.log(`  acreage filled    ${result.acreageFilled}`);
+    console.log(`  values filled     ${result.valuesFilled}`);
+    for (const warning of result.warnings) console.log(`  ! ${warning}`);
+    console.log('');
+    return;
+  }
 
   if (!key) {
     const coverage = comps.compsCoverage();

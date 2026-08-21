@@ -338,6 +338,11 @@ function compsConfidence(
   if (comps.length >= 8 && closeCount >= 5 && tight) return 'HIGH';
   if (comps.length >= 5 && geolocated >= 3 && (tight || dispersion == null)) return 'MEDIUM';
   if (dispersion != null && dispersion > 1.2) return 'LOW';
+  // Comps that cannot be placed cannot be checked for proximity, and in a
+  // county spanning a city and its farmland that is the difference between a
+  // $2m-per-acre infill lot and a $20k-per-acre field. Plenty of agreeing
+  // sales is not the same as plenty of nearby ones.
+  if (geolocated === 0) return 'LOW';
   return 'MEDIUM';
 }
 

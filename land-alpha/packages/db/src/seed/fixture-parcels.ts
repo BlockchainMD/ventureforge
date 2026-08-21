@@ -69,6 +69,17 @@ function near(base: Position, dx: number, dy: number): Position {
   return [base[0] + dx, base[1] + dy];
 }
 
+/**
+ * Every fixture parcel's APN carries this prefix, and no county issues one.
+ *
+ * It is what keeps the synthetic world closed: a fixture parcel is valued
+ * against fixture comparables and a real parcel against recorded sales, never
+ * a mixture. Without that separation a fixture's expected conclusion would
+ * change every time a county published a new roll, which would make the
+ * specification tests measure the Florida market rather than the pipeline.
+ */
+export const FIXTURE_APN_PREFIX = 'FX-';
+
 export const FIXTURE_PARCELS: FixtureParcel[] = [
   // ---- The thesis case ----------------------------------------------------
   {

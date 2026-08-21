@@ -48,6 +48,11 @@ export interface ScoringInputs {
   readonly isStandingInventory: boolean;
   readonly daysOnSource: number | null;
   readonly hasDuplicate: boolean;
+  /**
+   * Whether the parcel is bare land, per the assessing authority — not per the
+   * list that offered it for sale. `null` means nobody has said.
+   */
+  readonly isVacant: boolean | null;
   readonly analystOverride?: { readonly rule: string; readonly by: string } | null;
 }
 
@@ -558,6 +563,21 @@ export function evaluateRejectionRules(
         overridable: sizeRule.overridable,
       });
     }
+  }
+
+  const improvementRule = enabled('IMPROVEMENTS_PRESENT');
+  if (improvementRule && inputs.isVacant === false) {
+    reasons.push({
+      rule: 'IMPROVEMENTS_PRESENT',
+      // A structure on a tax-forfeited parcel is a liability, not a bonus. It
+      // carries demolition cost, code enforcement exposure and often an
+      // occupant, and none of that is priced by a vacant-land comparable. The
+      // county's list says what is being sold; the assessment roll says what is
+      // on it, and where they disagree the roll is the one that inspected it.
+      explanation:
+        'The assessment roll records a building on this parcel, so it is not the vacant land the sale list describes.',
+      overridable: improvementRule.overridable,
+    });
   }
 
   const duplicateRule = enabled('DUPLICATE_PARCEL');

@@ -14,13 +14,14 @@
     "test": "vitest run --root ../.. --include 'packages/ingestion/src/**/*.test.ts'"
   },
   "dependencies": {
-    "@land-alpha/shared": "workspace:*",
     "@land-alpha/db": "workspace:*",
     "@land-alpha/gis": "workspace:*",
+    "@land-alpha/shared": "workspace:*",
     "@land-alpha/source-registry": "workspace:*",
     "cheerio": "^1.1.2",
     "csv-parse": "^6.1.0",
     "exceljs": "^4.4.0",
+    "fflate": "^0.8.3",
     "unpdf": "^1.4.0",
     "zod": "^3.25.76"
   }

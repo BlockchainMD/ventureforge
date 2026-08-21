@@ -223,6 +223,7 @@ export async function scoreParcelById(parcelId: string): Promise<AlphaScoreResul
         STANDING_INVENTORY_SOURCE_TYPES.includes(parcel.source.sourceType),
       daysOnSource,
       hasDuplicate: duplicates.length > 0,
+      isVacant: parcel.isVacant,
       analystOverride: parcel.rejectionOverriddenBy
         ? { rule: parcel.rejectionOverrideNote ?? '', by: parcel.rejectionOverriddenBy }
         : null,

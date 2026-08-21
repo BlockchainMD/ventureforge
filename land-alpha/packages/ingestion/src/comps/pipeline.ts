@@ -2,6 +2,7 @@ import { prisma, toDecimal } from '@land-alpha/db';
 import { createLogger } from '@land-alpha/shared/logger';
 import { IngestHttpClient } from '../fetch/http';
 import { fetchAssessorSales } from './arcgis-assessor-sales';
+import { fetchFloridaRollSales } from './fl-dor';
 import { compsSourceByKey, COMPS_REGISTRY } from './registry';
 import { validateComparables, type ComparableSaleInput, type CompsImportResult } from './types';
 
@@ -16,6 +17,25 @@ import { validateComparables, type ComparableSaleInput, type CompsImportResult }
 
 const logger = createLogger({ component: 'comps-pipeline' });
 
+/**
+ * Adapters that can run unattended, keyed as the registry names them.
+ *
+ * A source whose adapter is absent here is one we have deliberately not
+ * automated — token-gated, CAPTCHA-protected, or publishing nothing usable —
+ * and asking for it returns the reason rather than an empty result.
+ */
+const COMPS_ADAPTERS: Record<
+  string,
+  (
+    source: ReturnType<typeof compsSourceByKey> & object,
+    http: IngestHttpClient,
+    options: { signal?: AbortSignal },
+  ) => Promise<{ rows: ComparableSaleInput[]; warnings: string[] }>
+> = {
+  'arcgis-assessor-sales': fetchAssessorSales,
+  'fl-dor-roll': fetchFloridaRollSales,
+};
+
 export async function ingestComparableSales(
   sourceKey: string,
   options: { signal?: AbortSignal; http?: IngestHttpClient; limit?: number } = {},
@@ -23,7 +43,8 @@ export async function ingestComparableSales(
   const source = compsSourceByKey(sourceKey);
   if (!source) throw new Error(`Unknown comparable-sales source: ${sourceKey}`);
 
-  if (source.adapterKey !== 'arcgis-assessor-sales') {
+  const adapter = COMPS_ADAPTERS[source.adapterKey];
+  if (!adapter) {
     return {
       discovered: 0,
       accepted: 0,
@@ -35,11 +56,17 @@ export async function ingestComparableSales(
   }
 
   const http = options.http ?? new IngestHttpClient({ signal: options.signal });
+  // `limit` means the same thing to an analyst whichever adapter runs, but the
+  // adapters bound different things: an ArcGIS layer is capped on features
+  // fetched, a bulk roll on comparables kept.
   const effective = options.limit
-    ? { ...source, config: { ...source.config, maxFeatures: options.limit } }
+    ? {
+        ...source,
+        config: { ...source.config, maxFeatures: options.limit, maxComparables: options.limit },
+      }
     : source;
 
-  const { rows, warnings } = await fetchAssessorSales(effective, http, { signal: options.signal });
+  const { rows, warnings } = await adapter(effective, http, { signal: options.signal });
   const { accepted, rejected } = validateComparables(rows);
 
   const written = await persistComparables(accepted);

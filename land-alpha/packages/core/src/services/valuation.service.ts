@@ -24,6 +24,7 @@ import {
 } from '@land-alpha/valuation';
 import { estimateCurativeCostCents } from '@land-alpha/title-research';
 import { FIXTURE_COMP_SOURCE } from '@land-alpha/db/seed/comparables';
+import { FIXTURE_APN_PREFIX } from '@land-alpha/db/seed/fixture-parcels';
 
 /**
  * Valuation orchestration.
@@ -54,6 +55,12 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
   const config = await getActiveScoringConfig();
   const warnings: string[] = [];
 
+  // A fixture parcel draws only on fixture sales and a real parcel only on
+  // recorded ones. Once a county publishes a real roll, letting the two mix
+  // would make a fixture's expected conclusion drift with that county's
+  // market — the specification tests would stop measuring the pipeline.
+  const fixtures = (parcel.apn ?? '').startsWith(FIXTURE_APN_PREFIX) ? 'only' : 'exclude';
+
   const acreage = parcel.acreage;
   const centroid =
     parcel.longitude != null && parcel.latitude != null
@@ -73,6 +80,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       maxAcreage: band.max,
       soldSince: new Date(Date.now() - DEFAULT_COMPS_CONFIG.maxAgeDays * 86_400_000),
       limit: 80,
+      fixtures,
     });
 
     candidates = rows.map((row) => ({
@@ -101,6 +109,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
         maxAcreage: band.max,
         soldSince: new Date(Date.now() - DEFAULT_COMPS_CONFIG.maxAgeDays * 86_400_000),
         limit: 80,
+        fixtures,
       });
       if (countyWide.length > candidates.length) {
         warnings.push(

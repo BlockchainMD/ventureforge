@@ -67,15 +67,20 @@ export const COMPS_REGISTRY: CompsSource[] = defineCompsSources([
     key: 'fl-orange-sales',
     state: 'FL',
     county: 'Orange',
-    name: 'Orange County FL Property Appraiser — parcel sales attributes',
-    adapterKey: 'arcgis-assessor-sales',
+    name: 'Florida DOR tax roll — Orange County qualified vacant sales',
+    adapterKey: 'fl-dor-roll',
     sourceUrl:
-      'https://services1.arcgis.com/0U8EQ1FrumPeIqDb/arcgis/rest/services/Parcels_BCC/FeatureServer/5',
-    status: 'CANDIDATE',
-    enabled: false,
+      'https://floridarevenue.com/property/Pages/DataPortal_RequestAssessmentRollGISData.aspx',
+    status: 'ACTIVE',
+    enabled: true,
+    attribution:
+      'Florida Department of Revenue, Property Tax Oversight — Name-Address-Legal and Sale Data File assessment rolls',
     notes:
-      'The public BCC parcel layer carries SALE_DATE, SALE_ADJ_VALUE and QUAL_CODE, but covers unincorporated Orange County only and yields fewer than twenty qualified vacant-land sales — too thin to value against. The usable source is the Florida DOR annual NAL/SDF tax-roll file, which is a bulk download rather than an API and needs its own importer.',
-    config: {},
+      "Replaces the county's public BCC parcel layer, which covers unincorporated Orange County only and yields fewer than twenty qualified vacant-land sales. The state roll yields several hundred, carries the property appraiser's own vacant/improved and sale-qualification determinations, and uses one format for all 67 Florida counties.",
+    config: {
+      county: 'Orange',
+      soldSince: '2019-01-01',
+    },
   },
   {
     key: 'mi-ottawa-sales',

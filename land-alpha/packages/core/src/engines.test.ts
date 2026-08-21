@@ -535,9 +535,31 @@ function scoringInputs(overrides: Partial<ScoringInputs> = {}): ScoringInputs {
     isStandingInventory: true,
     daysOnSource: 400,
     hasDuplicate: false,
+    isVacant: true,
     ...overrides,
   };
 }
+
+describe('scoreParcel — improvements on the roll', () => {
+  it('rejects a parcel the assessing authority records as improved', () => {
+    const result = scoreParcel(scoringInputs({ isVacant: false }), DEFAULT_SCORING_CONFIG);
+    expect(result.rejected).toBe(true);
+    expect(result.rejectionReasons.map((reason) => reason.rule)).toContain('IMPROVEMENTS_PRESENT');
+  });
+
+  it('does not reject when nobody has said either way', () => {
+    const result = scoreParcel(scoringInputs({ isVacant: null }), DEFAULT_SCORING_CONFIG);
+    expect(result.rejectionReasons.map((reason) => reason.rule)).not.toContain(
+      'IMPROVEMENTS_PRESENT',
+    );
+  });
+
+  it('leaves the rule overridable, because demolition is a real strategy', () => {
+    const result = scoreParcel(scoringInputs({ isVacant: false }), DEFAULT_SCORING_CONFIG);
+    const reason = result.rejectionReasons.find((r) => r.rule === 'IMPROVEMENTS_PRESENT');
+    expect(reason?.overridable).toBe(true);
+  });
+});
 
 describe('scoreParcel', () => {
   it('scores an excellent parcel highly and explains why', () => {

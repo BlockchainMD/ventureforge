@@ -81,9 +81,24 @@ describe('validateComparables', () => {
   it('rejects a price per acre that can only be a unit error', () => {
     // $45,000 across a whole section: the acreage is the section, not the parcel.
     expect(reasons([row({ acreage: 640 })])).toEqual(['price per acre implausibly low (<$100/ac)']);
-    // $45,000 on a tenth of an acre implies the price included a house.
-    expect(reasons([row({ acreage: 0.05 })])).toEqual([
-      'price per acre implausibly high (>$500k/ac)',
+    expect(reasons([row({ acreage: 0.002, salePriceCents: 5_000_000 })])).toEqual([
+      'price per acre implausibly high (>$20m/ac)',
+    ]);
+  });
+
+  it('keeps a small urban lot whose price per acre is high but real', () => {
+    // $45,000 on a twentieth of an acre is $900k per acre. That is not a unit
+    // error — Orange County's 2026 roll puts the ninetieth percentile of
+    // qualified vacant sales at $1.6m per acre. Rejecting these would discard
+    // the urban market and bias every valuation in it downwards.
+    const { accepted, rejected } = validateComparables([row({ acreage: 0.05 })], NOW);
+    expect(accepted).toHaveLength(1);
+    expect(rejected).toEqual([]);
+  });
+
+  it('rejects a transaction too large to be a comparable for surplus land', () => {
+    expect(reasons([row({ salePriceCents: 40_000_000_00, acreage: 200 })])).toEqual([
+      'sale price beyond the comparable range (>$25m)',
     ]);
   });
 
