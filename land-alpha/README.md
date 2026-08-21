@@ -280,6 +280,32 @@ exactly the kind of asset one ends up needing to move.
 When there are no usable comps, the engine says so and returns nothing. It does not invent
 a number.
 
+**Where the comps come from.** `pnpm comps` ingests recorded sales from county assessor
+sales layers. Each row must carry the county's *own* vacant/improved and qualified-sale
+determinations — inferring "this looks like vacant land" from the price would be circular,
+because the price is the thing being explained. Rows that clear those two gates then pass a
+validator that rejects nominal transfers below $1,000, impossible acreages, future dates,
+and prices per acre outside $100–$500,000.
+
+| Source | Status | |
+|---|---|---|
+| Grant County, MN — assessor sales layer | `ACTIVE` | 181 qualified vacant-land sales |
+| St. Louis County, MN — sales comp finder | `TOKEN_REQUIRED` | HTTP 499 to anonymous requests; not worked around |
+| Orange County, FL | `CANDIDATE` | <20 qualified vacant sales published; needs the FL DOR NAL/SDF importer |
+| Ottawa County, MI | `UNAVAILABLE` | The parcel service publishes no sale fields |
+
+For counties that publish a sales file but no API, `importComparablesCsv` takes an analyst
+export. It requires vacant and qualified columns, or an explicit assertion that the file is
+already filtered. It never assumes.
+
+**The counties with real sales and the counties with forfeited inventory do not currently
+overlap**, so every parcel in the database is still valued off development fixtures. Rather
+than let that hide, a valuation touching any fixture comp is **capped at `LOW` confidence**
+no matter how tightly the comps agree, carries a warning saying not to underwrite against
+it, and is flagged in red on the parcel page. Confidence rises on its own, with no code
+change, the moment real comps exist for a county. See
+[`docs/decisions/0008`](docs/decisions/0008-comparable-sales-sourcing.md).
+
 ---
 
 ## Scoring methodology
@@ -420,7 +446,9 @@ Production requires `AUTH_SECRET`; the environment validator refuses to boot wit
 ## Roadmap
 
 **Near term**
-- Recorded-sale importers per county, replacing fixture comps with real deed data
+- FL DOR NAL/SDF importer — one format covering all 67 Florida counties, including the
+  ones we already ingest inventory from; the shortest path to real comps on real parcels
+- More county assessor sales layers, extending the `arcgis-assessor-sales` adapter
 - More Minnesota counties (Crow Wing, Mille Lacs, Aitkin — already registered as candidates)
 - Marion County FL Lands Available PDF adapter
 - Recorder integrations where terms permit, feeding the title pre-screen real instruments

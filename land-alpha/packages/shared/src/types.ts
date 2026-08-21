@@ -221,6 +221,8 @@ export interface ComparableSummary {
   readonly weight: number;
   readonly adjustments: readonly { factor: string; multiplier: number; rationale: string }[];
   readonly source: string;
+  /** True when this comparable is development fixture data, not a recorded sale. */
+  readonly isFixture: boolean;
 }
 
 export interface OpportunityEconomics {

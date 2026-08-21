@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { adjustPricePerAcreForSize, acreageBandFor } from './acreage-curve';
-import { analyzeComps, weightedMedian, type CompCandidate } from './comps';
+import { analyzeComps, DEFAULT_COMPS_CONFIG, weightedMedian, type CompCandidate } from './comps';
 import { valueParcel } from './valuation';
 import { classifyTier, computeEconomics, maximumBidForTargetRatio } from './economics';
 import type { EconomicsCostModel, EconomicsThresholds } from './economics';
@@ -167,6 +167,62 @@ describe('analyzeComps', () => {
       NOW,
     );
     expect(result.warnings.some((w) => w.includes('disagree widely'))).toBe(true);
+  });
+});
+
+describe('analyzeComps — fixture provenance', () => {
+  const subject = { acreage: 5, zoning: 'RR', accessClass: 'A', hasUtilities: false };
+  const clean = [comp(), comp(), comp(), comp(), comp(), comp()];
+
+  it('reaches its normal confidence on recorded sales', () => {
+    const result = analyzeComps(subject, clean, NOW);
+    expect(result.confidence).not.toBe('LOW');
+    expect(result.warnings.some((w) => w.includes('fixture'))).toBe(false);
+  });
+
+  it('caps confidence at LOW as soon as one selected comp is a fixture', () => {
+    // Same six tight comps; one is synthetic. Tightness must not buy confidence
+    // that the underlying data does not support.
+    const withFixture = [comp({ isFixture: true }), ...clean.slice(1)];
+    const result = analyzeComps(subject, withFixture, NOW);
+    expect(result.confidence).toBe('LOW');
+  });
+
+  it('says plainly that the number is not underwritable', () => {
+    const result = analyzeComps(
+      subject,
+      clean.map(() => comp({ isFixture: true })),
+      NOW,
+    );
+    const warning = result.warnings.find((w) => w.includes('fixture'));
+    expect(warning).toBeDefined();
+    expect(warning).toContain('not recorded sales');
+    expect(warning).toContain('Do not underwrite');
+    expect(warning).toContain('6 of the 6');
+  });
+
+  it('marks the individual comps so the UI can flag each row', () => {
+    const result = analyzeComps(subject, [comp({ isFixture: true }), ...clean.slice(1)], NOW);
+    expect(result.comps.filter((c) => c.isFixture)).toHaveLength(1);
+    expect(result.comps.filter((c) => !c.isFixture)).toHaveLength(5);
+  });
+
+  it('carries the cap and the warning through valueParcel', () => {
+    const result = valueParcel(
+      {
+        subject,
+        candidates: clean.map(() => comp({ isFixture: true })),
+        landAssessedValueCents: null,
+      },
+      {
+        comps: DEFAULT_COMPS_CONFIG,
+        quickSaleDiscount: 0.25,
+        investorLiquidationDiscount: 0.45,
+        assessedValueMultiplier: 1.15,
+      },
+    );
+    expect(result.confidence).toBe('LOW');
+    expect(result.warnings.some((w) => w.includes('Do not underwrite'))).toBe(true);
   });
 });
 

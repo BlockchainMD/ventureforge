@@ -7,4 +7,5 @@ export * from './fetch/robots';
 export * from './fetch/arcgis';
 export * from './adapters/index';
 export * from './manual-import';
+export * as comps from './comps/index';
 export * as enrichment from './enrichment/index';

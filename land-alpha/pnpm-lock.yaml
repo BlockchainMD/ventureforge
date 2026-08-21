@@ -296,6 +296,9 @@ importers:
       unpdf:
         specifier: ^1.4.0
         version: 1.8.1
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
 
   packages/listing-engine:
     dependencies:

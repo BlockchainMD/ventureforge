@@ -26,7 +26,8 @@
     "setup": "pnpm db:generate && pnpm db:migrate && pnpm db:seed",
     "ingest": "tsx scripts/ingest.ts",
     "pipeline": "tsx scripts/pipeline.ts",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "comps": "tsx scripts/ingest-comps.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

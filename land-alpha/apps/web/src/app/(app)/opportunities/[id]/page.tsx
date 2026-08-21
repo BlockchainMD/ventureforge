@@ -232,6 +232,16 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                 <Metric label="Confidence">{parcel.valuationConfidence}</Metric>
               </MetricGrid>
 
+              {parcel.comparableLinks.some((link) =>
+                link.comparable.source.startsWith('Development fixture'),
+              ) ? (
+                <p className="mt-3 rounded-sm border border-bad/40 bg-bad/10 px-2 py-1.5 text-[11px] leading-relaxed text-bad">
+                  This valuation is built on development fixture data, not recorded sales. It
+                  demonstrates the pipeline; it is not an underwriting input. Import real comparable
+                  sales for {parcel.county} County before acting on these figures.
+                </p>
+              ) : null}
+
               {parcel.valuationWarnings.length > 0 ? (
                 <ul className="mt-3 space-y-1 border-t border-line pt-2">
                   {parcel.valuationWarnings.map((warning) => (
@@ -269,6 +279,11 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                         <span className="num text-[11px] text-ink-muted">
                           <Value>{link.comparable.apn}</Value>
                         </span>
+                        {link.comparable.source.startsWith('Development fixture') ? (
+                          <Badge tone="bad" className="ml-1.5">
+                            fixture
+                          </Badge>
+                        ) : null}
                       </Td>
                       <Td>{formatDate(link.comparable.saleDate)}</Td>
                       <Td align="right">{formatCents(toCents(link.comparable.salePrice))}</Td>

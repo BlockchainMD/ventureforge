@@ -23,6 +23,7 @@ import {
   type CompCandidate,
 } from '@land-alpha/valuation';
 import { estimateCurativeCostCents } from '@land-alpha/title-research';
+import { FIXTURE_COMP_SOURCE } from '@land-alpha/db/seed/comparables';
 
 /**
  * Valuation orchestration.
@@ -85,6 +86,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       accessClass: row.accessClass,
       hasUtilities: row.hasUtilities,
       source: row.source,
+      isFixture: row.source === FIXTURE_COMP_SOURCE,
     }));
 
     // Fall back to a county-wide search before giving up: a thin rural county
@@ -115,6 +117,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
           accessClass: row.accessClass,
           hasUtilities: row.hasUtilities,
           source: row.source,
+          isFixture: row.source === FIXTURE_COMP_SOURCE,
         }));
       }
     }

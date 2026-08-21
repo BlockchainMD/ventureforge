@@ -25,6 +25,12 @@ export interface CompCandidate {
   readonly accessClass: string | null;
   readonly hasUtilities: boolean | null;
   readonly source: string;
+  /**
+   * True when this row is development fixture data rather than a recorded sale.
+   * A valuation built on fixtures is a demonstration, not an underwriting
+   * input, and the engine must say so rather than let the two look alike.
+   */
+  readonly isFixture?: boolean;
 }
 
 export interface SubjectProfile {
@@ -173,6 +179,7 @@ export function analyzeComps(
       weight: compWeight(candidate, subject, ageDays, config),
       adjustments,
       source: candidate.source,
+      isFixture: candidate.isFixture ?? false,
     });
   }
 
@@ -226,13 +233,23 @@ export function analyzeComps(
     warnings.push('No comparable sale could be geolocated; proximity was not verified.');
   }
 
+  const fixtureCount = candidates.filter((candidate) => candidate.isFixture).length;
+  const usedFixtures = selected.some((comp) => comp.isFixture);
+  if (usedFixtures) {
+    warnings.push(
+      `This valuation uses development fixture data, not recorded sales. ${fixtureCount} of the ${candidates.length} candidate sales for this area are synthetic. Do not underwrite an acquisition against it.`,
+    );
+  }
+
   return {
     comps: selected,
     pricePerAcre: central == null ? null : Math.round(central),
     pricePerAcreLow: low == null ? null : Math.round(low),
     pricePerAcreHigh: high == null ? null : Math.round(high),
     dispersion,
-    confidence: compsConfidence(selected, dispersion),
+    // Fixture-backed valuations are capped at LOW no matter how tight the
+    // comps look — synthetic data agreeing with itself is not evidence.
+    confidence: usedFixtures ? 'LOW' : compsConfidence(selected, dispersion),
     warnings,
     rejectedCount,
   };
