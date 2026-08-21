@@ -3,6 +3,7 @@ import { prisma, getActiveScoringConfig, spatial, toCents } from '@land-alpha/db
 import { FIXTURE_PARCELS } from '@land-alpha/db/seed/fixture-parcels';
 import {
   collectRealisedOutcomes,
+  evaluateAlertRules,
   createNote,
   previewFinancing,
   recordPayment,
@@ -539,6 +540,79 @@ describe('seller financing', () => {
       expect(['CASH', 'FINANCE', 'EITHER']).toContain(preview!.comparison.recommendation);
     } finally {
       await prisma.parcelOpportunity.deleteMany({ where: { apn: FIN_APN } });
+    }
+  });
+});
+
+/**
+ * Alerts, end to end.
+ *
+ * The behaviour that matters is the one the previous implementation could not
+ * do: notify about a price cut on a parcel the analyst has already been told
+ * about. A parcel re-offered at a falling price is the strongest signal this
+ * product has, and it used to be silent.
+ */
+describe('speed alerts', () => {
+  spec('fires on a price cut for a parcel already notified', async () => {
+    const user = await prisma.user.findFirst({ select: { id: true } });
+    const parcel = await prisma.parcelOpportunity.findFirst({
+      where: { rejected: false, alphaScore: { gte: 50 } },
+      select: { id: true, county: true, state: true },
+    });
+    expect(parcel, 'a scored parcel is needed').not.toBeNull();
+
+    const rule = await prisma.alertRule.create({
+      data: {
+        userId: user!.id,
+        name: 'Integration test rule',
+        filters: { minAlphaScore: 50, includeRejected: false },
+        enabled: true,
+        lastEvaluatedAt: new Date(Date.now() - 3_600_000),
+      },
+      select: { id: true },
+    });
+
+    try {
+      // First event: the parcel appears.
+      const created = await prisma.parcelChange.create({
+        data: { parcelId: parcel!.id, kind: 'CREATED', detectedAt: new Date() },
+        select: { id: true },
+      });
+      let evaluations = await evaluateAlertRules({ ruleId: rule.id });
+      expect(evaluations[0]!.notified).toBeGreaterThanOrEqual(1);
+
+      // Same parcel, later, at a lower price. The old implementation
+      // suppressed this because the parcel had already been notified.
+      await prisma.parcelChange.create({
+        data: {
+          parcelId: parcel!.id,
+          kind: 'PRICE_CHANGED',
+          field: 'askingPrice',
+          oldValue: '4000',
+          newValue: '2500',
+          detectedAt: new Date(),
+        },
+      });
+      evaluations = await evaluateAlertRules({ ruleId: rule.id });
+      expect(evaluations[0]!.notified).toBe(1);
+      expect(evaluations[0]!.byKind.PRICE_CHANGED).toBe(1);
+
+      const cut = await prisma.notification.findFirst({
+        where: { alertRuleId: rule.id, title: { contains: 'Price cut' } },
+        select: { title: true, body: true, urgency: true },
+      });
+      expect(cut).not.toBeNull();
+      expect(cut!.title).toContain('Price cut 38%');
+      expect(cut!.urgency).toBe('IMMEDIATE');
+
+      // Re-running must not duplicate: dedupe keys on the change.
+      const before = await prisma.notification.count({ where: { alertRuleId: rule.id } });
+      await evaluateAlertRules({ ruleId: rule.id });
+      expect(await prisma.notification.count({ where: { alertRuleId: rule.id } })).toBe(before);
+      expect(created.id).toBeTruthy();
+    } finally {
+      await prisma.notification.deleteMany({ where: { alertRuleId: rule.id } });
+      await prisma.alertRule.delete({ where: { id: rule.id } });
     }
   });
 });

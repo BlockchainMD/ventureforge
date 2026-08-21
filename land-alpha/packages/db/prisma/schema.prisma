@@ -1319,6 +1319,13 @@ model Notification {
   body        String
   linkPath    String?
   parcelId    String?
+  /// The change that triggered this, when one did. Deduplication keys on it
+  /// rather than on the parcel, because a price drop on a parcel already
+  /// notified is precisely the alert worth sending.
+  parcelChangeId String?
+  /// Sorting key for the analyst's queue: a sale in three days outranks a
+  /// better parcel selling in three months.
+  urgency     String   @default("NORMAL")
   readAt      DateTime?
   deliveredAt DateTime?
   createdAt   DateTime @default(now())
@@ -1326,7 +1333,9 @@ model Notification {
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   alertRule AlertRule? @relation(fields: [alertRuleId], references: [id], onDelete: SetNull)
 
+  @@unique([alertRuleId, parcelChangeId])
   @@index([userId, readAt, createdAt])
+  @@index([userId, urgency, createdAt])
 }
 
 model InvestmentMemo {

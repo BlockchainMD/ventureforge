@@ -1,32 +1,53 @@
-import { buildWhere, prisma, type Prisma } from '@land-alpha/db';
+import { buildWhere, prisma, toCents, type Prisma } from '@land-alpha/db';
 import type { OpportunityFilter } from '@land-alpha/shared';
 import { formatCents, formatPercent } from '@land-alpha/shared';
 import { createLogger } from '@land-alpha/shared/logger';
 
 /**
- * Alert evaluation.
+ * Alert evaluation, driven by what changed.
  *
  * An alert rule is a stored `OpportunityFilter`, and evaluation runs it through
- * exactly the same `buildWhere` the opportunity table uses. That is deliberate:
- * an alert that fires on a different result set than the saved search it was
- * created from would be worse than no alert at all.
+ * exactly the same `buildWhere` the opportunity table uses. An alert that fired
+ * on a different result set than the saved search it was created from would be
+ * worse than no alert at all.
  *
- * Only parcels that became matches *since the last evaluation* notify, so a
- * standing rule does not re-alert on the same inventory every hour.
+ * What it fires *on* is the point. This used to notify only about parcels that
+ * were new since the last run, which meant a parcel already notified could
+ * never notify again — so a price cut on a parcel an analyst was watching was
+ * silent. In this market that is the single most valuable event there is: a
+ * parcel re-offered at a falling price is the strongest signal the product has,
+ * and it was the one signal the alerts could not deliver.
+ *
+ * So evaluation reads the change log. Four events are time-critical:
+ *
+ *   CREATED        new inventory, first appearance
+ *   PRICE_CHANGED  a reduction — an increase is noted, not alerted
+ *   REAPPEARED     failed at auction and returned, usually cheaper
+ *   AUCTION_DATE_CHANGED   the deadline moved, possibly closer
+ *
+ * Deduplication keys on the change rather than the parcel, so each distinct
+ * event notifies once and no event is suppressed by an earlier one.
  */
 
 const logger = createLogger({ component: 'alert-service' });
+
+/** Ordered most urgent first; this is the analyst's queue order. */
+export type AlertUrgency = 'IMMEDIATE' | 'HIGH' | 'NORMAL';
+
+const ALERTING_KINDS = ['CREATED', 'PRICE_CHANGED', 'REAPPEARED', 'AUCTION_DATE_CHANGED'] as const;
 
 export interface AlertEvaluation {
   readonly ruleId: string;
   readonly ruleName: string;
   readonly matched: number;
   readonly notified: number;
+  readonly byKind: Record<string, number>;
 }
 
 export async function evaluateAlertRules(
-  options: { ruleId?: string } = {},
+  options: { ruleId?: string; now?: Date } = {},
 ): Promise<AlertEvaluation[]> {
+  const now = options.now ?? new Date();
   const rules = await prisma.alertRule.findMany({
     where: { enabled: true, ...(options.ruleId ? { id: options.ruleId } : {}) },
     include: { user: { select: { id: true, email: true } } },
@@ -38,78 +59,83 @@ export async function evaluateAlertRules(
     const filter = rule.filters as unknown as OpportunityFilter;
     const where = buildWhere(filter) as Prisma.ParcelOpportunityWhereInput;
 
-    // Only parcels first seen (or re-scored) since the last evaluation can be
-    // new matches; everything older has already been considered.
-    const since = rule.lastEvaluatedAt;
-    const freshWhere: Prisma.ParcelOpportunityWhereInput = since
-      ? {
-          AND: [where, { OR: [{ firstSeenAt: { gte: since } }, { scoredAt: { gte: since } }] }],
-        }
-      : where;
+    // Everything that happened to matching inventory since this rule last ran.
+    // On a rule's first evaluation, look back a day rather than over the whole
+    // history — a new rule should not deliver a year of old price changes.
+    const since = rule.lastEvaluatedAt ?? new Date(now.getTime() - 86_400_000);
 
-    const matches = await prisma.parcelOpportunity.findMany({
-      where: freshWhere,
-      orderBy: { alphaScore: 'desc' },
-      take: 25,
-      select: {
-        id: true,
-        apn: true,
-        county: true,
-        state: true,
-        acreage: true,
-        alphaScore: true,
-        askingPrice: true,
-        minimumBid: true,
-        basisToQsv: true,
+    const changes = await prisma.parcelChange.findMany({
+      where: {
+        detectedAt: { gt: since },
+        kind: { in: [...ALERTING_KINDS] },
+        parcel: where,
+      },
+      orderBy: { detectedAt: 'desc' },
+      take: 200,
+      include: {
+        parcel: {
+          select: {
+            id: true,
+            apn: true,
+            county: true,
+            state: true,
+            acreage: true,
+            alphaScore: true,
+            askingPrice: true,
+            minimumBid: true,
+            basisToQsv: true,
+            auctionDate: true,
+            offerDeadline: true,
+          },
+        },
       },
     });
 
     let notified = 0;
-    for (const parcel of matches) {
-      // A parcel already notified for this rule is not notified again.
-      const existing = await prisma.notification.findFirst({
-        where: { alertRuleId: rule.id, parcelId: parcel.id },
-        select: { id: true },
-      });
-      if (existing) continue;
+    const byKind: Record<string, number> = {};
 
-      const price = parcel.askingPrice ?? parcel.minimumBid;
-      await prisma.notification.create({
-        data: {
-          userId: rule.userId,
-          alertRuleId: rule.id,
-          channel: 'IN_APP',
-          parcelId: parcel.id,
-          title: `${rule.name}: ${parcel.county} County, ${parcel.state}`,
-          body: [
-            parcel.alphaScore == null ? null : `Alpha ${Math.round(parcel.alphaScore)}`,
-            parcel.acreage == null ? null : `${parcel.acreage.toFixed(2)} ac`,
-            price == null ? null : formatCents(Math.round(Number(price) * 100)),
-            parcel.basisToQsv == null
-              ? null
-              : `basis ${formatPercent(parcel.basisToQsv, 0)} of QSV`,
-          ]
-            .filter(Boolean)
-            .join(' · '),
-          linkPath: `/opportunities/${parcel.id}`,
-        },
-      });
+    for (const change of changes) {
+      const message = describeChange(change, now);
+      if (!message) continue; // e.g. a price increase: recorded, not alerted
+
+      // One notification per rule per change. The unique constraint makes the
+      // race between two concurrent evaluations harmless rather than duplicated.
+      try {
+        await prisma.notification.create({
+          data: {
+            userId: rule.userId,
+            alertRuleId: rule.id,
+            parcelChangeId: change.id,
+            channel: 'IN_APP',
+            parcelId: change.parcelId,
+            urgency: message.urgency,
+            title: message.title,
+            body: message.body,
+            linkPath: `/opportunities/${change.parcelId}`,
+          },
+        });
+      } catch (error) {
+        if (isUniqueViolation(error)) continue;
+        throw error;
+      }
       notified += 1;
+      byKind[change.kind] = (byKind[change.kind] ?? 0) + 1;
     }
 
     await prisma.alertRule.update({
       where: { id: rule.id },
       data: {
-        lastEvaluatedAt: new Date(),
-        ...(notified > 0 ? { lastMatchAt: new Date(), matchCount: { increment: notified } } : {}),
+        lastEvaluatedAt: now,
+        ...(notified > 0 ? { lastMatchAt: now, matchCount: { increment: notified } } : {}),
       },
     });
 
     evaluations.push({
       ruleId: rule.id,
       ruleName: rule.name,
-      matched: matches.length,
+      matched: changes.length,
       notified,
+      byKind,
     });
   }
 
@@ -119,4 +145,122 @@ export async function evaluateAlertRules(
   });
 
   return evaluations;
+}
+
+interface ChangeWithParcel {
+  kind: string;
+  oldValue: string | null;
+  newValue: string | null;
+  parcel: {
+    apn: string | null;
+    county: string;
+    state: string;
+    acreage: number | null;
+    alphaScore: number | null;
+    askingPrice: Prisma.Decimal | null;
+    minimumBid: Prisma.Decimal | null;
+    basisToQsv: number | null;
+    auctionDate: Date | null;
+    offerDeadline: Date | null;
+  };
+}
+
+/**
+ * What to say, and how loudly.
+ *
+ * The title names the event rather than the parcel, because an analyst
+ * scanning a queue needs to know what happened before they need to know where.
+ */
+export function describeChange(
+  change: ChangeWithParcel,
+  now: Date,
+): { title: string; body: string; urgency: AlertUrgency } | null {
+  const parcel = change.parcel;
+  const where = `${parcel.county} County, ${parcel.state}`;
+  const price = toCents(parcel.askingPrice) ?? toCents(parcel.minimumBid);
+
+  const facts = [
+    parcel.alphaScore == null ? null : `Alpha ${Math.round(parcel.alphaScore)}`,
+    parcel.acreage == null ? null : `${parcel.acreage.toFixed(2)} ac`,
+    price == null ? null : formatCents(price),
+    parcel.basisToQsv == null ? null : `basis ${formatPercent(parcel.basisToQsv, 0)} of QSV`,
+    parcel.apn ? `APN ${parcel.apn}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const deadline = soonestDeadline(parcel, now);
+  const deadlineUrgency: AlertUrgency =
+    deadline == null ? 'NORMAL' : deadline <= 3 ? 'IMMEDIATE' : deadline <= 14 ? 'HIGH' : 'NORMAL';
+  const deadlineNote =
+    deadline == null
+      ? ''
+      : deadline <= 0
+        ? ' Sale date has passed.'
+        : ` Sale in ${deadline} day${deadline === 1 ? '' : 's'}.`;
+
+  switch (change.kind) {
+    case 'PRICE_CHANGED': {
+      const before = Number(change.oldValue);
+      const after = Number(change.newValue);
+      if (!Number.isFinite(before) || !Number.isFinite(after) || before <= 0) return null;
+      // A price rise is recorded by change detection but is not news worth
+      // interrupting anyone for.
+      if (after >= before) return null;
+      const cut = (before - after) / before;
+      return {
+        title: `Price cut ${formatPercent(cut, 0)} — ${where}`,
+        body: `${formatCents(Math.round(before * 100))} → ${formatCents(Math.round(after * 100))}. ${facts}${deadlineNote}`,
+        // A deep cut is how these parcels finally clear, and it does not last.
+        urgency:
+          cut >= 0.25 ? 'IMMEDIATE' : cut >= 0.1 ? 'HIGH' : maxUrgency('NORMAL', deadlineUrgency),
+      };
+    }
+    case 'REAPPEARED':
+      return {
+        title: `Back on the list — ${where}`,
+        body: `Failed to sell and has returned to inventory, usually at a lower price. ${facts}${deadlineNote}`,
+        urgency: maxUrgency('HIGH', deadlineUrgency),
+      };
+    case 'AUCTION_DATE_CHANGED':
+      // Only worth an alert if the new date is close.
+      if (deadlineUrgency === 'NORMAL') return null;
+      return {
+        title: `Sale date moved — ${where}`,
+        body: `${facts}${deadlineNote}`,
+        urgency: deadlineUrgency,
+      };
+    case 'CREATED':
+      return {
+        title: `New match — ${where}`,
+        body: `${facts}${deadlineNote}`,
+        urgency: maxUrgency('NORMAL', deadlineUrgency),
+      };
+    default:
+      return null;
+  }
+}
+
+function soonestDeadline(
+  parcel: { auctionDate: Date | null; offerDeadline: Date | null },
+  now: Date,
+): number | null {
+  const dates = [parcel.auctionDate, parcel.offerDeadline].filter(
+    (date): date is Date => date != null,
+  );
+  if (dates.length === 0) return null;
+  const soonest = dates.reduce((a, b) => (a < b ? a : b));
+  return Math.ceil((soonest.getTime() - now.getTime()) / 86_400_000);
+}
+
+const URGENCY_RANK: Record<AlertUrgency, number> = { NORMAL: 0, HIGH: 1, IMMEDIATE: 2 };
+
+function maxUrgency(a: AlertUrgency, b: AlertUrgency): AlertUrgency {
+  return URGENCY_RANK[a] >= URGENCY_RANK[b] ? a : b;
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' && error != null && (error as { code?: string }).code === 'P2002'
+  );
 }
