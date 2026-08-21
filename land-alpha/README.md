@@ -289,22 +289,79 @@ and prices per acre outside $100–$500,000.
 
 | Source | Status | |
 |---|---|---|
-| Grant County, MN — assessor sales layer | `ACTIVE` | 181 qualified vacant-land sales |
+| Marion County, FL — state roll | `ACTIVE` | 4,883 sales · median $68,138/ac |
+| Citrus County, FL — state roll | `ACTIVE` | 3,189 sales · median $58,065/ac |
+| Orange County, FL — state roll | `ACTIVE` | 655 sales · median $171,410/ac |
+| Grant County, MN — assessor sales layer | `ACTIVE` | 181 sales · median $7,159/ac |
+| Polk / Lake / Volusia / Osceola, FL | `ACTIVE` | Registered, not enabled — each import pulls tens of MB from a public server |
 | St. Louis County, MN — sales comp finder | `TOKEN_REQUIRED` | HTTP 499 to anonymous requests; not worked around |
-| Orange County, FL | `CANDIDATE` | <20 qualified vacant sales published; needs the FL DOR NAL/SDF importer |
-| Ottawa County, MI | `UNAVAILABLE` | The parcel service publishes no sale fields |
+| Ottawa County, MI · Mille Lacs County, MN | `UNAVAILABLE` | Parcel services publish no sale fields |
+
+Florida publishes the same NAL (property roll) and SDF (sale data) files for all
+67 counties, so a county is one line of configuration. Neither file is a
+comparable alone — the SDF knows a sale happened and whether the appraiser
+qualified it, only the NAL knows how big the parcel is — so the importer joins
+them and gates on four independent facts, including the roll's own building
+count. That last gate vetoed 185 of Orange County's 845 appraiser-marked-vacant
+rows. See [`docs/decisions/0009`](docs/decisions/0009-florida-tax-roll-importer.md).
 
 For counties that publish a sales file but no API, `importComparablesCsv` takes an analyst
 export. It requires vacant and qualified columns, or an explicit assertion that the file is
 already filtered. It never assumes.
 
-**The counties with real sales and the counties with forfeited inventory do not currently
-overlap**, so every parcel in the database is still valued off development fixtures. Rather
-than let that hide, a valuation touching any fixture comp is **capped at `LOW` confidence**
-no matter how tightly the comps agree, carries a warning saying not to underwrite against
-it, and is flagged in red on the parcel page. Confidence rises on its own, with no code
-change, the moment real comps exist for a county. See
-[`docs/decisions/0008`](docs/decisions/0008-comparable-sales-sourcing.md).
+Synthetic and recorded sales never mix. A fixture parcel is valued only against
+fixture comparables and a real parcel only against recorded sales — a fixture
+whose expected conclusion tracks the Orlando land market is not a specification.
+Fixture-backed valuations are capped at `LOW` confidence, carry a
+do-not-underwrite warning, and are flagged in red on the parcel page.
+
+Florida valuations are also capped at `LOW`, for a different reason: the state
+roll carries no coordinates, and plenty of agreeing sales is not the same as
+plenty of nearby ones. Geolocating them is the highest-value open item.
+
+---
+
+## Deciding, not just describing
+
+Valuation says what a parcel is worth. These decide what to do about it.
+
+**Time to exit.** Return is annualised, so hold time is half the answer. Every
+parcel used to assume 180 days, which meant two parcels with 1534% and 1507%
+raw return ranked together while their annualised returns were 478% and 1804%.
+A baseline hold is now adjusted by named factors — size, price band, access,
+buildability, utilities, market depth — and class A access averages 202 days
+against 876 for class D. Roll files record that a sale happened, not how long it
+was listed, so this is a reasoned assumption rather than a measurement, and its
+confidence is capped until realised hold times exist to correct it.
+
+**Calibration.** `pnpm calibrate` grades predicted quick-sale value and hold
+period against what parcels actually sold for and how long they took, per
+market, and feeds corrections back. It grades the valuation in force *at
+acquisition*, not today's — today's has the benefit of comparables recorded
+after the purchase. It uses a median, refuses to correct below five closed sales
+in a market, and bounds every correction. With no closed deals it says so
+plainly rather than emitting factors.
+
+**Cash or carry.** A $15,000 parcel sold outright returns $15,000; at 10% down
+over 84 months it returns about $21,400 nominal and reaches a far wider pool of
+buyers, but locks the capital up for seven years. The engine amortises in
+integer cents, computes the IRR of the payment stream, and compares it against
+the annualised return of a cash sale. The ledger stores payments and derives the
+schedule, so a note cannot drift out of agreement with its own arithmetic.
+
+**Capital allocation.** `/allocate` answers the question a ranked list cannot:
+given $50,000, which *set* of parcels? Bounded knapsack on expected profit per
+dollar per year, capped at 40% per county and 25% per parcel, with every
+exclusion explained. It flags a pick implying more than 500% a year as more
+likely a valuation error than an opportunity — it is the last place a bad
+valuation can be caught before someone acts on it.
+
+**Speed.** Alerts fire on the change log rather than on what is new, so a price
+cut on a parcel you already know about is no longer silent. A cut of 25% or more
+is immediate; a price *increase* is recorded and not alerted; anything on a
+parcel selling within three days is immediate.
+
+See [`docs/decisions/0010`](docs/decisions/0010-profitability-engines.md).
 
 ---
 
@@ -411,6 +468,8 @@ pnpm lint
 pnpm verify        # all three
 pnpm smoke         # drive the real app in a browser (needs pnpm dev running)
 pnpm audit:responsive   # check every route at a phone viewport (needs pnpm dev running)
+pnpm calibrate     # grade past predictions against realised outcomes
+pnpm comps --enrich-fl Orange   # fill parcel facts from the Florida roll
 ```
 
 Integration tests run against a real PostGIS database and **skip themselves** when none is

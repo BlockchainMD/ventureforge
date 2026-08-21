@@ -53,6 +53,8 @@ const routes = [
   '/ingestion',
   '/settings',
   '/admin/scoring',
+  '/admin/calibration',
+  '/allocate',
   '/properties',
   await detailHref('/opportunities'),
   await detailHref('/sources'),

@@ -1,4 +1,4 @@
-import { defineCompsSources, type CompsSource } from './types';
+import { type CompsSourceInput, defineCompsSources, type CompsSource } from './types';
 
 /**
  * The comparable-sales registry.
@@ -9,6 +9,36 @@ import { defineCompsSources, type CompsSource } from './types';
  * which are behind a token, and which were checked and found to publish
  * nothing — otherwise the same investigation gets repeated.
  */
+/**
+ * A Florida county's comparable sales, from the state roll.
+ *
+ * Florida is the one state in scope that publishes the same two files for all
+ * 67 of its counties, so adding a county is configuration rather than an
+ * adapter. Every entry below has been confirmed present in the current
+ * submission round; what varies between them is how much vacant land actually
+ * changes hands, which the import reports rather than this file guessing.
+ */
+function floridaCounty(county: string, note: string): CompsSourceInput {
+  return {
+    key: `fl-${county.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-sales`,
+    state: 'FL',
+    county,
+    name: `Florida DOR tax roll — ${county} County qualified vacant sales`,
+    adapterKey: 'fl-dor-roll',
+    sourceUrl:
+      'https://floridarevenue.com/property/Pages/DataPortal_RequestAssessmentRollGISData.aspx',
+    status: 'ACTIVE',
+    // Registered but not run by default: each import pulls a property roll of
+    // tens of megabytes from a public server, and doing that for counties whose
+    // inventory we do not yet carry would be taking without needing.
+    enabled: false,
+    attribution:
+      'Florida Department of Revenue, Property Tax Oversight — Name-Address-Legal and Sale Data File assessment rolls',
+    notes: note,
+    config: { county, soldSince: '2019-01-01' },
+  };
+}
+
 export const COMPS_REGISTRY: CompsSource[] = defineCompsSources([
   // =========================================================================
   // ACTIVE — verified against the live endpoint
@@ -96,6 +126,44 @@ export const COMPS_REGISTRY: CompsSource[] = defineCompsSources([
       'The public parcel layer carries assessed and taxable values but no sale price or sale date, and the county publishes no separate sales service. Michigan sale data is recorded on property transfer affidavits held by the local assessing unit. Comparable sales for this county must be imported.',
     config: {},
   },
+  {
+    key: 'mn-mille-lacs-sales',
+    state: 'MN',
+    county: 'Mille Lacs',
+    name: 'Mille Lacs County MN — assessor tax parcels',
+    adapterKey: 'manual-comps-import',
+    sourceUrl:
+      'https://gis.co.mille-lacs.mn.us/arcgis/rest/services/Assessors/TaxParcels/MapServer/0',
+    status: 'UNAVAILABLE',
+    enabled: false,
+    notes:
+      'The county publishes one assessor parcel layer and it carries no sale price, sale date, qualification code or acreage — nothing a comparable needs. Checked alongside Crow Wing (no public ArcGIS host), Aitkin and Itasca (no host reachable). Minnesota has no statewide equivalent of the Florida roll, so each county has to be investigated on its own and most publish nothing usable.',
+    config: {},
+  },
+  floridaCounty(
+    'Marion',
+    'Ocala and the surrounding acreage — one of the most active vacant-land markets in the state, and the county behind the Lands Available PDF adapter on the roadmap.',
+  ),
+  floridaCounty(
+    'Polk',
+    'Between Tampa and Orlando, with a large stock of platted-but-unbuilt subdivision lots — the archetypal parcel this product exists to find.',
+  ),
+  floridaCounty(
+    'Lake',
+    'Rural acreage immediately north-west of Orange County; the natural comparable market for larger Orange parcels, which Orange itself has few of.',
+  ),
+  floridaCounty(
+    'Volusia',
+    'Deltona and the surrounding platted lots, adjacent to both Orange and Lake.',
+  ),
+  floridaCounty(
+    'Osceola',
+    'South of Orange, with extensive platted rural subdivisions from the 1960s and 70s.',
+  ),
+  floridaCounty(
+    'Citrus',
+    'Citrus Springs and Beverly Hills — very large inventories of small platted lots that transact steadily and cheaply.',
+  ),
 ]);
 
 export function compsSourceByKey(key: string): CompsSource | undefined {
