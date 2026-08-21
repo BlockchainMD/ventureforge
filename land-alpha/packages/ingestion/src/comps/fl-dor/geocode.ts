@@ -1,3 +1,10 @@
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- see below
+/// <reference path="./shapefile.d.ts" />
+// `shapefile` ships no types, and the web app typechecks this file through its
+// own tsconfig, which does not include a sibling declaration. A reference is
+// the mechanism TypeScript provides for a file that has to carry its own
+// declaration across a compilation boundary; an import cannot substitute,
+// because importing the untyped module is the thing being declared.
 import { open as openShapefile } from 'shapefile';
 import { unzipSync } from 'fflate';
 import { prisma } from '@land-alpha/db';
