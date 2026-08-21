@@ -5,6 +5,7 @@
  *   pnpm comps mn-grant-sales         ingest one source
  *   pnpm comps --all                  ingest every enabled source
  *   pnpm comps --enrich-fl Orange     fill parcel facts from the Florida roll
+ *   pnpm comps --geocode-fl Marion    put the county's comparables on the map
  */
 import { prisma } from '@land-alpha/db';
 import { comps, IngestHttpClient } from '@land-alpha/ingestion';
@@ -13,6 +14,23 @@ async function main(): Promise<void> {
   const key = process.argv[2];
   const limitFlag = process.argv.indexOf('--limit');
   const limit = limitFlag > -1 ? Number(process.argv[limitFlag + 1]) : undefined;
+
+  if (key === '--geocode-fl') {
+    const counties = process.argv.slice(3).filter((arg) => !arg.startsWith('--'));
+    if (counties.length === 0) throw new Error('Usage: pnpm comps --geocode-fl <County> [County…]');
+    const http = new IngestHttpClient();
+    for (const county of counties) {
+      const result = await comps.geocodeFloridaComparables(http, { county });
+      console.log(`\n─── Geocoding ${county} County ───`);
+      console.log(`  comparables needing a location  ${result.comparablesWanted}`);
+      console.log(`  parcels scanned                 ${result.parcelsScanned}`);
+      console.log(`  located                         ${result.located}`);
+      if (result.srid) console.log(`  source projection               EPSG:${result.srid}`);
+      for (const warning of result.warnings) console.log(`  ! ${warning}`);
+    }
+    console.log('');
+    return;
+  }
 
   if (key === '--enrich-fl') {
     const county = process.argv[3];

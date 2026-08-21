@@ -99,7 +99,16 @@ export class IngestHttpClient {
     this.signal = options.signal;
   }
 
-  async get(url: string, headers: Record<string, string> = {}): Promise<HttpResponse> {
+  /**
+   * `options.timeoutMs` raises the per-request deadline for a bulk download.
+   * The default suits an API response; a county parcel archive is a quarter of
+   * a gigabyte and will not arrive inside it.
+   */
+  async get(
+    url: string,
+    headers: Record<string, string> = {},
+    options: { timeoutMs?: number } = {},
+  ): Promise<HttpResponse> {
     if (this.offline) return this.readOffline(url);
 
     if (this.stats.requestCount >= this.maxRequests) {
@@ -133,7 +142,7 @@ export class IngestHttpClient {
       await this.throttle(parsed.host, this.minDelayMs);
     }
 
-    return withRetry(() => this.performGet(url, headers), {
+    return withRetry(() => this.performGet(url, headers, options.timeoutMs), {
       attempts: 3,
       onRetry: (error, attempt, delayMs) =>
         // Query strings on ArcGIS requests run to thousands of characters;
@@ -162,9 +171,13 @@ export class IngestHttpClient {
     }
   }
 
-  private async performGet(url: string, headers: Record<string, string>): Promise<HttpResponse> {
+  private async performGet(
+    url: string,
+    headers: Record<string, string>,
+    timeoutMs?: number,
+  ): Promise<HttpResponse> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), timeoutMs ?? this.timeoutMs);
     this.signal?.addEventListener('abort', () => controller.abort(), { once: true });
 
     try {
