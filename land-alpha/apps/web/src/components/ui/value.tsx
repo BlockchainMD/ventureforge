@@ -57,15 +57,28 @@ export function Metric({
   );
 }
 
+/**
+ * `columns` is the count a wide terminal gets. Narrower viewports step down to
+ * four and then two, because six 65px columns on a phone is not a dense
+ * information display — it is an unreadable one.
+ */
 export function MetricGrid({
   columns = 4,
   className,
+  style,
   ...props
 }: React.HTMLAttributes<HTMLDListElement> & { columns?: number }) {
   return (
     <dl
-      className={cn('grid gap-x-4 gap-y-3', className)}
-      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+      className={cn('metric-grid gap-x-4 gap-y-3', className)}
+      style={
+        {
+          '--metric-cols': columns,
+          '--metric-cols-mid': Math.min(columns, 4),
+          '--metric-cols-narrow': Math.min(columns, 2),
+          ...style,
+        } as React.CSSProperties
+      }
       {...props}
     />
   );

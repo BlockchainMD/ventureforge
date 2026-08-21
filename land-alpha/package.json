@@ -27,6 +27,7 @@
     "ingest": "tsx scripts/ingest.ts",
     "pipeline": "tsx scripts/pipeline.ts",
     "smoke": "node scripts/smoke.mjs",
+    "audit:responsive": "node scripts/responsive-audit.mjs",
     "comps": "tsx scripts/ingest-comps.ts"
   },
   "devDependencies": {

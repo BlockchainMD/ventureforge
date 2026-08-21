@@ -58,7 +58,7 @@ export default async function SettingsPage() {
         subtitle="System configuration, integrations and audit history"
       />
 
-      <div className="space-y-3 p-4">
+      <div className="space-y-3 p-3 sm:p-4">
         <Panel>
           <PanelHeader title="Data" />
           <PanelBody>

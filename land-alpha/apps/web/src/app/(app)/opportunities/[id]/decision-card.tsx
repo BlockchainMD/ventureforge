@@ -116,7 +116,7 @@ export function DecisionCard({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 divide-x divide-line">
+      <div className="grid grid-cols-1 divide-y divide-line sm:grid-cols-2 sm:divide-x sm:divide-y-0">
         {/* --- Economics ---------------------------------------------------- */}
         <div className="px-4 py-3">
           <Row label="County price" value={formatCents(parcel.acquisitionPriceCents)} />
@@ -242,7 +242,7 @@ export function DecisionCard({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 divide-x divide-line border-t border-line">
+      <div className="grid grid-cols-1 divide-y divide-line border-t border-line sm:grid-cols-2 sm:divide-x sm:divide-y-0">
         <div className="px-4 py-3">
           <p className="rule-label mb-1.5">Why interesting</p>
           {parcel.whyInteresting.length === 0 ? (

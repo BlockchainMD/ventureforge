@@ -50,7 +50,7 @@ export default async function IngestionPage() {
     <>
       <PageHeader title="Ingestion" subtitle="Pipeline health, run history and the job queue." />
 
-      <div className="space-y-3 p-4">
+      <div className="space-y-3 p-3 sm:p-4">
         <Panel>
           <PanelHeader title="Last seven days" />
           <PanelBody>

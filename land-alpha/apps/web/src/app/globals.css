@@ -124,6 +124,29 @@
     background-color: var(--color-raised);
   }
 
+  /*
+   * Metric grids collapse rather than crush.
+   *
+   * The desktop terminal wants six figures across a strip; a phone has room for
+   * two. The column count is a custom property per breakpoint rather than an
+   * inline style, so a `columns={6}` call site becomes 2 / 4 / 6 without every
+   * page knowing about it.
+   */
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--metric-cols-narrow), minmax(0, 1fr));
+  }
+  @media (min-width: 640px) {
+    .metric-grid {
+      grid-template-columns: repeat(var(--metric-cols-mid), minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 1024px) {
+    .metric-grid {
+      grid-template-columns: repeat(var(--metric-cols), minmax(0, 1fr));
+    }
+  }
+
   .focus-ring:focus-visible {
     outline: 2px solid var(--color-alpha);
     outline-offset: 1px;

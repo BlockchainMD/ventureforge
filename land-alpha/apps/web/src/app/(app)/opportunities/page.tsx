@@ -57,7 +57,7 @@ export default async function OpportunitiesPage({
 
       <FilterBar counties={counties} />
 
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         <Panel>
           <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-1.5">
             <SortControls filter={filter} />
@@ -82,7 +82,7 @@ export default async function OpportunitiesPage({
 
 function SortControls({ filter }: { filter: ReturnType<typeof filterFromSearchParams> }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1">
       <span className="rule-label">Sort</span>
       {OPPORTUNITY_SORTS.map((sort) => {
         const active = (filter.sort ?? 'alphaScore') === sort;
@@ -96,7 +96,7 @@ function SortControls({ filter }: { filter: ReturnType<typeof filterFromSearchPa
           <Link
             key={sort}
             href={`/opportunities?${params.toString()}`}
-            className={`rounded-sm px-1.5 py-0.5 text-[10px] uppercase tracking-wider transition-colors ${
+            className={`whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[10px] uppercase tracking-wider transition-colors ${
               active ? 'bg-raised text-alpha' : 'text-ink-faint hover:text-ink'
             }`}
           >

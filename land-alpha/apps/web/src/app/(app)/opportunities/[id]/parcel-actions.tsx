@@ -39,7 +39,7 @@ export function ParcelActions({
   };
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       {message ? <span className="mr-1 text-[11px] text-good">{message}</span> : null}
       <Button
         size="sm"

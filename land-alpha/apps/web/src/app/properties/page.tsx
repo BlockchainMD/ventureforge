@@ -32,7 +32,7 @@ export default async function PropertiesIndex() {
           No properties are currently listed.
         </p>
       ) : (
-        <ul className="mt-8 grid grid-cols-2 gap-4">
+        <ul className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
           {listings.map((listing) => (
             <li key={listing.id} className="rounded-sm border border-line bg-panel p-4">
               <Link href={`/properties/${listing.slug}`} className="block">

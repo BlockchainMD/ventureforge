@@ -40,7 +40,7 @@ export default async function SourcesPage() {
         }
       />
 
-      <div className="space-y-3 p-4">
+      <div className="space-y-3 p-3 sm:p-4">
         <Panel>
           <PanelBody>
             <MetricGrid columns={5}>

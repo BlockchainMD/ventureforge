@@ -1,8 +1,8 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useMemo, useTransition } from 'react';
-import { X } from 'lucide-react';
+import { useCallback, useMemo, useState, useTransition } from 'react';
+import { SlidersHorizontal, X } from 'lucide-react';
 import {
   ACCESS_CLASSES,
   BUILDABILITY_RATINGS,
@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 /**
  * Filter bar.
@@ -27,6 +28,9 @@ export function FilterBar({ counties }: { counties: { state: string; county: str
   const router = useRouter();
   const params = useSearchParams();
   const [pending, startTransition] = useTransition();
+  // Sixteen controls is a reasonable toolbar on a terminal and an entire
+  // screenful on a phone, so below `lg` everything but search is disclosed.
+  const [expanded, setExpanded] = useState(false);
 
   const filter = useMemo(
     () => filterFromSearchParams(new URLSearchParams(params.toString())),
@@ -54,9 +58,9 @@ export function FilterBar({ counties }: { counties: { state: string; county: str
   const statesInInventory = [...new Set(counties.map((c) => c.state))].sort();
 
   return (
-    <div className="border-b border-line bg-surface px-4 py-2">
+    <div className="border-b border-line bg-surface px-3 py-2 sm:px-4">
       <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
-        <label className="block w-48">
+        <label className="block min-w-0 flex-1 sm:w-48 sm:flex-none">
           <span className="rule-label">Search</span>
           <Input
             className="mt-0.5"
@@ -68,193 +72,216 @@ export function FilterBar({ counties }: { counties: { state: string; county: str
           />
         </label>
 
-        <NumberFilter
-          label="Alpha ≥"
-          value={filter.minAlphaScore}
-          onChange={(v) => update('minAlphaScore', v)}
-          placeholder="0"
-          width="w-16"
-        />
-        <NumberFilter
-          label="Price ≤ ($)"
-          value={filter.maxPrice == null ? undefined : filter.maxPrice / 100}
-          onChange={(v) => update('maxPrice', v == null ? null : String(Number(v) * 100))}
-          placeholder="any"
-          width="w-20"
-        />
-        <NumberFilter
-          label="Acres ≥"
-          value={filter.minAcreage}
-          onChange={(v) => update('minAcreage', v)}
-          placeholder="0"
-          width="w-16"
-        />
-        <NumberFilter
-          label="Acres ≤"
-          value={filter.maxAcreage}
-          onChange={(v) => update('maxAcreage', v)}
-          placeholder="any"
-          width="w-16"
-        />
-        <NumberFilter
-          label="Basis/QSV ≤ (%)"
-          value={filter.maxBasisToQsv == null ? undefined : Math.round(filter.maxBasisToQsv * 100)}
-          onChange={(v) => update('maxBasisToQsv', v == null ? null : String(Number(v) / 100))}
-          placeholder="any"
-          width="w-20"
-        />
-        <NumberFilter
-          label="Title ≤"
-          value={filter.maxTitleRisk}
-          onChange={(v) => update('maxTitleRisk', v)}
-          placeholder="100"
-          width="w-16"
-        />
+        <Button
+          variant={count > 0 ? 'subtle' : 'outline'}
+          onClick={() => setExpanded((open) => !open)}
+          aria-expanded={expanded}
+          className="shrink-0 lg:hidden"
+        >
+          <SlidersHorizontal className="size-3" />
+          Filters{count > 0 ? ` (${count})` : ''}
+        </Button>
 
-        <label className="block w-24">
-          <span className="rule-label">State</span>
-          <Select
-            className="mt-0.5"
-            value={filter.states?.[0] ?? ''}
-            onChange={(event) => update('states', event.target.value || null)}
-          >
-            <option value="">All</option>
-            {statesInInventory.map((state) => (
-              <option key={state} value={state}>
-                {state}
-              </option>
-            ))}
-          </Select>
-        </label>
+        {/* `lg:contents` dissolves this wrapper on a wide screen, so the
+            desktop toolbar wraps exactly as it did before it existed. */}
+        <div
+          className={cn(
+            'w-full flex-wrap items-end gap-x-3 gap-y-2 lg:contents',
+            expanded ? 'flex' : 'hidden',
+          )}
+        >
+          <NumberFilter
+            label="Alpha ≥"
+            value={filter.minAlphaScore}
+            onChange={(v) => update('minAlphaScore', v)}
+            placeholder="0"
+            width="w-16"
+          />
+          <NumberFilter
+            label="Price ≤ ($)"
+            value={filter.maxPrice == null ? undefined : filter.maxPrice / 100}
+            onChange={(v) => update('maxPrice', v == null ? null : String(Number(v) * 100))}
+            placeholder="any"
+            width="w-20"
+          />
+          <NumberFilter
+            label="Acres ≥"
+            value={filter.minAcreage}
+            onChange={(v) => update('minAcreage', v)}
+            placeholder="0"
+            width="w-16"
+          />
+          <NumberFilter
+            label="Acres ≤"
+            value={filter.maxAcreage}
+            onChange={(v) => update('maxAcreage', v)}
+            placeholder="any"
+            width="w-16"
+          />
+          <NumberFilter
+            label="Basis/QSV ≤ (%)"
+            value={
+              filter.maxBasisToQsv == null ? undefined : Math.round(filter.maxBasisToQsv * 100)
+            }
+            onChange={(v) => update('maxBasisToQsv', v == null ? null : String(Number(v) / 100))}
+            placeholder="any"
+            width="w-20"
+          />
+          <NumberFilter
+            label="Title ≤"
+            value={filter.maxTitleRisk}
+            onChange={(v) => update('maxTitleRisk', v)}
+            placeholder="100"
+            width="w-16"
+          />
 
-        <label className="block w-40">
-          <span className="rule-label">County</span>
-          <Select
-            className="mt-0.5"
-            value={filter.counties?.[0] ?? ''}
-            onChange={(event) => update('counties', event.target.value || null)}
-          >
-            <option value="">All</option>
-            {counties
-              .filter((c) => !filter.states?.length || filter.states.includes(c.state))
-              .map((c) => (
-                <option key={`${c.state}-${c.county}`} value={c.county}>
-                  {c.county}, {c.state}
+          <label className="block w-24">
+            <span className="rule-label">State</span>
+            <Select
+              className="mt-0.5"
+              value={filter.states?.[0] ?? ''}
+              onChange={(event) => update('states', event.target.value || null)}
+            >
+              <option value="">All</option>
+              {statesInInventory.map((state) => (
+                <option key={state} value={state}>
+                  {state}
                 </option>
               ))}
-          </Select>
-        </label>
+            </Select>
+          </label>
 
-        <label className="block w-44">
-          <span className="rule-label">Source type</span>
-          <Select
-            className="mt-0.5"
-            value={filter.sourceTypes?.[0] ?? ''}
-            onChange={(event) => update('sourceTypes', event.target.value || null)}
-          >
-            <option value="">All</option>
-            {SOURCE_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {humanizeEnum(type)}
-              </option>
-            ))}
-          </Select>
-        </label>
+          <label className="block w-40">
+            <span className="rule-label">County</span>
+            <Select
+              className="mt-0.5"
+              value={filter.counties?.[0] ?? ''}
+              onChange={(event) => update('counties', event.target.value || null)}
+            >
+              <option value="">All</option>
+              {counties
+                .filter((c) => !filter.states?.length || filter.states.includes(c.state))
+                .map((c) => (
+                  <option key={`${c.state}-${c.county}`} value={c.county}>
+                    {c.county}, {c.state}
+                  </option>
+                ))}
+            </Select>
+          </label>
 
-        <label className="block w-24">
-          <span className="rule-label">Access</span>
-          <Select
-            className="mt-0.5"
-            value={filter.accessClasses?.[0] ?? ''}
-            onChange={(event) => update('accessClasses', event.target.value || null)}
-          >
-            <option value="">All</option>
-            {ACCESS_CLASSES.map((cls) => (
-              <option key={cls} value={cls}>
-                {cls}
-              </option>
-            ))}
-          </Select>
-        </label>
+          <label className="block w-44">
+            <span className="rule-label">Source type</span>
+            <Select
+              className="mt-0.5"
+              value={filter.sourceTypes?.[0] ?? ''}
+              onChange={(event) => update('sourceTypes', event.target.value || null)}
+            >
+              <option value="">All</option>
+              {SOURCE_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {humanizeEnum(type)}
+                </option>
+              ))}
+            </Select>
+          </label>
 
-        <label className="block w-28">
-          <span className="rule-label">Buildability</span>
-          <Select
-            className="mt-0.5"
-            value={filter.buildability?.[0] ?? ''}
-            onChange={(event) => update('buildability', event.target.value || null)}
-          >
-            <option value="">All</option>
-            {BUILDABILITY_RATINGS.map((rating) => (
-              <option key={rating} value={rating}>
-                {rating}
-              </option>
-            ))}
-          </Select>
-        </label>
+          <label className="block w-24">
+            <span className="rule-label">Access</span>
+            <Select
+              className="mt-0.5"
+              value={filter.accessClasses?.[0] ?? ''}
+              onChange={(event) => update('accessClasses', event.target.value || null)}
+            >
+              <option value="">All</option>
+              {ACCESS_CLASSES.map((cls) => (
+                <option key={cls} value={cls}>
+                  {cls}
+                </option>
+              ))}
+            </Select>
+          </label>
 
-        <NumberFilter
-          label="Flood ≤ (%)"
-          value={
-            filter.maxFloodOverlap == null ? undefined : Math.round(filter.maxFloodOverlap * 100)
-          }
-          onChange={(v) => update('maxFloodOverlap', v == null ? null : String(Number(v) / 100))}
-          placeholder="any"
-          width="w-20"
-        />
-        <NumberFilter
-          label="Wetland ≤ (%)"
-          value={
-            filter.maxWetlandOverlap == null
-              ? undefined
-              : Math.round(filter.maxWetlandOverlap * 100)
-          }
-          onChange={(v) => update('maxWetlandOverlap', v == null ? null : String(Number(v) / 100))}
-          placeholder="any"
-          width="w-20"
-        />
-        <NumberFilter
-          label="Failed sales ≥"
-          value={filter.minFailedSaleCount}
-          onChange={(v) => update('minFailedSaleCount', v)}
-          placeholder="0"
-          width="w-20"
-        />
+          <label className="block w-28">
+            <span className="rule-label">Buildability</span>
+            <Select
+              className="mt-0.5"
+              value={filter.buildability?.[0] ?? ''}
+              onChange={(event) => update('buildability', event.target.value || null)}
+            >
+              <option value="">All</option>
+              {BUILDABILITY_RATINGS.map((rating) => (
+                <option key={rating} value={rating}>
+                  {rating}
+                </option>
+              ))}
+            </Select>
+          </label>
 
-        <div className="flex items-center gap-2 pb-0.5">
-          <Toggle
-            label="OTC only"
-            active={filter.otcOnly === true}
-            onToggle={() => update('otcOnly', filter.otcOnly ? null : 'true')}
+          <NumberFilter
+            label="Flood ≤ (%)"
+            value={
+              filter.maxFloodOverlap == null ? undefined : Math.round(filter.maxFloodOverlap * 100)
+            }
+            onChange={(v) => update('maxFloodOverlap', v == null ? null : String(Number(v) / 100))}
+            placeholder="any"
+            width="w-20"
           />
-          <Toggle
-            label="No reserve"
-            active={filter.noReserveOnly === true}
-            onToggle={() => update('noReserveOnly', filter.noReserveOnly ? null : 'true')}
+          <NumberFilter
+            label="Wetland ≤ (%)"
+            value={
+              filter.maxWetlandOverlap == null
+                ? undefined
+                : Math.round(filter.maxWetlandOverlap * 100)
+            }
+            onChange={(v) =>
+              update('maxWetlandOverlap', v == null ? null : String(Number(v) / 100))
+            }
+            placeholder="any"
+            width="w-20"
           />
-          <Toggle
-            label="Watchlist"
-            active={filter.watchlistedOnly === true}
-            onToggle={() => update('watchlistedOnly', filter.watchlistedOnly ? null : 'true')}
+          <NumberFilter
+            label="Failed sales ≥"
+            value={filter.minFailedSaleCount}
+            onChange={(v) => update('minFailedSaleCount', v)}
+            placeholder="0"
+            width="w-20"
           />
-          <Toggle
-            label="Show rejected"
-            active={filter.includeRejected === true}
-            onToggle={() => update('includeRejected', filter.includeRejected ? null : 'true')}
-          />
+
+          <div className="flex items-center gap-2 pb-0.5">
+            <Toggle
+              label="OTC only"
+              active={filter.otcOnly === true}
+              onToggle={() => update('otcOnly', filter.otcOnly ? null : 'true')}
+            />
+            <Toggle
+              label="No reserve"
+              active={filter.noReserveOnly === true}
+              onToggle={() => update('noReserveOnly', filter.noReserveOnly ? null : 'true')}
+            />
+            <Toggle
+              label="Watchlist"
+              active={filter.watchlistedOnly === true}
+              onToggle={() => update('watchlistedOnly', filter.watchlistedOnly ? null : 'true')}
+            />
+            <Toggle
+              label="Show rejected"
+              active={filter.includeRejected === true}
+              onToggle={() => update('includeRejected', filter.includeRejected ? null : 'true')}
+            />
+          </div>
+
+          {count > 0 ? (
+            <Button variant="ghost" size="sm" onClick={clearAll} className="mb-0.5">
+              <X className="size-3" />
+              Clear {count}
+            </Button>
+          ) : null}
+          {pending ? (
+            <Badge tone="muted" className="mb-1">
+              updating…
+            </Badge>
+          ) : null}
         </div>
-
-        {count > 0 ? (
-          <Button variant="ghost" size="sm" onClick={clearAll} className="mb-0.5">
-            <X className="size-3" />
-            Clear {count}
-          </Button>
-        ) : null}
-        {pending ? (
-          <Badge tone="muted" className="mb-1">
-            updating…
-          </Badge>
-        ) : null}
       </div>
     </div>
   );

@@ -85,7 +85,7 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
           </span>
         }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge tone={statusTone(parcel.status)}>{humanizeEnum(parcel.status)}</Badge>
             <ParcelActions
               parcelId={parcel.id}
@@ -97,9 +97,9 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
         }
       />
 
-      <div className="grid grid-cols-3 gap-3 p-4">
+      <div className="grid grid-cols-1 gap-3 p-3 lg:grid-cols-3 sm:p-4">
         {/* ================= Left column ================= */}
-        <div className="col-span-2 space-y-3">
+        <div className="space-y-3 lg:col-span-2">
           <DecisionCard
             parcel={{
               id: parcel.id,

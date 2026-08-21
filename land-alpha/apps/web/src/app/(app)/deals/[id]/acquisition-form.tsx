@@ -20,7 +20,7 @@ export function AcquisitionForm({ parcelId, canAct }: { parcelId: string; canAct
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <Field label="Price paid ($)">
           <Input type="number" value={price} onChange={(event) => setPrice(event.target.value)} />
         </Field>

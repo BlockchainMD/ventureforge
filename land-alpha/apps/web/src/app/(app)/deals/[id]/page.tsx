@@ -70,8 +70,8 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
         }
       />
 
-      <div className="grid grid-cols-3 gap-3 p-4">
-        <div className="col-span-2 space-y-3">
+      <div className="grid grid-cols-1 gap-3 p-3 lg:grid-cols-3 sm:p-4">
+        <div className="space-y-3 lg:col-span-2">
           <Panel>
             <PanelHeader
               title="Due-diligence checklist"

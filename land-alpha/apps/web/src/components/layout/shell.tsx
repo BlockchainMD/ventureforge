@@ -1,16 +1,20 @@
 import Link from 'next/link';
 import { Nav } from './nav';
+import { MobileNav } from './mobile-nav';
 import { Badge } from '@/components/ui/badge';
 import type { SessionUser } from '@/server/auth';
 
 /**
  * The terminal chrome: a fixed rail, a thin status bar, and content.
  * No hero, no marketing surface — the product opens onto data.
+ *
+ * Below `lg` the rail becomes a drawer and the status bar sheds everything that
+ * is not identity, so the content column keeps the full width of the screen.
  */
 export function Shell({ user, children }: { user: SessionUser; children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-ground">
-      <aside className="flex w-52 shrink-0 flex-col border-r border-line bg-surface">
+      <aside className="hidden w-52 shrink-0 flex-col border-r border-line bg-surface lg:flex">
         <div className="flex h-11 items-center gap-2 border-b border-line px-3">
           <Link href="/dashboard" className="flex items-baseline gap-1.5">
             <span className="num text-sm font-semibold tracking-tight text-alpha">LAND</span>
@@ -21,13 +25,22 @@ export function Shell({ user, children }: { user: SessionUser; children: React.R
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-line bg-surface px-4">
-          <p className="text-[11px] text-ink-faint">
-            Find asymmetric land opportunities before other buyers understand them.
-          </p>
-          <div className="flex items-center gap-3">
-            <Badge tone="muted">{user.role}</Badge>
-            <span className="text-xs text-ink-muted">{user.name}</span>
+        <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-3 sm:px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <MobileNav role={user.role} />
+            <Link href="/dashboard" className="flex items-baseline gap-1.5 lg:hidden">
+              <span className="num text-sm font-semibold tracking-tight text-alpha">LAND</span>
+              <span className="num text-sm font-semibold tracking-tight text-ink">ALPHA</span>
+            </Link>
+            <p className="hidden truncate text-[11px] text-ink-faint lg:block">
+              Find asymmetric land opportunities before other buyers understand them.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <Badge tone="muted" className="hidden sm:inline-flex">
+              {user.role}
+            </Badge>
+            <span className="hidden text-xs text-ink-muted md:inline">{user.name}</span>
             <form action="/api/auth/logout" method="post">
               <button
                 type="submit"
@@ -55,12 +68,12 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-line px-4 py-3">
+    <div className="flex flex-col gap-2 border-b border-line px-3 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-4">
       <div className="min-w-0">
         <h1 className="text-base font-semibold tracking-tight text-ink">{title}</h1>
         {subtitle ? <div className="mt-0.5 text-xs text-ink-muted">{subtitle}</div> : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
   );
 }

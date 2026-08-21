@@ -31,7 +31,16 @@ export default tseslint.config(
     // Plain Node scripts, not TypeScript sources.
     files: ['scripts/**/*.mjs'],
     languageOptions: {
-      globals: { process: 'readonly', console: 'readonly', URL: 'readonly' },
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        URL: 'readonly',
+        // Bodies passed to Playwright's page.evaluate() are serialised and run
+        // in the browser, so DOM globals are legitimate inside these files.
+        document: 'readonly',
+        window: 'readonly',
+        getComputedStyle: 'readonly',
+      },
     },
   },
   prettier,

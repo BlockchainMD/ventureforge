@@ -57,7 +57,7 @@ export default async function MapPage({
         title="Map"
         subtitle={`${formatNumber(rows.length)} parcels with mapped geometry, grouped by county`}
         actions={
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             {[0, 50, 70, 85].map((threshold) => (
               <Link
                 key={threshold}
@@ -75,9 +75,9 @@ export default async function MapPage({
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 p-4">
+      <div className="grid grid-cols-1 gap-3 p-3 lg:grid-cols-2 sm:p-4">
         {groups.length === 0 ? (
-          <Panel className="col-span-2">
+          <Panel className="lg:col-span-2">
             <PanelBody>
               <p className="py-12 text-center text-xs text-ink-faint">
                 No parcels with mapped geometry. Run an ingestion from a source that publishes

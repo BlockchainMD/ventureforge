@@ -44,7 +44,7 @@ export default async function LeadsPage() {
           'No enquiries yet'
         }
       />
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         <Panel>
           <PanelHeader
             title="Buyer enquiries"

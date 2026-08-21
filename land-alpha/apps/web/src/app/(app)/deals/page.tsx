@@ -36,7 +36,7 @@ export default async function DealsPage() {
         title="Deal rooms"
         subtitle={`${formatNumber(deals.length)} parcels in due diligence`}
       />
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         <Panel>
           <PanelHeader
             title="Open deals"

@@ -81,7 +81,7 @@ export default async function PortfolioPage() {
         subtitle={`${formatNumber(held.length)} held · ${formatNumber(sold.length)} sold`}
       />
 
-      <div className="space-y-3 p-4">
+      <div className="space-y-3 p-3 sm:p-4">
         <Panel>
           <PanelBody>
             <MetricGrid columns={6}>

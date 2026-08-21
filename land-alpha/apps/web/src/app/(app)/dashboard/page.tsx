@@ -55,7 +55,7 @@ export default async function DashboardPage() {
         }
       />
 
-      <div className="space-y-3 p-4">
+      <div className="space-y-3 p-3 sm:p-4">
         {/* --- Inventory economics ------------------------------------------ */}
         <Panel>
           <PanelBody>
@@ -138,7 +138,7 @@ export default async function DashboardPage() {
           />
         </Panel>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {/* --- Source health --------------------------------------------- */}
           <Panel>
             <PanelHeader
@@ -156,7 +156,7 @@ export default async function DashboardPage() {
                   <div className="min-w-0">
                     <Link
                       href={`/sources/${source.id}`}
-                      className="truncate text-xs text-ink hover:text-alpha"
+                      className="block truncate text-xs text-ink hover:text-alpha"
                     >
                       {source.name}
                     </Link>
@@ -206,7 +206,7 @@ export default async function DashboardPage() {
                   <div key={change.id} className="flex items-center justify-between gap-3">
                     <Link
                       href={`/opportunities/${change.parcel.id}`}
-                      className="min-w-0 truncate text-xs text-ink hover:text-alpha"
+                      className="block min-w-0 truncate text-xs text-ink hover:text-alpha"
                     >
                       <span className="num">{change.parcel.apn ?? 'unknown APN'}</span>
                       <span className="ml-2 text-ink-faint">

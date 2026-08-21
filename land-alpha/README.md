@@ -410,6 +410,7 @@ pnpm typecheck
 pnpm lint
 pnpm verify        # all three
 pnpm smoke         # drive the real app in a browser (needs pnpm dev running)
+pnpm audit:responsive   # check every route at a phone viewport (needs pnpm dev running)
 ```
 
 Integration tests run against a real PostGIS database and **skip themselves** when none is
@@ -440,6 +441,30 @@ identically under both drivers.
 **Storage** — set `STORAGE_DRIVER=s3` with any S3-compatible endpoint.
 
 Production requires `AUTH_SECRET`; the environment validator refuses to boot without it.
+
+---
+
+## Using it from a phone
+
+The terminal is built for a wide screen — dense tables, tabular figures, a
+persistent nav rail — and that is the right shape for underwriting. It is not
+the right shape for a 390px screen, so below `lg` the rail becomes a drawer,
+metric strips step down from six columns to four and then two, the opportunity
+filter bar collapses behind a `Filters (n)` disclosure, and action rows wrap
+instead of running off the edge.
+
+Wide comparison tables still scroll horizontally rather than reflowing. That is
+deliberate: a row of figures is meaningful because it lines up with the row
+above it, and stacking each parcel into a card would destroy the comparison the
+table exists to make.
+
+`pnpm audit:responsive` walks every route at a phone viewport and fails on
+anything that spills past it without being reachable — content inside a
+horizontal scroller passes, and so does `truncate`'s ellipsis; a clipped button
+does not.
+
+The app declares a web manifest and icons, so it can be added to a home screen
+and opened without browser chrome.
 
 ---
 

@@ -36,7 +36,7 @@ export default async function ScoringAdminPage() {
         }
       />
 
-      <div className="space-y-3 p-4">
+      <div className="space-y-3 p-3 sm:p-4">
         <ScoringEditor config={config} canEdit={canEdit} />
 
         <Panel>

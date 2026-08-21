@@ -106,8 +106,8 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
         </p>
       </div>
 
-      <div className="mt-8 grid grid-cols-3 gap-8">
-        <div className="col-span-2 space-y-8">
+      <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-3">
+        <div className="space-y-8 lg:col-span-2">
           <section>
             <h2 className="rule-label">About this property</h2>
             <div className="mt-2 space-y-3">

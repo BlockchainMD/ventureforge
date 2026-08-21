@@ -33,7 +33,7 @@ export default async function WatchlistsPage() {
         subtitle={`${formatNumber(watched.total)} watched parcels · ${savedSearches.length} saved searches · ${alertRules.filter((rule) => rule.enabled).length} active alerts`}
       />
 
-      <div className="space-y-3 p-4">
+      <div className="space-y-3 p-3 sm:p-4">
         <Panel>
           <PanelHeader title="Watched parcels" />
           <OpportunityTable
@@ -42,7 +42,7 @@ export default async function WatchlistsPage() {
           />
         </Panel>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <Panel>
             <PanelHeader
               title="Saved searches"

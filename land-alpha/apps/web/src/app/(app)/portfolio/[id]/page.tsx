@@ -53,8 +53,8 @@ export default async function PortfolioAssetPage({ params }: { params: Promise<{
         }
       />
 
-      <div className="grid grid-cols-3 gap-3 p-4">
-        <div className="col-span-2 space-y-3">
+      <div className="grid grid-cols-1 gap-3 p-3 lg:grid-cols-3 sm:p-4">
+        <div className="space-y-3 lg:col-span-2">
           <Panel>
             <PanelHeader title="Cost basis" />
             <PanelBody>

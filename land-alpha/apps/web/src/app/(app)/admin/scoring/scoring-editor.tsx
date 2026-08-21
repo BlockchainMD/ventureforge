@@ -78,8 +78,8 @@ export function ScoringEditor({
   const balanced = Math.abs(sum - 1) < 1e-6;
 
   return (
-    <div className="grid grid-cols-3 gap-3">
-      <div className="col-span-2 space-y-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="space-y-3 sm:col-span-2">
         <Panel>
           <PanelHeader
             title="Alpha Score weights"
@@ -89,7 +89,7 @@ export function ScoringEditor({
           <PanelBody className="space-y-2">
             {WEIGHT_LABELS.map(({ key, label, rationale }) => (
               <div key={key} className="flex items-center gap-3">
-                <div className="w-56 shrink-0">
+                <div className="w-36 shrink-0 sm:w-56">
                   <p className="text-xs text-ink">{label}</p>
                   <p className="text-[10px] leading-tight text-ink-faint">{rationale}</p>
                 </div>
@@ -103,7 +103,7 @@ export function ScoringEditor({
                   onChange={(event) =>
                     setWeights({ ...weights, [key]: Number(event.target.value) })
                   }
-                  className="flex-1 accent-[var(--color-alpha)]"
+                  className="min-w-0 flex-1 accent-[var(--color-alpha)]"
                 />
                 <span className="num w-12 text-right text-xs text-alpha">
                   {formatPercent(weights[key], 0)}
