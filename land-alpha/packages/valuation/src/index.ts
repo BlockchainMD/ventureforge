@@ -5,3 +5,4 @@ export * from './economics';
 export * from './liquidity';
 export * from './calibration';
 export * from './owner-finance';
+export * from './allocation';

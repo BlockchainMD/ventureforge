@@ -11,3 +11,4 @@ export * from './services/alert.service';
 export * from './services/discovery.service';
 export * from './services/calibration.service';
 export * from './services/finance.service';
+export * from './services/allocation.service';

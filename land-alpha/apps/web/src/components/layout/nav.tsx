@@ -6,6 +6,7 @@ import {
   Activity,
   Building2,
   ClipboardCheck,
+  Coins,
   Database,
   Eye,
   Gauge,
@@ -36,6 +37,7 @@ const SECTIONS: { heading: string; items: NavItem[] }[] = [
       { href: '/opportunities', label: 'Opportunities', icon: LayoutGrid },
       { href: '/map', label: 'Map', icon: Map },
       { href: '/watchlists', label: 'Watchlists', icon: Eye },
+      { href: '/allocate', label: 'Allocate capital', icon: Coins, minRole: 'ANALYST' },
     ],
   },
   {
