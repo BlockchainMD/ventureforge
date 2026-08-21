@@ -1,0 +1,28 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
+    "types": ["node", "react", "react-dom"],
+    "plugins": [{ "name": "next" }],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@land-alpha/shared": ["../../packages/shared/src/index.ts"],
+      "@land-alpha/shared/*": ["../../packages/shared/src/*"],
+      "@land-alpha/db": ["../../packages/db/src/index.ts"],
+      "@land-alpha/db/*": ["../../packages/db/src/*"],
+      "@land-alpha/gis": ["../../packages/gis/src/index.ts"],
+      "@land-alpha/core": ["../../packages/core/src/index.ts"],
+      "@land-alpha/core/*": ["../../packages/core/src/*"],
+      "@land-alpha/valuation": ["../../packages/valuation/src/index.ts"],
+      "@land-alpha/ingestion": ["../../packages/ingestion/src/index.ts"],
+      "@land-alpha/ai": ["../../packages/ai/src/index.ts"],
+      "@land-alpha/source-registry": ["../../packages/source-registry/src/index.ts"],
+      "@land-alpha/title-research": ["../../packages/title-research/src/index.ts"],
+      "@land-alpha/listing-engine": ["../../packages/listing-engine/src/index.ts"]
+    }
+  },
+  "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}

@@ -1,0 +1,1298 @@
+// Land Alpha — canonical schema.
+//
+// Conventions:
+//  * Money is Decimal(14,2) US dollars in the database; the domain uses integer
+//    cents. `packages/db/src/mappers.ts` is the only place that converts.
+//  * Geometry columns are PostGIS `geometry(Geometry, 4326)` declared as
+//    Unsupported(...) — Prisma manages the migration, and every read/write goes
+//    through `packages/db/src/spatial.ts`. See docs/decisions/0004.
+//  * Anything a human might act on carries provenance via the Evidence table.
+//  * History tables (ParcelChange, ParcelScoreSnapshot, ParcelValuationSnapshot,
+//    AuctionOutcome) exist from day one. They are the long-term moat: they are
+//    what lets Land Alpha eventually learn which disposal mechanisms, counties
+//    and parcel characteristics actually produce abnormal returns.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// ===========================================================================
+// Identity & audit
+// ===========================================================================
+
+enum UserRole {
+  ADMIN
+  ANALYST
+  VIEWER
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         UserRole @default(ANALYST)
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions        Session[]
+  savedSearches   SavedSearch[]
+  watchlists      Watchlist[]
+  notes           ParcelNote[]
+  activities      ActivityLog[]
+  alertRules      AlertRule[]
+  notifications   Notification[]
+  approvedSources Source[]         @relation("SourceApprover")
+  manualImports   ManualImport[]
+  dealChecklists  DealChecklistItem[]
+
+  @@index([role])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  userAgent String?
+  ipHash    String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Append-only audit trail. Compliance principle 10: maintain complete history.
+model ActivityLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  actorLabel String
+  action     String
+  entityType String
+  entityId   String
+  summary    String
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([createdAt])
+}
+
+// ===========================================================================
+// Jurisdictions & sources
+// ===========================================================================
+
+enum JurisdictionType {
+  STATE
+  COUNTY
+  MUNICIPALITY
+  AGENCY
+}
+
+model Jurisdiction {
+  id           String           @id @default(uuid())
+  state        String           @db.Char(2)
+  county       String?
+  municipality String?
+  fipsCode     String?
+  timezone     String           @default("America/Chicago")
+  type         JurisdictionType
+  officialUrl  String?
+  assessorUrl  String?
+  recorderUrl  String?
+  gisUrl       String?
+  taxSaleUrl   String?
+  /// Free-form county disposition rules: how failed auctions become OTC, waiting
+  /// periods, application forms. This accumulates into proprietary intelligence.
+  dispositionNotes String?
+  notes        String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  sources   Source[]
+  parcels   ParcelOpportunity[]
+  insights  JurisdictionInsight[]
+
+  @@unique([state, county, municipality])
+  @@index([state])
+  @@index([fipsCode])
+}
+
+/// Accumulated, jurisdiction-specific knowledge. Written by analysts and by
+/// batch jobs that mine our own outcome history.
+model JurisdictionInsight {
+  id             String   @id @default(uuid())
+  jurisdictionId String
+  topic          String
+  finding        String
+  confidence     String   @default("MEDIUM")
+  evidenceCount  Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  jurisdiction Jurisdiction @relation(fields: [jurisdictionId], references: [id], onDelete: Cascade)
+
+  @@index([jurisdictionId, topic])
+}
+
+enum SourceType {
+  TAX_FORECLOSURE
+  TAX_FORFEITED
+  OVER_THE_COUNTER
+  LANDS_AVAILABLE_FOR_TAXES
+  REOFFER
+  FINAL_SALE
+  NO_RESERVE
+  COUNTY_SURPLUS
+  CITY_SURPLUS
+  STATE_SURPLUS
+  DNR_SURPLUS
+  DOT_SURPLUS
+  LAND_BANK
+  OTHER
+}
+
+enum IngestionMethod {
+  API
+  ARCGIS_REST
+  CSV_EXPORT
+  XLSX_EXPORT
+  HTML_TABLE
+  HTML_DETAIL
+  PDF
+  MANUAL_SOURCE
+}
+
+enum SourceStatus {
+  ACTIVE
+  CANDIDATE
+  PENDING_APPROVAL
+  DEGRADED
+  BROKEN
+  MANUAL_ONLY
+  RETIRED
+}
+
+enum UpdateFrequency {
+  REALTIME
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+  EVENT_DRIVEN
+  UNKNOWN
+}
+
+model Source {
+  id             String          @id @default(uuid())
+  jurisdictionId String
+  /// Stable key from the code-defined registry, e.g. "mn-st-louis-otc".
+  registryKey    String          @unique
+  name           String
+  sourceType     SourceType
+  sourceUrl      String
+  discoveryUrl   String?
+  ingestionMethod IngestionMethod
+  updateFrequency UpdateFrequency @default(UNKNOWN)
+  inventoryFormat String?
+  /// True when a failed auction rolls into standing OTC inventory here — the
+  /// single most predictive jurisdiction attribute for the Land Alpha thesis.
+  failedAuctionBecomesOtc Boolean @default(false)
+  acquisitionMethod String?
+  adapterKey     String
+  parserVersion  String          @default("1")
+  sourceStatus   SourceStatus    @default(CANDIDATE)
+  enabled        Boolean         @default(false)
+  lastCheckedAt  DateTime?
+  lastSuccessfulAt DateTime?
+  consecutiveFailures Int        @default(0)
+  approvedById   String?
+  approvedAt     DateTime?
+  attribution    String?
+  termsUrl       String?
+  notes          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  jurisdiction Jurisdiction        @relation(fields: [jurisdictionId], references: [id], onDelete: Cascade)
+  approvedBy   User?               @relation("SourceApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  parcels      ParcelOpportunity[]
+  runs         IngestionRun[]
+  artifacts    RawArtifact[]
+
+  @@index([jurisdictionId])
+  @@index([sourceType])
+  @@index([sourceStatus, enabled])
+}
+
+/// Human-approval queue for sources found by the discovery agent. Nothing here
+/// becomes a production ingestion source without an explicit human decision.
+model SourceDiscoveryCandidate {
+  id             String   @id @default(uuid())
+  state          String   @db.Char(2)
+  county         String?
+  candidateUrl   String
+  title          String
+  snippet        String?
+  matchedTerms   String[]
+  suggestedType  SourceType?
+  suggestedMethod IngestionMethod?
+  score          Float    @default(0)
+  status         String   @default("PENDING")
+  reviewedById   String?
+  reviewedAt     DateTime?
+  reviewNotes    String?
+  createdSourceId String?
+  discoveredAt   DateTime @default(now())
+
+  @@unique([state, candidateUrl])
+  @@index([status, score])
+}
+
+// ===========================================================================
+// Ingestion
+// ===========================================================================
+
+enum IngestionRunStatus {
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  FAILED
+  SKIPPED
+}
+
+model IngestionRun {
+  id                String             @id @default(uuid())
+  sourceId          String
+  status            IngestionRunStatus @default(RUNNING)
+  parserVersion     String
+  triggeredBy       String             @default("scheduler")
+  startedAt         DateTime           @default(now())
+  completedAt       DateTime?
+  durationMs        Int?
+  recordsDiscovered Int                @default(0)
+  recordsCreated    Int                @default(0)
+  recordsChanged    Int                @default(0)
+  recordsUnchanged  Int                @default(0)
+  recordsRemoved    Int                @default(0)
+  recordsRejected   Int                @default(0)
+  requestCount      Int                @default(0)
+  bytesFetched      Int                @default(0)
+  errorCount        Int                @default(0)
+  errors            Json               @default("[]")
+  warnings          Json               @default("[]")
+  notes             String?
+
+  source    Source        @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  artifacts RawArtifact[]
+  changes   ParcelChange[]
+
+  @@index([sourceId, startedAt])
+  @@index([status])
+}
+
+/// The bytes we actually parsed, retained for audit and re-parsing.
+model RawArtifact {
+  id            String   @id @default(uuid())
+  sourceId      String
+  ingestionRunId String?
+  storageKey    String
+  originalUrl   String?
+  contentType   String?
+  byteSize      Int
+  sha256        String
+  fetchedAt     DateTime @default(now())
+
+  source       Source        @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  ingestionRun IngestionRun? @relation(fields: [ingestionRunId], references: [id], onDelete: SetNull)
+
+  @@index([sourceId, fetchedAt])
+  @@index([sha256])
+}
+
+enum ChangeKind {
+  CREATED
+  PRICE_CHANGED
+  AUCTION_DATE_CHANGED
+  SALE_STATUS_CHANGED
+  ATTRIBUTES_CHANGED
+  REAPPEARED
+  REMOVED_FROM_SOURCE
+}
+
+/// Change detection log. A parcel that has been re-offered three times at a
+/// falling price is the strongest signal in this product; this table is where
+/// that pattern is observable.
+model ParcelChange {
+  id             String     @id @default(uuid())
+  parcelId       String
+  ingestionRunId String?
+  kind           ChangeKind
+  field          String?
+  oldValue       String?
+  newValue       String?
+  detectedAt     DateTime   @default(now())
+
+  parcel       ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  ingestionRun IngestionRun?     @relation(fields: [ingestionRunId], references: [id], onDelete: SetNull)
+
+  @@index([parcelId, detectedAt])
+  @@index([kind, detectedAt])
+}
+
+// ===========================================================================
+// Parcels
+// ===========================================================================
+
+enum SaleType {
+  AUCTION
+  SEALED_BID
+  OVER_THE_COUNTER
+  APPLICATION
+  NEGOTIATED
+  LISTED
+  UNKNOWN
+}
+
+enum SaleStatus {
+  AVAILABLE
+  SCHEDULED
+  PENDING
+  SOLD
+  WITHDRAWN
+  EXPIRED
+  UNKNOWN
+}
+
+enum ParcelStatus {
+  DISCOVERED
+  ENRICHING
+  SCORED
+  REJECTED
+  WATCHLIST
+  DUE_DILIGENCE
+  READY_TO_BID
+  APPROVED
+  BID_PLACED
+  WON
+  LOST
+  PURCHASE_PENDING
+  ACQUIRED
+  TITLE_CURATIVE
+  READY_TO_LIST
+  LISTED
+  UNDER_CONTRACT
+  SOLD
+  ARCHIVED
+}
+
+enum AnalystDisposition {
+  UNREVIEWED
+  PURSUE
+  MONITOR
+  PASS
+  NEEDS_RESEARCH
+}
+
+enum AccessClass {
+  A
+  B
+  C
+  D
+  UNKNOWN
+}
+
+enum LegalAccessStatus {
+  UNKNOWN
+  RECORDED_FRONTAGE
+  RECORDED_EASEMENT
+  PLATTED_ACCESS
+  PRESCRIPTIVE_CLAIMED
+  NO_RECORDED_ACCESS_FOUND
+  DISPUTED
+}
+
+enum BuildabilityRating {
+  GREEN
+  YELLOW
+  RED
+  UNKNOWN
+}
+
+enum ConfidenceLevel {
+  VERIFIED
+  HIGH
+  MEDIUM
+  LOW
+  UNKNOWN
+}
+
+enum OwnerType {
+  COUNTY
+  CITY
+  STATE
+  FEDERAL
+  LAND_BANK
+  PRIVATE_INDIVIDUAL
+  PRIVATE_ENTITY
+  TRUST
+  UNKNOWN
+}
+
+model ParcelOpportunity {
+  id             String @id @default(uuid())
+
+  // ---- Identity -----------------------------------------------------------
+  state          String @db.Char(2)
+  county         String
+  jurisdictionId String
+  apn            String?
+  apnNormalized  String?
+  alternateApns  String[] @default([])
+  sourceId       String
+  sourceUrl      String?
+  sourceRecordId String?
+  /// (sourceId, sourceRecordId|apn) — makes re-ingestion idempotent.
+  naturalKey     String @unique
+
+  // ---- Sale ---------------------------------------------------------------
+  saleType             SaleType   @default(UNKNOWN)
+  saleStatus           SaleStatus @default(UNKNOWN)
+  auctionDate          DateTime?
+  offerDeadline        DateTime?
+  minimumBid           Decimal?   @db.Decimal(14, 2)
+  askingPrice          Decimal?   @db.Decimal(14, 2)
+  taxesDue             Decimal?   @db.Decimal(14, 2)
+  fees                 Decimal?   @db.Decimal(14, 2)
+  estimatedAcquisitionCost Decimal? @db.Decimal(14, 2)
+  priorAuctionStatus   String?
+  priorAuctionDate     DateTime?
+  priorMinimumBid      Decimal?   @db.Decimal(14, 2)
+  failedSaleCount      Int        @default(0)
+  otcEligible          Boolean?
+  acquisitionInstructions String?
+  firstSeenAt          DateTime   @default(now())
+  lastSeenAt           DateTime   @default(now())
+  removedFromSourceAt  DateTime?
+
+  // ---- Geography ----------------------------------------------------------
+  latitude       Float?
+  longitude      Float?
+  geometry       Unsupported("geometry(Geometry, 4326)")?
+  centroid       Unsupported("geometry(Point, 4326)")?
+  geometrySource String?
+  geometryConfidence ConfidenceLevel @default(UNKNOWN)
+  acreage        Float?
+  lotSquareFeet  Float?
+  bboxWest       Float?
+  bboxSouth      Float?
+  bboxEast       Float?
+  bboxNorth      Float?
+  perimeterMeters Float?
+  compactness    Float?
+  aspectRatio    Float?
+  shapeFlags     String[] @default([])
+  roadFrontageMeters Float?
+  nearestRoadName String?
+  nearestRoadMeters Float?
+  nearestPavedRoadName String?
+  nearestPavedRoadMeters Float?
+  municipality   String?
+  zip            String?
+  situsAddress   String?
+  legalDescription String?
+
+  // ---- Property -----------------------------------------------------------
+  assessedValue            Decimal? @db.Decimal(14, 2)
+  taxableValue             Decimal? @db.Decimal(14, 2)
+  landAssessedValue        Decimal? @db.Decimal(14, 2)
+  improvementAssessedValue Decimal? @db.Decimal(14, 2)
+  propertyClass            String?
+  isVacant                 Boolean?
+  currentUse               String?
+  zoning                   String?
+  zoningSource             String?
+  zoningConfidence         ConfidenceLevel @default(UNKNOWN)
+  minimumLotSizeAcres      Float?
+  knownUtilities           String[] @default([])
+  annualTaxEstimate        Decimal? @db.Decimal(14, 2)
+
+  // ---- Ownership ----------------------------------------------------------
+  currentOwner     String?
+  ownerType        OwnerType @default(UNKNOWN)
+  governmentOwner  String?
+  priorOwner       String?
+  acquisitionDate  DateTime?
+  lastDeedDate     DateTime?
+
+  // ---- Access -------------------------------------------------------------
+  accessClass            AccessClass       @default(UNKNOWN)
+  physicalAccessScore    Float?
+  legalAccessStatus      LegalAccessStatus @default(UNKNOWN)
+  legalAccessConfidence  ConfidenceLevel   @default(UNKNOWN)
+  /// Confidence in the *physical adjacency* assessment. Deliberately distinct
+  /// from legalAccessConfidence: we can be highly confident a parcel adjoins a
+  /// mapped county road while knowing nothing about its legal right of access.
+  accessConfidence       ConfidenceLevel   @default(UNKNOWN)
+  touchesPublicRoad      Boolean?
+  touchesNamedRoad       Boolean?
+  apparentDriveway       Boolean?
+  potentiallyLandlocked  Boolean?
+  accessEvidence         String[] @default([])
+  accessUnknowns         String[] @default([])
+
+  // ---- Environmental ------------------------------------------------------
+  floodZones                 String[] @default([])
+  floodOverlapFraction       Float?
+  inSpecialFloodHazardArea   Boolean?
+  wetlandTypes               String[] @default([])
+  wetlandOverlapFraction     Float?
+  soilSeries                 String[] @default([])
+  soilDrainageClasses        String[] @default([])
+  hydricSoilFraction         Float?
+  nearestContaminatedSiteMeters Float?
+  contaminatedSites          Json     @default("[]")
+  meanElevationMeters        Float?
+  minElevationMeters         Float?
+  maxElevationMeters         Float?
+  meanSlopePercent           Float?
+  environmentalRiskScore     Float?
+  environmentalConfidence    ConfidenceLevel @default(UNKNOWN)
+
+  // ---- Buildability -------------------------------------------------------
+  buildability             BuildabilityRating @default(UNKNOWN)
+  buildabilityScore        Float?
+  buildabilityReasons      String[] @default([])
+  buildabilityUnknowns     String[] @default([])
+  buildabilityBlockers     String[] @default([])
+  buildabilityConfidence   ConfidenceLevel @default(UNKNOWN)
+
+  // ---- Valuation ----------------------------------------------------------
+  retailValueLow        Decimal? @db.Decimal(14, 2)
+  retailValue           Decimal? @db.Decimal(14, 2)
+  retailValueHigh       Decimal? @db.Decimal(14, 2)
+  quickSaleValue        Decimal? @db.Decimal(14, 2)
+  quickSaleValueLow     Decimal? @db.Decimal(14, 2)
+  quickSaleValueHigh    Decimal? @db.Decimal(14, 2)
+  investorLiquidationValue Decimal? @db.Decimal(14, 2)
+  valuationConfidence   ConfidenceLevel @default(UNKNOWN)
+  comparableCount       Int      @default(0)
+  valuationMethod       String?
+  valuationWarnings     String[] @default([])
+
+  // ---- Economics ----------------------------------------------------------
+  estimatedAllInBasis     Decimal? @db.Decimal(14, 2)
+  estimatedCarryingCost   Decimal? @db.Decimal(14, 2)
+  estimatedTitleCost      Decimal? @db.Decimal(14, 2)
+  estimatedCurativeCost   Decimal? @db.Decimal(14, 2)
+  estimatedMarketingCost  Decimal? @db.Decimal(14, 2)
+  estimatedRecordingCost  Decimal? @db.Decimal(14, 2)
+  basisToQsv              Float?
+  basisToRetail           Float?
+  expectedGrossMargin     Decimal? @db.Decimal(14, 2)
+  roiAtQsv                Float?
+  annualizedRoiAtQsv      Float?
+  economicsTier           String?
+
+  // ---- Scores -------------------------------------------------------------
+  alphaScore            Float?
+  valueScore            Float?
+  accessScore           Float?
+  buildabilityScoreNorm Float?
+  titleRiskScore        Float?
+  liquidityScore        Float?
+  shapeScore            Float?
+  desirabilityScore     Float?
+  confidenceScore       Float?
+  confidenceLevel       ConfidenceLevel @default(UNKNOWN)
+  scoringConfigVersion  String?
+  whyInteresting        String[] @default([])
+  remainingQuestions    String[] @default([])
+  rejected              Boolean  @default(false)
+  rejectionReasons      Json     @default("[]")
+  rejectionOverriddenBy String?
+  rejectionOverrideNote String?
+
+  // ---- Workflow -----------------------------------------------------------
+  status              ParcelStatus       @default(DISCOVERED)
+  analystDisposition  AnalystDisposition @default(UNREVIEWED)
+  watchlisted         Boolean            @default(false)
+  reviewedAt          DateTime?
+  approvedMaxBid      Decimal?           @db.Decimal(14, 2)
+  approvedMaxBidBy    String?
+  approvedMaxBidAt    DateTime?
+  actualPurchasePrice Decimal?           @db.Decimal(14, 2)
+  acquiredAt          DateTime?
+  soldAt              DateTime?
+  salePrice           Decimal?           @db.Decimal(14, 2)
+  publicSlug          String?            @unique
+
+  enrichedAt DateTime?
+  scoredAt   DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  jurisdiction        Jurisdiction              @relation(fields: [jurisdictionId], references: [id])
+  source              Source                    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  evidence            Evidence[]
+  changes             ParcelChange[]
+  notes               ParcelNote[]
+  documents           ParcelDocument[]
+  titleInstruments    TitleInstrument[]
+  titleResearchTasks  TitleResearchTask[]
+  valuationSnapshots  ParcelValuationSnapshot[]
+  scoreSnapshots      ParcelScoreSnapshot[]
+  comparableLinks     ComparableLink[]
+  deal                Deal?
+  portfolioAsset      PortfolioAsset?
+  listing             Listing?
+  leads               Lead[]
+  watchlistItems      WatchlistItem[]
+  memos               InvestmentMemo[]
+  auctionOutcomes     AuctionOutcome[]
+
+  @@index([state, county])
+  @@index([sourceId])
+  @@index([jurisdictionId])
+  @@index([status])
+  @@index([alphaScore(sort: Desc)])
+  @@index([basisToQsv])
+  @@index([auctionDate])
+  @@index([apnNormalized])
+  @@index([watchlisted])
+  @@index([rejected, status])
+  @@index([lastSeenAt])
+}
+
+/// Provenance. Mandatory for every significant derived fact.
+model Evidence {
+  id               String          @id @default(uuid())
+  parcelId         String
+  field            String
+  value            String
+  source           String
+  sourceUrl        String?
+  documentKey      String?
+  extractedText    String?
+  retrievalDate    DateTime
+  confidence       ConfidenceLevel
+  extractionMethod String
+  notes            String?
+  createdAt        DateTime        @default(now())
+
+  parcel ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId, field])
+  @@index([parcelId, createdAt])
+}
+
+model ParcelNote {
+  id        String   @id @default(uuid())
+  parcelId  String
+  userId    String?
+  body      String
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  parcel ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  user   User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([parcelId, createdAt])
+}
+
+model ParcelDocument {
+  id          String   @id @default(uuid())
+  parcelId    String
+  title       String
+  category    String   @default("OTHER")
+  storageKey  String
+  contentType String?
+  byteSize    Int?
+  sourceUrl   String?
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+
+  parcel ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId, category])
+}
+
+// ===========================================================================
+// Valuation
+// ===========================================================================
+
+/// Recorded arm's-length vacant-land sales. Sourced from county deed/assessor
+/// files and analyst imports — never from a consumer listing portal.
+model ComparableSale {
+  id             String   @id @default(uuid())
+  state          String   @db.Char(2)
+  county         String
+  apn            String?
+  saleDate       DateTime
+  salePrice      Decimal  @db.Decimal(14, 2)
+  acreage        Float
+  latitude       Float?
+  longitude      Float?
+  centroid       Unsupported("geometry(Point, 4326)")?
+  zoning         String?
+  landUse        String?
+  accessClass    AccessClass?
+  hasUtilities   Boolean?
+  isVacantLand   Boolean  @default(true)
+  isArmsLength   Boolean  @default(true)
+  deedType       String?
+  source         String
+  sourceUrl      String?
+  importedAt     DateTime @default(now())
+  verifiedBy     String?
+
+  links ComparableLink[]
+
+  @@index([state, county, saleDate])
+  @@index([acreage])
+  @@unique([state, county, apn, saleDate, salePrice])
+}
+
+/// The comps actually used for a parcel's valuation, with the adjustments
+/// applied. Stored so a valuation is reproducible and auditable months later.
+model ComparableLink {
+  id                  String  @id @default(uuid())
+  parcelId            String
+  comparableId        String
+  valuationSnapshotId String?
+  distanceMeters      Float?
+  weight              Float
+  adjustedPricePerAcre Decimal @db.Decimal(14, 2)
+  adjustments         Json    @default("[]")
+  createdAt           DateTime @default(now())
+
+  parcel     ParcelOpportunity        @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  comparable ComparableSale           @relation(fields: [comparableId], references: [id], onDelete: Cascade)
+  snapshot   ParcelValuationSnapshot? @relation(fields: [valuationSnapshotId], references: [id], onDelete: SetNull)
+
+  @@index([parcelId])
+  @@unique([parcelId, comparableId, valuationSnapshotId])
+}
+
+model ParcelValuationSnapshot {
+  id                       String   @id @default(uuid())
+  parcelId                 String
+  retailValue              Decimal? @db.Decimal(14, 2)
+  quickSaleValue           Decimal? @db.Decimal(14, 2)
+  investorLiquidationValue Decimal? @db.Decimal(14, 2)
+  confidence               ConfidenceLevel
+  comparableCount          Int
+  method                   String
+  detail                   Json     @default("{}")
+  createdAt                DateTime @default(now())
+
+  parcel ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  links  ComparableLink[]
+
+  @@index([parcelId, createdAt])
+}
+
+model ParcelScoreSnapshot {
+  id            String   @id @default(uuid())
+  parcelId      String
+  alphaScore    Float
+  configVersion String
+  components    Json
+  breakdown     Json
+  rejected      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  parcel ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId, createdAt])
+}
+
+/// Versioned, admin-editable scoring configuration.
+model ScoringConfig {
+  id             String   @id @default(uuid())
+  version        String   @unique
+  isActive       Boolean  @default(false)
+  weights        Json
+  thresholds     Json
+  rejectionRules Json
+  costModel      Json
+  description    String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  @@index([isActive])
+}
+
+/// Outcome ledger: what a parcel actually did. This is the training data for
+/// the eventual "which mechanisms produce abnormal returns" model.
+model AuctionOutcome {
+  id           String   @id @default(uuid())
+  parcelId     String
+  eventType    String
+  eventDate    DateTime
+  minimumBid   Decimal? @db.Decimal(14, 2)
+  winningBid   Decimal? @db.Decimal(14, 2)
+  bidderCount  Int?
+  soldToUs     Boolean  @default(false)
+  outcome      String
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  parcel ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId, eventDate])
+  @@index([eventType, eventDate])
+}
+
+// ===========================================================================
+// Title
+// ===========================================================================
+
+model TitleInstrument {
+  id             String   @id @default(uuid())
+  parcelId       String
+  instrumentType String
+  recordedDate   DateTime?
+  bookPage       String?
+  instrumentNo   String?
+  grantor        String?
+  grantee        String?
+  amount         Decimal? @db.Decimal(14, 2)
+  description    String?
+  documentKey    String?
+  sourceUrl      String?
+  chainPosition  Int?
+  severity       String   @default("INFO")
+  resolved       Boolean  @default(false)
+  confidence     ConfidenceLevel @default(UNKNOWN)
+  createdAt      DateTime @default(now())
+
+  parcel ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId, chainPosition])
+  @@index([parcelId, instrumentType])
+}
+
+/// Where a recorder cannot be searched programmatically, work is queued for a
+/// human rather than guessed at.
+model TitleResearchTask {
+  id          String    @id @default(uuid())
+  parcelId    String
+  taskType    String
+  instructions String
+  recorderUrl String?
+  status      String    @default("OPEN")
+  assignedTo  String?
+  findings    String?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  parcel ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([parcelId])
+}
+
+// ===========================================================================
+// Deal room / due diligence
+// ===========================================================================
+
+model Deal {
+  id             String   @id @default(uuid())
+  parcelId       String   @unique
+  openedById     String?
+  openedAt       DateTime @default(now())
+  targetMaxBid   Decimal? @db.Decimal(14, 2)
+  approvedMaxBid Decimal? @db.Decimal(14, 2)
+  approvedById   String?
+  approvedAt     DateTime?
+  /// Explicit human acknowledgement required before a high-value acquisition.
+  dueDiligenceAcknowledgedBy String?
+  dueDiligenceAcknowledgedAt DateTime?
+  closedAt       DateTime?
+  outcome        String?
+  summary        String?
+  updatedAt      DateTime @updatedAt
+
+  parcel        ParcelOpportunity   @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  checklistItems DealChecklistItem[]
+  documents     DealDocument[]
+  notes         DealNote[]
+}
+
+model DealChecklistItem {
+  id           String    @id @default(uuid())
+  dealId       String
+  key          String
+  label        String
+  category     String
+  required     Boolean   @default(true)
+  ordering     Int       @default(0)
+  status       String    @default("PENDING")
+  completedById String?
+  completedAt  DateTime?
+  findings     String?
+
+  deal        Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  completedBy User?  @relation(fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@unique([dealId, key])
+  @@index([dealId, ordering])
+}
+
+model DealDocument {
+  id           String   @id @default(uuid())
+  dealId       String
+  checklistKey String?
+  title        String
+  storageKey   String
+  contentType  String?
+  byteSize     Int?
+  uploadedBy   String?
+  createdAt    DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+}
+
+model DealNote {
+  id           String   @id @default(uuid())
+  dealId       String
+  checklistKey String?
+  authorId     String?
+  body         String
+  createdAt    DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId, createdAt])
+}
+
+// ===========================================================================
+// Portfolio
+// ===========================================================================
+
+model PortfolioAsset {
+  id                String    @id @default(uuid())
+  parcelId          String    @unique
+  acquiredAt        DateTime
+  acquisitionPrice  Decimal   @db.Decimal(14, 2)
+  closingCosts      Decimal   @db.Decimal(14, 2) @default(0)
+  improvementCosts  Decimal   @db.Decimal(14, 2) @default(0)
+  titleCosts        Decimal   @db.Decimal(14, 2) @default(0)
+  taxesPaid         Decimal   @db.Decimal(14, 2) @default(0)
+  carryingCosts     Decimal   @db.Decimal(14, 2) @default(0)
+  marketingCosts    Decimal   @db.Decimal(14, 2) @default(0)
+  listPrice         Decimal?  @db.Decimal(14, 2)
+  soldAt            DateTime?
+  salePrice         Decimal?  @db.Decimal(14, 2)
+  sellingCosts      Decimal   @db.Decimal(14, 2) @default(0)
+  realizedProfit    Decimal?  @db.Decimal(14, 2)
+  realizedRoi       Float?
+  daysHeld          Int?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  parcel       ParcelOpportunity      @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  transactions PortfolioTransaction[]
+
+  @@index([soldAt])
+}
+
+model PortfolioTransaction {
+  id        String   @id @default(uuid())
+  assetId   String
+  kind      String
+  amount    Decimal  @db.Decimal(14, 2)
+  occurredAt DateTime
+  memo      String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  asset PortfolioAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId, occurredAt])
+}
+
+// ===========================================================================
+// Listing & leads
+// ===========================================================================
+
+model Listing {
+  id                String   @id @default(uuid())
+  parcelId          String   @unique
+  slug              String   @unique
+  title             String
+  shortDescription  String
+  longDescription   String
+  keyFeatures       String[] @default([])
+  locationSummary   String
+  drivingDirections String?
+  nearbyAttractions String[] @default([])
+  propertyFacts     Json     @default("[]")
+  faq               Json     @default("[]")
+  dueDiligenceDisclosure String
+  seoTitle          String
+  metaDescription   String
+  socialCopy        String
+  askingPrice       Decimal? @db.Decimal(14, 2)
+  published         Boolean  @default(false)
+  publishedAt       DateTime?
+  generatedBy       String   @default("listing-engine")
+  generatorVersion  String   @default("1")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  parcel   ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  variants ListingVariant[]
+  photos   ListingPhoto[]
+
+  @@index([published])
+}
+
+model ListingVariant {
+  id        String   @id @default(uuid())
+  listingId String
+  channel   String
+  title     String
+  body      String
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, channel])
+}
+
+model ListingPhoto {
+  id         String   @id @default(uuid())
+  listingId  String
+  storageKey String
+  caption    String?
+  ordering   Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, ordering])
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  OFFER
+  NEGOTIATING
+  CONTRACT
+  CLOSED
+  LOST
+}
+
+model Lead {
+  id          String     @id @default(uuid())
+  parcelId    String?
+  name        String
+  email       String
+  phone       String?
+  source      String     @default("PUBLIC_SITE")
+  inquiry     String?
+  offerAmount Decimal?   @db.Decimal(14, 2)
+  financing   String?
+  status      LeadStatus @default(NEW)
+  assignedTo  String?
+  lastContactedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  parcel     ParcelOpportunity? @relation(fields: [parcelId], references: [id], onDelete: SetNull)
+  activities LeadActivity[]
+
+  @@index([status, createdAt])
+  @@index([parcelId])
+  @@index([email])
+}
+
+model LeadActivity {
+  id        String   @id @default(uuid())
+  leadId    String
+  kind      String
+  body      String
+  authorId  String?
+  aiDrafted Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+}
+
+// ===========================================================================
+// Analyst tooling: searches, watchlists, alerts, memos, imports, jobs
+// ===========================================================================
+
+model SavedSearch {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  filters   Json
+  isShared  Boolean  @default(false)
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+}
+
+model Watchlist {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  createdAt DateTime @default(now())
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items WatchlistItem[]
+
+  @@unique([userId, name])
+}
+
+model WatchlistItem {
+  id          String   @id @default(uuid())
+  watchlistId String
+  parcelId    String
+  note        String?
+  addedAt     DateTime @default(now())
+
+  watchlist Watchlist         @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  parcel    ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, parcelId])
+}
+
+model AlertRule {
+  id            String   @id @default(uuid())
+  userId        String
+  name          String
+  filters       Json
+  channels      String[] @default(["IN_APP"])
+  enabled       Boolean  @default(true)
+  lastEvaluatedAt DateTime?
+  lastMatchAt   DateTime?
+  matchCount    Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@unique([userId, name])
+  @@index([enabled])
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  alertRuleId String?
+  channel     String   @default("IN_APP")
+  title       String
+  body        String
+  linkPath    String?
+  parcelId    String?
+  readAt      DateTime?
+  deliveredAt DateTime?
+  createdAt   DateTime @default(now())
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertRule AlertRule? @relation(fields: [alertRuleId], references: [id], onDelete: SetNull)
+
+  @@index([userId, readAt, createdAt])
+}
+
+model InvestmentMemo {
+  id            String   @id @default(uuid())
+  parcelId      String
+  version       Int      @default(1)
+  provider      String
+  model         String
+  sections      Json
+  recommendation String
+  recommendedMaxBid Decimal? @db.Decimal(14, 2)
+  evidenceRefs  String[] @default([])
+  unknowns      String[] @default([])
+  generatedBy   String?
+  createdAt     DateTime @default(now())
+
+  parcel ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@unique([parcelId, version])
+  @@index([parcelId, createdAt])
+}
+
+model ManualImport {
+  id            String   @id @default(uuid())
+  uploadedById  String
+  sourceId      String?
+  filename      String
+  storageKey    String
+  contentType   String?
+  rowCount      Int      @default(0)
+  status        String   @default("UPLOADED")
+  detectedColumns String[] @default([])
+  mapping       Json     @default("{}")
+  createdCount  Int      @default(0)
+  updatedCount  Int      @default(0)
+  rejectedCount Int      @default(0)
+  errors        Json     @default("[]")
+  createdAt     DateTime @default(now())
+  completedAt   DateTime?
+
+  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+model Job {
+  id          String    @id @default(uuid())
+  type        String
+  payload     Json
+  status      JobStatus @default(QUEUED)
+  priority    Int       @default(0)
+  dedupeKey   String?
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  runAt       DateTime  @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  lastError   String?
+  result      Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, runAt, priority(sort: Desc)])
+  @@index([type, status])
+  @@unique([dedupeKey])
+}

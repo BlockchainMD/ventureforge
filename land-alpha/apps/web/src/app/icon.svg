@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Land Alpha">
+  <rect width="64" height="64" rx="12" fill="#07090d"/>
+  <!-- A parcel boundary, deliberately irregular: the product is about odd-shaped
+       government remnants, not tidy squares. -->
+  <path d="M14 46 L20 17 L46 13 L52 44 Z" fill="none" stroke="#222a38" stroke-width="3" stroke-linejoin="round"/>
+  <!-- The alpha wedge: the mispricing the product exists to find. -->
+  <path d="M22 45 L33 20 L44 45 Z" fill="#f0b429"/>
+  <path d="M28 39 H38" stroke="#07090d" stroke-width="3.5" stroke-linecap="round"/>
+</svg>
