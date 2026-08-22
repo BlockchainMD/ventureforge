@@ -2,7 +2,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 
 process.env.DATABASE_URL ??= 'postgresql://unused:unused@localhost:5432/unused';
 
-const { fetchFloodHazard } = await import('./fema');
+const { fetchFloodHazard, fetchParcelFlood } = await import('./fema');
 const { IngestHttpClient } = await import('../fetch/http');
 
 /**
@@ -115,5 +115,99 @@ describe('fetchFloodHazard', () => {
     expect(result.available).toBe(true);
     expect(result.zones).toEqual([]);
     expect(result.note).toContain('No mapped flood hazard area');
+  });
+});
+
+/**
+ * Flood from a county table keyed by parcel rather than by geometry.
+ *
+ * Ottawa County publishes every parcel touching a mapped flood zone with the
+ * share of each already measured against its own boundary. Sixty-three of the
+ * ninety-nine parcels in inventory appear in it, several almost entirely
+ * inside the regulatory floodway — and none of that was visible before.
+ */
+describe('fetchParcelFlood', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const client = () =>
+    new IngestHttpClient({ minDelayMs: 0, respectRobots: false, offline: false });
+  const config = {
+    url: 'https://county.example/FloodParcels/FeatureServer/5',
+    parcelIdField: 'FinalPIN',
+    floodplainPercentField: 'PercentAcresFloodplain',
+    floodwayPercentField: 'PercentAcresFloodway',
+    floodplain100PercentField: 'PercentAcresFloodplain100',
+  };
+
+  function stub(attributes: Record<string, unknown> | null) {
+    vi.stubGlobal(
+      'fetch',
+      (async () =>
+        new Response(JSON.stringify({ features: attributes ? [{ attributes }] : [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })) as unknown as typeof fetch,
+    );
+  }
+
+  it('uses the county’s own measurement rather than deriving one', async () => {
+    stub({
+      PercentAcresFloodplain: 95.18,
+      PercentAcresFloodway: 73.84,
+      PercentAcresFloodplain100: 21.19,
+    });
+    const result = await fetchParcelFlood(
+      { mode: 'live', http: client() } as never,
+      '70-17-29-300-048',
+      config,
+    );
+    // The widest measure, because that is the share of the parcel a buyer
+    // cannot treat as ordinary upland.
+    expect(result.overlapFraction).toBeCloseTo(0.9518, 4);
+    expect(result.inSpecialFloodHazardArea).toBe(true);
+    expect(result.zones).toContain('FLOODWAY');
+  });
+
+  it('treats absence from the table as a screening result, not a silence', async () => {
+    // The county lists every parcel touching a flood zone. A parcel it holds
+    // and left out is a parcel outside them — which is an answer.
+    stub(null);
+    const result = await fetchParcelFlood(
+      { mode: 'live', http: client() } as never,
+      '70-01-01-000-000',
+      config,
+    );
+    expect(result.available).toBe(true);
+    expect(result.inSpecialFloodHazardArea).toBe(false);
+    expect(result.overlapFraction).toBe(0);
+    expect(result.note).toContain('not among them');
+  });
+
+  it('calls out a parcel mostly inside the regulatory floodway', async () => {
+    stub({
+      PercentAcresFloodplain: 100,
+      PercentAcresFloodway: 100,
+      PercentAcresFloodplain100: null,
+    });
+    const result = await fetchParcelFlood(
+      { mode: 'live', http: client() } as never,
+      '70-09-10-200-006',
+      config,
+    );
+    expect(result.note).toContain('construction is prohibited or severely restricted');
+    expect(result.inSpecialFloodHazardArea).toBe(true);
+  });
+
+  it('does not invent FEMA zone letters it was never given', async () => {
+    // The table names the 100-year floodplain and supplies no zone code.
+    // Inferring "AE" would mean inventing the code before reading it.
+    stub({ PercentAcresFloodplain: 40, PercentAcresFloodway: null, PercentAcresFloodplain100: 40 });
+    const result = await fetchParcelFlood(
+      { mode: 'live', http: client() } as never,
+      '70-00-00-000-001',
+      config,
+    );
+    expect(result.zones).toEqual(['100-YEAR FLOODPLAIN']);
+    expect(result.zones).not.toContain('AE');
   });
 });

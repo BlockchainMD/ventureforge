@@ -24,6 +24,11 @@ export interface EnvironmentalObservations {
     readonly zones: readonly string[];
     /** Fraction of parcel area inside mapped flood hazard polygons, 0-1. */
     readonly overlapFraction: number | null;
+    /**
+     * Set where the publisher determines it rather than leaving it to a zone
+     * letter. Believed in preference to inference.
+     */
+    readonly inSpecialFloodHazardArea?: boolean | null;
     readonly available: boolean;
     readonly source: string;
     /**
@@ -129,12 +134,18 @@ export function assessEnvironment(
     ? (observations.flood.overlapFraction ?? null)
     : null;
   const sfhaZones = floodZones.filter(isSpecialFloodHazardZone);
-  const inSpecialFloodHazardArea = observations.flood?.available ? sfhaZones.length > 0 : null;
+  // A publisher that states the determination outright is believed over one
+  // inferred from a zone letter. A parcel-keyed county table names the
+  // 100-year floodplain directly and supplies no FEMA zone code, so inferring
+  // from letters would mean inventing the letters first.
+  const inSpecialFloodHazardArea = !observations.flood?.available
+    ? null
+    : (observations.flood.inSpecialFloodHazardArea ?? sfhaZones.length > 0);
 
   if (observations.flood?.available) {
-    if (sfhaZones.length > 0) {
+    if (inSpecialFloodHazardArea === true) {
       evidence.push(
-        `Parcel intersects FEMA flood zone${sfhaZones.length > 1 ? 's' : ''} ${sfhaZones.join(', ')}${
+        `Parcel intersects FEMA flood zone${(sfhaZones.length > 0 ? sfhaZones : floodZones).length > 1 ? 's' : ''} ${(sfhaZones.length > 0 ? sfhaZones : floodZones).join(', ')}${
           floodOverlapFraction != null ? ` across ~${pct(floodOverlapFraction)} of its area` : ''
         } (${observations.flood.source}).`,
       );
@@ -143,7 +154,7 @@ export function assessEnvironment(
         `No Special Flood Hazard Area intersects the parcel${floodZones.length ? ` (mapped zone${floodZones.length > 1 ? 's' : ''}: ${floodZones.join(', ')})` : ''} (${observations.flood.source}).`,
       );
     }
-    if (floodOverlapFraction == null && sfhaZones.length > 0) {
+    if (floodOverlapFraction == null && inSpecialFloodHazardArea === true) {
       unknowns.push('The share of the parcel inside the flood hazard area could not be measured.');
       confidence = minConfidence(confidence, 'MEDIUM');
     }

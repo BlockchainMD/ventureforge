@@ -203,12 +203,24 @@ export async function enrichParcel(
   // ---- Environmental -------------------------------------------------------
   let environmental: EnvironmentalAssessment | null = null;
   if (stages.has('environmental')) {
-    const countyFloodLayerUrl =
-      (registryByKey(parcel.source.registryKey)?.config as { floodLayerUrl?: string } | undefined)
-        ?.floodLayerUrl ?? null;
+    const sourceConfig = registryByKey(parcel.source.registryKey)?.config as
+      | {
+          floodLayerUrl?: string;
+          parcelFloodLayer?: enrichment.ParcelFloodLayerConfig;
+        }
+      | undefined;
+
+    // A parcel-keyed table is preferred over any spatial query: the county
+    // measured the overlap against the authoritative parcel boundary, which is
+    // a better number than one derived by intersecting a zone polygon here.
+    const floodLookup = sourceConfig?.parcelFloodLayer
+      ? enrichment.fetchParcelFlood(ctx, parcel.apn ?? '', sourceConfig.parcelFloodLayer)
+      : enrichment.fetchFloodHazard(ctx, target, {
+          countyFloodLayerUrl: sourceConfig?.floodLayerUrl ?? null,
+        });
 
     const [flood, wetlands, contamination, terrain, manual] = await Promise.all([
-      enrichment.fetchFloodHazard(ctx, target, { countyFloodLayerUrl }),
+      floodLookup,
       enrichment.fetchWetlands(ctx, target),
       enrichment.fetchContamination(ctx, target),
       enrichment.fetchTerrain(ctx, target),
@@ -238,7 +250,9 @@ export async function enrichParcel(
       flood: flood.available
         ? {
             zones: flood.zones,
-            overlapFraction: floodOverlap,
+            // The publisher's own measurement wins where it gave one.
+            overlapFraction: flood.overlapFraction ?? floodOverlap,
+            inSpecialFloodHazardArea: flood.inSpecialFloodHazardArea,
             available: true,
             source: flood.source,
           }

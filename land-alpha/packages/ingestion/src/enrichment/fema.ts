@@ -26,6 +26,134 @@ export interface FloodObservation {
   readonly available: boolean;
   readonly source: string;
   readonly note: string | null;
+  /**
+   * Overlap the publisher measured itself, 0-1.
+   *
+   * Some counties publish a parcel-keyed flood table with the share of each
+   * parcel already computed against its own boundary. That is a better number
+   * than one this engine derives by intersecting a zone polygon with a
+   * geometry, and where it exists it is used in preference.
+   */
+  readonly overlapFraction?: number | null;
+  /**
+   * Set directly where the publisher states it rather than leaving it to be
+   * inferred from a zone letter. A parcel-keyed table names the 100-year
+   * floodplain outright, and the 100-year floodplain is the Special Flood
+   * Hazard Area by definition — reading that off a zone code we were never
+   * given would mean inventing the code first.
+   */
+  readonly inSpecialFloodHazardArea?: boolean | null;
+}
+
+/** Fields a parcel-keyed county flood table exposes. */
+export interface ParcelFloodLayerConfig {
+  readonly url: string;
+  /** The column holding the parcel identifier. */
+  readonly parcelIdField: string;
+  readonly floodplainPercentField?: string;
+  readonly floodwayPercentField?: string;
+  readonly floodplain100PercentField?: string;
+}
+
+/**
+ * Flood from a county table keyed by parcel rather than by geometry.
+ *
+ * Ottawa County publishes every parcel that intersects a flood zone, with the
+ * share of each already measured against its own boundary. Two things follow.
+ * The percentages are better than anything derived here, because the county
+ * computed them against the authoritative parcel shape. And absence is an
+ * answer: a parcel the county holds and did not put in this table is a parcel
+ * outside the mapped flood zones, which is a screening result rather than a
+ * silence.
+ */
+export async function fetchParcelFlood(
+  ctx: EnrichmentContext,
+  parcelId: string,
+  config: ParcelFloodLayerConfig,
+): Promise<FloodObservation> {
+  const source = 'County parcel flood table';
+  if (ctx.mode === 'fixture') {
+    return { zones: [], polygons: [], available: false, source, note: 'fixture mode' };
+  }
+
+  const params = new URLSearchParams({
+    where: `${config.parcelIdField} = '${parcelId.replace(/'/g, "''")}'`,
+    outFields: '*',
+    returnGeometry: 'false',
+    f: 'json',
+  });
+
+  try {
+    const response = await ctx.http.getJson<{
+      features?: { attributes?: Record<string, unknown> }[];
+      error?: unknown;
+    }>(`${config.url}/query?${params.toString()}`);
+    if (response.error) {
+      return {
+        zones: [],
+        polygons: [],
+        available: false,
+        source,
+        note: 'the table returned an error',
+      };
+    }
+
+    const attributes = response.features?.[0]?.attributes;
+    if (!attributes) {
+      return {
+        zones: [],
+        polygons: [],
+        available: true,
+        source,
+        overlapFraction: 0,
+        inSpecialFloodHazardArea: false,
+        note: 'The county lists every parcel touching a mapped flood zone, and this parcel is not among them.',
+      };
+    }
+
+    const percent = (field?: string): number | null => {
+      if (!field) return null;
+      const value = Number(attributes[field]);
+      return Number.isFinite(value) ? value / 100 : null;
+    };
+    const floodplain = percent(config.floodplainPercentField);
+    const floodway = percent(config.floodwayPercentField);
+    const floodplain100 = percent(config.floodplain100PercentField);
+
+    const zones: string[] = [];
+    // Named for what the county measured, not translated into FEMA zone
+    // letters it never supplied. The engine's SFHA determination is set
+    // directly below rather than inferred from these.
+    if (floodway != null && floodway > 0) zones.push('FLOODWAY');
+    if (floodplain100 != null && floodplain100 > 0) zones.push('100-YEAR FLOODPLAIN');
+    if (zones.length === 0 && floodplain != null && floodplain > 0) zones.push('FLOODPLAIN');
+
+    return {
+      zones,
+      polygons: [],
+      available: true,
+      source,
+      // The widest measure the county gave, since it is the share of the
+      // parcel a buyer cannot treat as ordinary upland.
+      overlapFraction: Math.max(floodplain ?? 0, floodway ?? 0, floodplain100 ?? 0) || null,
+      // The floodway is inside the 100-year floodplain by construction, so
+      // either one puts the parcel in the Special Flood Hazard Area.
+      inSpecialFloodHazardArea:
+        (floodway != null && floodway > 0) || (floodplain100 != null && floodplain100 > 0),
+      note:
+        floodway != null && floodway > 0.5
+          ? `The county measures ${(floodway * 100).toFixed(0)}% of this parcel inside the regulatory floodway, where construction is prohibited or severely restricted.`
+          : null,
+    };
+  } catch (error) {
+    return {
+      zones: [],
+      polygons: [],
+      available: false,
+      source,
+      note: describeUnavailable(error, null),
+    };
+  }
 }
 
 export async function fetchFloodHazard(

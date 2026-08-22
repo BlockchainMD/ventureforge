@@ -295,6 +295,23 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
       'Vesting in the treasurer is strong evidence of foreclosure inventory but does not itself confirm a parcel is offered for sale; that must be confirmed against the treasurer’s published auction list.',
     ].join(' '),
     config: {
+      /**
+       * The county's parcel-keyed flood table.
+       *
+       * Ottawa lists every parcel touching a mapped flood zone with the share
+       * of each already measured against its own boundary — better than
+       * anything derived here, and absence from the table is itself the
+       * screening result. Sixty-three of the ninety-nine parcels in inventory
+       * appear in it, several of them almost entirely inside the regulatory
+       * floodway.
+       */
+      parcelFloodLayer: {
+        url: 'https://gis.miottawa.org/arcgis/rest/services/HostedServices/FloodParcels/FeatureServer/5',
+        parcelIdField: 'FinalPIN',
+        floodplainPercentField: 'PercentAcresFloodplain',
+        floodwayPercentField: 'PercentAcresFloodway',
+        floodplain100PercentField: 'PercentAcresFloodplain100',
+      },
       // Act 51 legal designation names the maintaining authority outright, which is exactly the field access class A turns on.
       roadsLayerUrl:
         'https://gis.miottawa.org/arcgis/rest/services/HostedServices/StreetCenterlines/FeatureServer/0',
