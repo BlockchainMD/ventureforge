@@ -19,6 +19,7 @@ export function BlockedRow({
   apn,
   location,
   acreage,
+  accessClass,
   quickSaleValue,
   maxBid,
   reference,
@@ -28,6 +29,7 @@ export function BlockedRow({
   apn: string;
   location: string;
   acreage: string | null;
+  accessClass: string;
   quickSaleValue: string;
   maxBid: string;
   reference: string | null;
@@ -60,6 +62,21 @@ export function BlockedRow({
         <span className="ml-2 text-[10px] text-ink-faint">{location}</span>
       </td>
       <td className="num px-3 py-1.5 text-ink-muted">{acreage ?? '—'}</td>
+      {/* A landlocked parcel is worth a call only if the value is large enough
+          to survive an exit that runs through the neighbour. Saying so here
+          stops the call being spent finding that out. */}
+      <td
+        className={
+          accessClass === 'D'
+            ? 'num px-3 py-1.5 text-bad'
+            : accessClass === 'UNKNOWN'
+              ? 'num px-3 py-1.5 text-ink-faint'
+              : 'num px-3 py-1.5 text-ink-muted'
+        }
+        title={accessClass === 'D' ? 'Appears landlocked' : undefined}
+      >
+        {accessClass === 'UNKNOWN' ? '—' : accessClass}
+      </td>
       <td className="num px-3 py-1.5 text-ink">{quickSaleValue}</td>
       <td className="num px-3 py-1.5 text-good">{maxBid}</td>
       <td className="num px-3 py-1.5 text-[10px] text-ink-faint">{reference ?? '—'}</td>

@@ -692,6 +692,64 @@ describe('scoreParcel', () => {
     expect(result.rejectionReasons.map((r) => r.rule)).toContain('BASIS_EXCEEDS_QSV');
   });
 
+  it('does not reject a landlocked parcel merely because nobody has priced it', () => {
+    // The trap this replaces: every unpriced parcel has a null ratio, the
+    // worklist that exists to obtain prices skips rejected parcels, so the
+    // rejection removed the parcel from the only queue that could lift it.
+    const result = scoreParcel(
+      scoringInputs({
+        access: { ...GOOD_ACCESS, accessClass: 'D' as const, potentiallyLandlocked: true },
+        economics: economics({
+          priced: false,
+          basisToQsv: null,
+          basisFloorToQsv: 0.05, // under the 8% a landlocked parcel must clear
+          roiAtQsv: null,
+          tier: 'UNKNOWN',
+        }),
+      }),
+      DEFAULT_SCORING_CONFIG,
+    );
+    expect(result.rejectionReasons.map((r) => r.rule)).not.toContain(
+      'NO_ACCESS_WITHOUT_EXCEPTIONAL_DISCOUNT',
+    );
+  });
+
+  it('rejects a landlocked parcel no price could rescue', () => {
+    // The floor is the basis before a cent is paid for the land. Past the
+    // threshold there, no purchase price on earth reaches it.
+    const result = scoreParcel(
+      scoringInputs({
+        access: { ...GOOD_ACCESS, accessClass: 'D' as const, potentiallyLandlocked: true },
+        economics: economics({
+          priced: false,
+          basisToQsv: null,
+          basisFloorToQsv: 0.31,
+          roiAtQsv: null,
+          tier: 'UNKNOWN',
+        }),
+      }),
+      DEFAULT_SCORING_CONFIG,
+    );
+    const rejection = result.rejectionReasons.find(
+      (r) => r.rule === 'NO_ACCESS_WITHOUT_EXCEPTIONAL_DISCOUNT',
+    );
+    expect(rejection).toBeDefined();
+    expect(rejection!.explanation).toContain('No purchase price reaches it');
+  });
+
+  it('still rejects a landlocked parcel on a real ratio that misses', () => {
+    const result = scoreParcel(
+      scoringInputs({
+        access: { ...GOOD_ACCESS, accessClass: 'D' as const, potentiallyLandlocked: true },
+        economics: economics({ basisToQsv: 0.4, basisFloorToQsv: 0.4 }),
+      }),
+      DEFAULT_SCORING_CONFIG,
+    );
+    expect(result.rejectionReasons.map((r) => r.rule)).toContain(
+      'NO_ACCESS_WITHOUT_EXCEPTIONAL_DISCOUNT',
+    );
+  });
+
   it('rejects on the cost floor alone when no price has been obtained', () => {
     // Making the acquisition price nullable correctly suppressed basisToQsv,
     // and silently disabled this rejection for every unpriced parcel — which

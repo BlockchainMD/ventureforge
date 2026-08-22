@@ -515,15 +515,30 @@ export function evaluateRejectionRules(
   if (accessRule && inputs.access?.accessClass === 'D') {
     const threshold = Number(accessRule.params?.maxBasisToQsv ?? 0.08);
     const ratio = inputs.economics?.basisToQsv;
+    const floor = inputs.economics?.basisFloorToQsv ?? null;
+
     // A landlocked parcel is only worth a look at a genuinely exceptional
     // discount, because the exit is to an adjoining owner and nobody else.
-    if (ratio == null || ratio > threshold) {
+    //
+    // Rejecting on a null ratio looks conservative and is a trap. Every parcel
+    // whose price nobody has obtained has a null ratio; the worklist that
+    // exists to obtain prices skips rejected parcels; so the rejection removes
+    // the parcel from the only queue that could ever lift it. The gap causes
+    // the verdict and the verdict prevents closing the gap.
+    //
+    // The floor breaks the circle, and it is a stronger test than it looks.
+    // It is the basis before a cent is paid for the land, so if it already
+    // exceeds the threshold no purchase price on earth clears it and the
+    // rejection is certain. If it does not, a low enough price still might,
+    // and the honest thing is to leave the parcel in the queue and go and ask.
+    const decidable = ratio ?? floor;
+    if (decidable != null && decidable > threshold) {
       reasons.push({
         rule: 'NO_ACCESS_WITHOUT_EXCEPTIONAL_DISCOUNT',
         explanation:
-          ratio == null
-            ? 'Parcel appears landlocked and no valuation exists to justify the risk.'
-            : `Parcel appears landlocked and the discount (basis at ${(ratio * 100).toFixed(0)}% of QSV) does not clear the ${(threshold * 100).toFixed(0)}% threshold required for a landlocked parcel.`,
+          ratio != null
+            ? `Parcel appears landlocked and the discount (basis at ${(ratio * 100).toFixed(0)}% of QSV) does not clear the ${(threshold * 100).toFixed(0)}% threshold required for a landlocked parcel.`
+            : `Parcel appears landlocked and, before any acquisition price, its costs alone are already ${(decidable * 100).toFixed(0)}% of quick-sale value — past the ${(threshold * 100).toFixed(0)}% a landlocked parcel has to clear. No purchase price reaches it.`,
         overridable: accessRule.overridable,
       });
     }

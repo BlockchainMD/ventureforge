@@ -54,6 +54,7 @@ export default async function BlockedPage() {
       askingPrice: true,
       comparableCount: true,
       environmentalLayersScreened: true,
+      accessClass: true,
       sourceRecordId: true,
       latitude: true,
       longitude: true,
@@ -167,6 +168,7 @@ export default async function BlockedPage() {
                 <tr className="border-b border-line text-left text-[10px] uppercase tracking-wide text-ink-faint">
                   <th className="px-3 py-2 font-normal">Parcel</th>
                   <th className="px-3 py-2 font-normal">Acreage</th>
+                  <th className="px-3 py-2 font-normal">Access</th>
                   <th className="px-3 py-2 font-normal">Quick-sale value</th>
                   <th className="px-3 py-2 font-normal">Do not bid above</th>
                   <th className="px-3 py-2 font-normal">Reference</th>
@@ -181,6 +183,7 @@ export default async function BlockedPage() {
                     apn={parcel.apn ?? '—'}
                     location={`${parcel.county}, ${parcel.state}`}
                     acreage={parcel.acreage == null ? null : formatAcres(parcel.acreage)}
+                    accessClass={parcel.accessClass}
                     quickSaleValue={formatCents(toCents(parcel.quickSaleValue))}
                     maxBid={formatCents(maxBidFor(parcel.quickSaleValue))}
                     reference={parcel.sourceRecordId}
