@@ -4,6 +4,7 @@ import {
   type UsdCents,
   type ValuationEstimate,
   type ValuationResult,
+  formatCents,
 } from '@land-alpha/shared';
 import { MINIMUM_PLAUSIBLE_PARCEL_VALUE_CENTS } from './acreage-curve';
 import {
@@ -43,6 +44,20 @@ export interface ValuationConfig {
    */
   readonly assessedValueMultiplier: number;
   /**
+   * How far a comps valuation may sit above the assessor's land value before
+   * it is treated as a disagreement rather than a lag.
+   *
+   * Assessors are consistently behind the market on vacant land — across
+   * Orange County the median ratio here is 1.5 — so a valuation above the
+   * assessment is expected and is not a fault. Several times above it is a
+   * different claim: that the comparables describe land this parcel is not.
+   */
+  readonly assessedDisagreementWarn: number;
+  /** Beyond this the two are not describing the same parcel. */
+  readonly assessedDisagreementSevere: number;
+  /** Below this multiple of the assessment the valuation is equally suspect. */
+  readonly assessedDisagreementLow: number;
+  /**
    * Correction learned from parcels actually sold in this market. 1 means the
    * engine has been accurate here, or that nothing has sold yet. Applied to the
    * price per acre rather than to the comparables: the comps are what the
@@ -56,6 +71,9 @@ export const DEFAULT_VALUATION_CONFIG: ValuationConfig = {
   quickSaleDiscount: 0.25,
   investorLiquidationDiscount: 0.5,
   assessedValueMultiplier: 1.15,
+  assessedDisagreementWarn: 4,
+  assessedDisagreementSevere: 10,
+  assessedDisagreementLow: 0.25,
   marketCorrection: 1,
 };
 
@@ -98,18 +116,37 @@ export function valueParcel(
           : `Comparable sales (${comps.comps.length} recorded sales, size-adjusted, corrected ${correction.toFixed(2)}× against realised sales)`,
     });
 
+    // Cross-check against the assessor.
+    //
+    // The assessment is a lagging indicator and never overrides comparables —
+    // it is the number the county last agreed with the owner, not the market.
+    // But it is an independent read on the same parcel, and it is free. When
+    // it disagrees by an order of magnitude the likeliest explanation is not
+    // that the assessor is behind; it is that the comparables describe land
+    // somewhere else. Orange County holds a 0.07-acre parcel assessed at $100
+    // that this engine valued at $206,986.
+    const sanity = crossCheckAssessment(retail.mid, inputs.landAssessedValueCents ?? null, config);
+    if (sanity.warning) warnings.push(sanity.warning);
+    const confidence = sanity.cap ? minConfidence(comps.confidence, sanity.cap) : comps.confidence;
+
+    // The capped estimate is what the discounts derive from, not the original:
+    // discountEstimate carries confidence forward, and a quick-sale figure that
+    // looked more certain than the retail value it came from would undo the
+    // cross-check one line after applying it.
+    const qualified: ValuationEstimate = { ...retail, confidence };
+
     return {
-      retail,
-      quickSale: discountEstimate(retail, config.quickSaleDiscount, 'Quick-sale pricing'),
+      retail: qualified,
+      quickSale: discountEstimate(qualified, config.quickSaleDiscount, 'Quick-sale pricing'),
       investorLiquidation: discountEstimate(
-        retail,
+        qualified,
         config.investorLiquidationDiscount,
         'Investor liquidation',
       ),
       compCount: comps.comps.length,
       comps: comps.comps,
       pricePerAcreUsed: corrected,
-      confidence: comps.confidence,
+      confidence,
       warnings,
     };
   }
@@ -198,4 +235,53 @@ function emptyResult(warnings: string[]): ValuationResult {
     confidence: 'UNKNOWN',
     warnings,
   };
+}
+
+/**
+ * Reads a comps valuation against the county's own land assessment.
+ *
+ * Returns a warning and a confidence ceiling, never a replacement value. An
+ * assessment that is half the market is ordinary on vacant land; one that is a
+ * twentieth of it means one of the two numbers is about a different piece of
+ * ground, and the honest response is to say so rather than to pick a side.
+ */
+export function crossCheckAssessment(
+  retailCents: UsdCents,
+  landAssessedCents: UsdCents | null,
+  config: ValuationConfig,
+): { warning: string | null; cap: ConfidenceLevel | null } {
+  if (landAssessedCents == null || landAssessedCents <= 0 || retailCents <= 0) {
+    return { warning: null, cap: null };
+  }
+  const ratio = retailCents / landAssessedCents;
+
+  if (ratio >= config.assessedDisagreementSevere) {
+    return {
+      warning:
+        `This valuation is ${ratio.toFixed(0)}× the county's assessed land value ` +
+        `(${formatCents(landAssessedCents)}). Assessments lag the market on vacant land, but not by ` +
+        `this much — treat the comparables as describing a different location until an analyst ` +
+        `confirms otherwise.`,
+      cap: 'UNKNOWN',
+    };
+  }
+  if (ratio >= config.assessedDisagreementWarn) {
+    return {
+      warning:
+        `This valuation is ${ratio.toFixed(1)}× the county's assessed land value ` +
+        `(${formatCents(landAssessedCents)}), which is high even allowing for the lag typical of ` +
+        `vacant-land assessments.`,
+      cap: 'LOW',
+    };
+  }
+  if (ratio <= config.assessedDisagreementLow) {
+    return {
+      warning:
+        `This valuation is only ${(ratio * 100).toFixed(0)}% of the county's assessed land value ` +
+        `(${formatCents(landAssessedCents)}). An assessment above the market is unusual and may ` +
+        `indicate the comparables are drawn from weaker land than this parcel.`,
+      cap: 'LOW',
+    };
+  }
+  return { warning: null, cap: null };
 }

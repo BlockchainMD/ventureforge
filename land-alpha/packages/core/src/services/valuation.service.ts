@@ -19,6 +19,7 @@ import {
   computeEconomics,
   DEFAULT_COMPS_CONFIG,
   DEFAULT_LIQUIDITY_CONFIG,
+  DEFAULT_VALUATION_CONFIG,
   estimateHoldDays,
   maximumBidForTargetRatio,
   valueParcel,
@@ -155,10 +156,10 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       landAssessedValueCents: toCents(parcel.landAssessedValue),
     },
     {
+      ...DEFAULT_VALUATION_CONFIG,
       comps: DEFAULT_COMPS_CONFIG,
       quickSaleDiscount: config.costModel.quickSaleDiscountFromRetail,
       investorLiquidationDiscount: config.costModel.investorLiquidationDiscountFromRetail,
-      assessedValueMultiplier: 1.15,
       marketCorrection: valueCorrection ?? 1,
     },
   );

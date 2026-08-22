@@ -7,7 +7,7 @@ import {
   weightedMedian,
   type CompCandidate,
 } from './comps';
-import { valueParcel } from './valuation';
+import { valueParcel, DEFAULT_VALUATION_CONFIG, crossCheckAssessment } from './valuation';
 import { classifyTier, computeEconomics, maximumBidForTargetRatio } from './economics';
 import type { EconomicsCostModel, EconomicsThresholds } from './economics';
 
@@ -221,10 +221,10 @@ describe('analyzeComps — fixture provenance', () => {
         landAssessedValueCents: null,
       },
       {
+        ...DEFAULT_VALUATION_CONFIG,
         comps: DEFAULT_COMPS_CONFIG,
         quickSaleDiscount: 0.25,
         investorLiquidationDiscount: 0.45,
-        assessedValueMultiplier: 1.15,
       },
     );
     expect(result.confidence).toBe('LOW');
@@ -481,5 +481,48 @@ describe('maximumBidForTargetRatio', () => {
       costs: COSTS,
     });
     expect(bid).toBe(0);
+  });
+});
+
+describe('crossCheckAssessment', () => {
+  const config = DEFAULT_VALUATION_CONFIG;
+
+  it('says nothing about the ordinary gap between market and assessment', () => {
+    // Across Orange County the median ratio is 1.5. Assessors lag the market
+    // on vacant land; that is expected and is not a fault.
+    expect(crossCheckAssessment(150_000, 100_000, config)).toEqual({ warning: null, cap: null });
+  });
+
+  it('caps confidence when the valuation runs well ahead of the assessment', () => {
+    const result = crossCheckAssessment(500_000, 100_000, config);
+    expect(result.cap).toBe('LOW');
+    expect(result.warning).toContain('5.0×');
+  });
+
+  it('treats an order-of-magnitude gap as a disagreement, not a lag', () => {
+    // Orange County holds a 0.07-acre parcel assessed at $100 that the engine
+    // valued at $206,986. That is not the assessor being behind the market.
+    const result = crossCheckAssessment(20_698_643, 10_000, config);
+    expect(result.cap).toBe('UNKNOWN');
+    expect(result.warning).toContain('different location');
+  });
+
+  it('is equally suspicious of a valuation far below the assessment', () => {
+    const result = crossCheckAssessment(10_000, 100_000, config);
+    expect(result.cap).toBe('LOW');
+    expect(result.warning).toContain('weaker land');
+  });
+
+  it('stays silent when the county publishes no land value', () => {
+    expect(crossCheckAssessment(150_000, null, config)).toEqual({ warning: null, cap: null });
+    expect(crossCheckAssessment(150_000, 0, config)).toEqual({ warning: null, cap: null });
+  });
+
+  it('never replaces the valuation, only qualifies it', () => {
+    // The assessment is the number the county last agreed with the owner, not
+    // the market. It qualifies a comps valuation; it does not overrule one.
+    const result = crossCheckAssessment(20_000_000, 10_000, config);
+    expect(result).not.toHaveProperty('value');
+    expect(Object.keys(result).sort()).toEqual(['cap', 'warning']);
   });
 });
