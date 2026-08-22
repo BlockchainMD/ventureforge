@@ -79,6 +79,7 @@ services:
     build:
       context: .
       target: build
+      secrets: [ca_bundle]
     container_name: land-alpha-seed
     profiles: ['app']
     environment:
@@ -98,6 +99,7 @@ services:
     build:
       context: .
       target: runtime
+      secrets: [ca_bundle]
     container_name: land-alpha-web
     profiles: ['app']
     environment:
@@ -114,6 +116,13 @@ services:
       seed:
         condition: service_completed_successfully
     restart: unless-stopped
+
+# Building behind a TLS-inspecting proxy: point CA_BUNDLE_FILE at the proxy's
+# certificate and it is trusted for the dependency-install layer only, never
+# copied into an image. Unset it and this is an empty file the build ignores.
+secrets:
+  ca_bundle:
+    file: ${CA_BUNDLE_FILE:-/dev/null}
 
 volumes:
   postgres-data:
