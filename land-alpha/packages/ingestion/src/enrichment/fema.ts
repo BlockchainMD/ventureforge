@@ -1,6 +1,6 @@
 import { esriPolygonToGeoJson, type EsriPolygon } from '@land-alpha/gis';
 import { env } from '@land-alpha/shared/env';
-import type { AnyGeometry } from '@land-alpha/shared';
+import { isSpecialFloodHazardZone, type AnyGeometry } from '@land-alpha/shared';
 import type { EnrichmentContext, EnrichmentTarget } from './types';
 import { describeUnavailable } from './unavailable';
 
@@ -235,8 +235,20 @@ async function queryFloodLayer(
     const zones = new Set<string>();
     const polygons: AnyGeometry[] = [];
     for (const feature of response.features) {
-      const zone = feature.attributes?.FLD_ZONE;
-      if (typeof zone === 'string' && zone.trim()) zones.add(zone.trim().toUpperCase());
+      const raw = feature.attributes?.FLD_ZONE;
+      const zone = typeof raw === 'string' && raw.trim() ? raw.trim().toUpperCase() : null;
+      if (zone) zones.add(zone);
+      // Only hazard polygons are kept, because the only thing the caller does
+      // with them is measure what share of the parcel they cover — and that
+      // number is read as flood exposure.
+      //
+      // Zone X is "area of minimal flood hazard" and blankets everything the
+      // floodplain does not, so including it put every dry parcel in Orange
+      // County at an overlap of 1.00. Nothing downstream misread it yet, because
+      // the risk model gates on the SFHA determination first, but the parcel
+      // page was telling an operator that land entirely out of the floodplain
+      // was entirely in one.
+      if (zone && !isSpecialFloodHazardZone(zone)) continue;
       if (feature.geometry?.rings) {
         const converted = esriPolygonToGeoJson(feature.geometry);
         if (converted) polygons.push(converted);

@@ -1,4 +1,5 @@
 import {
+  isSpecialFloodHazardZone,
   minConfidence,
   type ConfidenceLevel,
   type ContaminatedSiteHit,
@@ -90,20 +91,6 @@ export interface EnvironmentalObservations {
      */
     readonly unavailableReason?: string | null;
   };
-}
-
-/**
- * FEMA zone codes that denote a Special Flood Hazard Area (the 1%-annual-chance
- * floodplain). Zones X, B and C are outside it; V zones are coastal high hazard.
- */
-const SFHA_ZONE_PREFIXES = ['A', 'V'];
-const NON_SFHA_ZONES = new Set(['X', 'B', 'C', 'D', 'AREA NOT INCLUDED', 'OPEN WATER']);
-
-export function isSpecialFloodHazardZone(zone: string): boolean {
-  const normalized = zone.trim().toUpperCase();
-  if (NON_SFHA_ZONES.has(normalized)) return false;
-  if (normalized.startsWith('X')) return false;
-  return SFHA_ZONE_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
 /**
@@ -384,3 +371,7 @@ function pct(fraction: number): string {
 function fmt(value: number | null): string {
   return value == null ? '?' : value.toFixed(0);
 }
+
+// Re-exported so existing consumers keep one import site; the definition
+// lives in shared because the connector needs the same answer.
+export { isSpecialFloodHazardZone };

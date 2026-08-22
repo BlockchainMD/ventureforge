@@ -211,3 +211,78 @@ describe('fetchParcelFlood', () => {
     expect(result.zones).not.toContain('AE');
   });
 });
+
+describe('flood overlap measures hazard, not any mapped polygon', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const target = {
+    parcelId: 'overlap-test',
+    centroid: [-81.4074, 28.5121] as [number, number],
+    acreage: 1,
+    geometry: null,
+  };
+  const client = () =>
+    new IngestHttpClient({ minDelayMs: 0, respectRobots: false, offline: false });
+
+  function stubZones(zones: { zone: string; withGeometry: boolean }[]) {
+    vi.stubGlobal(
+      'fetch',
+      (async () =>
+        new Response(
+          JSON.stringify({
+            features: zones.map((z) => ({
+              attributes: { FLD_ZONE: z.zone },
+              geometry: z.withGeometry
+                ? {
+                    // A real box around the target centroid: the converter
+                    // rejects positions that are not plausibly in the US, so
+                    // a unit square at [0, 0] would be dropped before the
+                    // hazard filter ever saw it.
+                    rings: [
+                      [
+                        [-81.41, 28.505],
+                        [-81.41, 28.52],
+                        [-81.4, 28.52],
+                        [-81.4, 28.505],
+                        [-81.41, 28.505],
+                      ],
+                    ],
+                  }
+                : undefined,
+            })),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )) as unknown as typeof fetch,
+    );
+  }
+
+  it('keeps zone X out of the polygons whose coverage becomes the overlap', async () => {
+    // Zone X is "area of minimal flood hazard" and blankets everything the
+    // floodplain does not, so counting it put every dry parcel in Orange
+    // County at an overlap of 1.00 — reported on the parcel page as land
+    // entirely inside a floodplain it is entirely outside of.
+    stubZones([{ zone: 'X', withGeometry: true }]);
+    const result = await fetchFloodHazard(
+      { mode: 'live', http: client() } as never,
+      target as never,
+    );
+    expect(result.zones).toEqual(['X']);
+    expect(result.polygons).toHaveLength(0);
+  });
+
+  it('keeps the hazard polygons and drops the rest from the same response', async () => {
+    stubZones([
+      { zone: 'AE', withGeometry: true },
+      { zone: 'X', withGeometry: true },
+      { zone: 'VE', withGeometry: true },
+    ]);
+    const result = await fetchFloodHazard(
+      { mode: 'live', http: client() } as never,
+      target as never,
+    );
+    // Every zone is still reported — the parcel does touch zone X — but only
+    // AE and VE contribute to how much of it is exposed.
+    expect(result.zones.sort()).toEqual(['AE', 'VE', 'X']);
+    expect(result.polygons).toHaveLength(2);
+  });
+});
