@@ -87,14 +87,6 @@ export interface CompsResult {
 }
 
 /**
- * The tightest ring of comparables that still holds enough sales.
- *
- * Comparables with no location are always kept: an unlocated sale is weighted
- * down and warned about elsewhere, and dropping it here would silently discard
- * a whole source — Grant County's layer, or any roll not yet geocoded — the
- * moment one geolocated sale existed.
- */
-/**
  * Comparables inside the subject's own assessor neighbourhood.
  *
  * A radius is a poor proxy for comparability in a metropolitan county. Orange
@@ -134,28 +126,72 @@ export function selectByNeighborhood(
   return { pool, matched: pool.length };
 }
 
+/**
+ * Rings are measured with located sales only.
+ *
+ * A sale with no coordinates used to satisfy every radius, on the reasoning
+ * that dropping it would discard an entire ungeocoded source the moment one
+ * located sale existed. The reasoning held when little was geocoded. It stopped
+ * holding at 97% coverage in Florida, and by then it was doing real damage:
+ * because an unlocated sale counted as inside the 3km ring, the tightest ring
+ * always looked full, so the search never widened, never warned, and reported a
+ * 3km radius while valuing off sales from anywhere in the county.
+ *
+ * It bit hardest exactly where the money is. Large rural parcels have few
+ * neighbours, so their rings could only fill through the escape hatch: the two
+ * highest-value parcels in Orange County drew nine of their twelve comparables
+ * from sales whose location nobody knows.
+ *
+ * So located sales build the rings. Unlocated ones are admitted only when even
+ * the widest ring cannot be filled without them — the case the original
+ * reasoning was about — and the caller is told, so the valuation can be marked
+ * down for it instead of quietly inheriting a radius it never satisfied.
+ */
 export function selectByRadius(
   candidates: readonly CompCandidate[],
   config: CompsConfig,
-): { pool: readonly CompCandidate[]; radiusMeters: number; widened: number | null } {
+): {
+  pool: readonly CompCandidate[];
+  radiusMeters: number;
+  widened: number | null;
+  unlocatedUsed: number;
+} {
   const tiers = config.radiusTiers ?? [config.maxDistanceMeters];
   const preferred = config.preferredComps ?? config.minComps;
+  const widest = tiers[tiers.length - 1] ?? config.maxDistanceMeters;
 
+  const located = candidates.filter((candidate) => candidate.distanceMeters != null);
+  const unlocated = candidates.filter((candidate) => candidate.distanceMeters == null);
   const within = (radius: number): CompCandidate[] =>
-    candidates.filter(
-      (candidate) => candidate.distanceMeters == null || candidate.distanceMeters <= radius,
-    );
+    located.filter((candidate) => candidate.distanceMeters! <= radius);
 
   let tightestCount: number | null = null;
   for (const [index, radius] of tiers.entries()) {
     const pool = within(radius);
     if (index === 0) tightestCount = pool.length;
     if (pool.length >= preferred) {
-      return { pool, radiusMeters: radius, widened: index === 0 ? null : tightestCount };
+      return {
+        pool,
+        radiusMeters: radius,
+        widened: index === 0 ? null : tightestCount,
+        unlocatedUsed: 0,
+      };
     }
   }
-  const widest = tiers[tiers.length - 1] ?? config.maxDistanceMeters;
-  return { pool: within(widest), radiusMeters: widest, widened: tightestCount };
+
+  // Even the widest ring is short. Unlocated sales are better than nothing, but
+  // only just, and only because the alternative is refusing to value a parcel
+  // in a county that has not finished geocoding its roll.
+  const widestPool = within(widest);
+  if (widestPool.length >= preferred || unlocated.length === 0) {
+    return { pool: widestPool, radiusMeters: widest, widened: tightestCount, unlocatedUsed: 0 };
+  }
+  return {
+    pool: [...widestPool, ...unlocated],
+    radiusMeters: widest,
+    widened: tightestCount,
+    unlocatedUsed: unlocated.length,
+  };
 }
 
 /**
@@ -213,6 +249,11 @@ export function analyzeComps(
     if (byRadius.widened != null) {
       warnings.push(
         `Only ${byRadius.widened} comparable sales within ${(config.radiusTiers?.[0] ?? 0) / 1000}km, so the search was widened to ${Math.round(byRadius.radiusMeters / 1000)}km. Sales further away are less like the subject.`,
+      );
+    }
+    if (byRadius.unlocatedUsed > 0) {
+      warnings.push(
+        `Too few located sales within ${Math.round(byRadius.radiusMeters / 1000)}km, so ${byRadius.unlocatedUsed} sales with no recorded coordinates were included. They could be anywhere in the county, and in a county spanning a city and its farmland that is the difference between land worth $166,000 an acre and land worth $6.3m.`,
       );
     }
   }

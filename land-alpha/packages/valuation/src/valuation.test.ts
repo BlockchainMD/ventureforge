@@ -263,15 +263,37 @@ describe('selectByRadius', () => {
     expect(result.widened).toBe(0);
   });
 
-  it('never discards a sale that has no location', () => {
-    // Dropping these would silently discard a whole source — any roll not yet
-    // geocoded — the moment one located sale existed.
+  it('leaves unlocated sales out of a ring that fills without them', () => {
+    // An unlocated sale used to satisfy every radius, so the tightest ring
+    // always looked full: the search never widened, never warned, and reported
+    // 3km while valuing off sales from anywhere in the county.
     const result = selectByRadius(
       [...Array.from({ length: 9 }, () => at(1000)), at(null), at(null)],
       config,
     );
     expect(result.radiusMeters).toBe(3000);
-    expect(result.pool).toHaveLength(11);
+    expect(result.pool).toHaveLength(9);
+    expect(result.unlocatedUsed).toBe(0);
+  });
+
+  it('falls back to unlocated sales rather than refusing to value', () => {
+    // The case the old rule was written for, and the only one it was right
+    // about: a county part-way through geocoding its roll. Two located sales
+    // cannot carry a valuation, so the unlocated ones are taken — and counted,
+    // so the caller can say so and mark the valuation down.
+    const result = selectByRadius([at(1000), at(35_000), at(null), at(null), at(null)], config);
+    expect(result.pool).toHaveLength(5);
+    expect(result.unlocatedUsed).toBe(3);
+  });
+
+  it('does not reach for unlocated sales once the widest ring is full', () => {
+    const result = selectByRadius(
+      [...Array.from({ length: 8 }, () => at(35_000)), at(null)],
+      config,
+    );
+    expect(result.radiusMeters).toBe(40_000);
+    expect(result.unlocatedUsed).toBe(0);
+    expect(result.pool).toHaveLength(8);
   });
 
   it('keeps a metropolitan lot away from rural sales forty kilometres off', () => {
