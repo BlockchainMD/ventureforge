@@ -216,6 +216,34 @@ describe('valuation integration', () => {
       expect((link.adjustments as unknown[]).length).toBeGreaterThan(0);
     }
   });
+
+  spec('shows only the comparables behind the value the parcel carries now', async () => {
+    // Valuing a parcel twice used to leave both sets of links in place, and no
+    // reader names a snapshot when it loads them — so the comparables table and
+    // the investment memo quoted a mixture of runs, and the sales shown did not
+    // add up to the figure printed above them. Across the working set that was
+    // 96% of all links.
+    const parcel = await prisma.parcelOpportunity.findFirst({
+      where: { apn: 'FX-010-0001-00010' },
+      select: { id: true },
+    });
+    await valuateParcel(parcel!.id);
+    await valuateParcel(parcel!.id);
+
+    const latest = await prisma.parcelValuationSnapshot.findFirst({
+      where: { parcelId: parcel!.id },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    const links = await prisma.comparableLink.findMany({
+      where: { parcelId: parcel!.id },
+      select: { valuationSnapshotId: true },
+    });
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link.valuationSnapshotId).toBe(latest!.id);
+    }
+  });
 });
 
 describe('ingestion integrity', () => {

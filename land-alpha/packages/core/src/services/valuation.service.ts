@@ -330,20 +330,35 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
 
   // Record exactly which comps were used, with their adjustments, so the
   // number can be defended rather than merely reproduced.
-  if (valuation.comps.length > 0) {
-    await prisma.comparableLink.createMany({
-      data: valuation.comps.map((comp) => ({
-        parcelId,
-        comparableId: comp.id,
-        valuationSnapshotId: snapshot.id,
-        distanceMeters: comp.distanceMeters,
-        weight: comp.weight,
-        adjustedPricePerAcre: toDecimal(comp.adjustedPricePerAcre)!,
-        adjustments: comp.adjustments as unknown as Prisma.InputJsonValue,
-      })),
-      skipDuplicates: true,
-    });
-  }
+  //
+  // The links belonging to superseded valuations go at the same time. They are
+  // not history: the value each run produced is kept on the snapshot, and what
+  // a link records is which sales stand behind the number the parcel carries
+  // now. Left in place they accumulate one set per run, and because every
+  // reader loads a parcel's links by weight without naming a snapshot, the
+  // comparables table and the investment memo end up quoting a mixture of runs
+  // — evidence that does not add up to the figure printed above it.
+  await prisma.$transaction([
+    prisma.comparableLink.deleteMany({
+      where: { parcelId, NOT: { valuationSnapshotId: snapshot.id } },
+    }),
+    ...(valuation.comps.length > 0
+      ? [
+          prisma.comparableLink.createMany({
+            data: valuation.comps.map((comp) => ({
+              parcelId,
+              comparableId: comp.id,
+              valuationSnapshotId: snapshot.id,
+              distanceMeters: comp.distanceMeters,
+              weight: comp.weight,
+              adjustedPricePerAcre: toDecimal(comp.adjustedPricePerAcre)!,
+              adjustments: comp.adjustments as unknown as Prisma.InputJsonValue,
+            })),
+            skipDuplicates: true,
+          }),
+        ]
+      : []),
+  ]);
 
   logger.info('valued parcel', {
     parcelId,
