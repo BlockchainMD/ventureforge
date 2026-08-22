@@ -365,6 +365,42 @@ export async function enrichParcel(
     stagesRun.push('environmental');
   }
 
+  // ---- Zoning --------------------------------------------------------------
+  //
+  // Read before buildability, which is the only thing that uses it. The
+  // registry has carried a zoning layer URL for St. Louis County since the
+  // county was added — and a note claiming the buildability engine used it —
+  // while nothing read it, so every live parcel came through with no zoning at
+  // all and buildability judged them without knowing what they may be used for.
+  if (stages.has('buildability')) {
+    const zoningLayerUrl =
+      (registryByKey(parcel.source.registryKey)?.config as { zoningLayerUrl?: string } | undefined)
+        ?.zoningLayerUrl ?? null;
+    const zoning = await enrichment.fetchZoning(ctx, target, { zoningLayerUrl });
+    if (zoning.available && (zoning.code || zoning.description)) {
+      await prisma.parcelOpportunity.update({
+        where: { id: parcelId },
+        data: {
+          zoning: zoning.code ?? parcel.zoning,
+          zoningSource: zoning.source,
+          // The county's own map of its own districts is as direct as this
+          // gets, but it is a screening read of a polygon and not a zoning
+          // letter from the planning department.
+          zoningConfidence: zoning.code ? 'HIGH' : 'LOW',
+        },
+      });
+      evidence.addDerived('zoning', zoning.code ?? zoning.description ?? '', {
+        engine: 'County zoning layer',
+        confidence: zoning.code ? 'HIGH' : 'LOW',
+        notes: zoning.description ?? undefined,
+      });
+      parcel.zoning = zoning.code ?? parcel.zoning;
+    } else if (zoning.note) {
+      warnings.push(`Zoning: ${zoning.note}`);
+    }
+    stagesRun.push('zoning');
+  }
+
   // ---- Buildability --------------------------------------------------------
   let buildability = null;
   if (stages.has('buildability') && access && environmental) {

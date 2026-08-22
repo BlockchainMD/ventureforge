@@ -32,18 +32,55 @@ async function main(): Promise<void> {
   });
   console.log(`${comps.length} comparable sales in ${entry.county}, ${entry.state}`);
 
-  // One candidate spelling per comp, matching how the adapter joins: the roll
-  // and the parcel layer order section, township and range differently.
-  const byCandidate = new Map<string, string[]>();
-  for (const comp of comps) {
-    for (const candidate of parcelIdCandidates(comp.apn ?? '')) {
-      const list = byCandidate.get(candidate) ?? [];
-      list.push(comp.id);
-      byCandidate.set(candidate, list);
+  const client = new ArcGisClient(new IngestHttpClient({}));
+
+  // Work out which spelling this county uses before asking for all of them.
+  //
+  // parcelIdCandidates offers four orderings because counties disagree about
+  // where section, township and range go. Firing all four at a public service
+  // quadruples the load to learn something a sample of thirty settles, and a
+  // county uses one ordering consistently — so probe, then commit to the
+  // winner.
+  const probeComps = comps.slice(0, 30);
+  const orderings = new Map<number, number>();
+  for (const comp of probeComps) {
+    const spellings = parcelIdCandidates(comp.apn ?? '');
+    for (const [index, spelling] of spellings.entries()) {
+      try {
+        const hits = await client.queryAll(layerUrl, {
+          where: `PARCEL = '${spelling.replace(/'/g, "''")}'`,
+          returnGeometry: false,
+          maxFeatures: 2,
+        });
+        if (hits.length === 1) {
+          orderings.set(index, (orderings.get(index) ?? 0) + 1);
+          break;
+        }
+      } catch {
+        // A probe that fails tells us nothing about the ordering; keep going.
+      }
     }
+    // Thirty probes is plenty, and a clear winner earlier is plenty sooner.
+    const best = [...orderings.values()].sort((a, b) => b - a)[0] ?? 0;
+    if (best >= 10) break;
   }
 
-  const client = new ArcGisClient(new IngestHttpClient({}));
+  const winner = [...orderings.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (!winner) {
+    console.log('  no parcel-id spelling matched the layer; nothing to backfill');
+    return;
+  }
+  console.log(`  spelling #${winner[0]} matched ${winner[1]} of the probes; using it for the rest`);
+
+  const byCandidate = new Map<string, string[]>();
+  for (const comp of comps) {
+    const spelling = parcelIdCandidates(comp.apn ?? '')[winner[0]];
+    if (!spelling) continue;
+    const list = byCandidate.get(spelling) ?? [];
+    list.push(comp.id);
+    byCandidate.set(spelling, list);
+  }
+
   const candidates = [...byCandidate.keys()];
   const updates = new Map<string, string>();
 
@@ -67,7 +104,7 @@ async function main(): Promise<void> {
       if (!parcelId || !code) continue;
       for (const compId of byCandidate.get(parcelId) ?? []) updates.set(compId, code);
     }
-    if (i % 400 === 0) console.log(`  ${i}/${candidates.length}`);
+    console.log(`  ${Math.min(i + 40, candidates.length)}/${candidates.length}`);
   }
 
   // Grouped by code and written with updateMany: a thousand single-row updates

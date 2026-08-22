@@ -54,7 +54,7 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
       'Much of the inventory is remote, wetland-heavy or landlocked cutover timberland — the rejection rules do most of the work here.',
     ].join(' '),
     notes:
-      'The same MapServer publishes Road Centerlines (layer 18) and Zoning (layer 19), which the access and buildability engines use as authoritative county sources rather than relying on crowd-sourced data.',
+      'The same MapServer publishes Road Centerlines (layer 18) and Zoning (layer 19), which the access and buildability engines read as authoritative county sources rather than relying on crowd-sourced data. Most of the tax-forfeited inventory sits inside Duluth, which the county layer records as "Non Jurisdiction Area" — the city zones it, not the county, so those parcels legitimately come through without a county district.',
     config: {
       layerUrl:
         'https://gis.stlouiscountymn.gov/server2/rest/services/GeneralUse/Open_Data/MapServer/7',
