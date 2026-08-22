@@ -236,22 +236,42 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
     sourceType: 'LANDS_AVAILABLE_FOR_TAXES',
     sourceUrl: 'https://www.marioncountyclerk.org/',
     discoveryUrl: 'https://www.marioncountyclerk.org/',
-    ingestionMethod: 'MANUAL_SOURCE',
-    inventoryFormat: 'HTML',
+    ingestionMethod: 'PDF',
+    inventoryFormat: 'PDF',
     updateFrequency: 'MONTHLY',
-    status: 'MANUAL_ONLY',
-    enabled: false,
+    status: 'ACTIVE',
+    enabled: true,
     failedAuctionBecomesOtc: true,
-    adapterKey: 'manual-import',
+    adapterKey: 'fl-lands-available-pdf',
     officialUrl: 'https://www.marioncountyclerk.org/',
+    taxSaleUrl:
+      'https://www.marioncountyclerk.org/departments/records-recording/tax-deeds-and-lands-available-for-taxes/land-available-for-taxes-information/',
+    attribution: 'Marion County Clerk of Court and Comptroller',
     acquisitionMethod:
       'Purchase from the Clerk for the opening bid plus accrued taxes, interest and fees. County has a 90-day priority window after the failed sale; thereafter first come, first served.',
     dispositionNotes: [
-      'Re-investigated 2026-08-21. The Clerk no longer publishes the list as a PDF on its own site; both the tax-deed sale and the lands-available list now live on marion.realtaxdeed.com, which answers 403 to an identified client.',
-      'Land Alpha does not work around access controls, so this moves from CANDIDATE to MANUAL_ONLY: an analyst exports the published list and imports it through the manual import workflow, which normalises it into exactly the same records as an automated source.',
-      'This is the most valuable manual import in the registry. Marion has 4,683 geocoded qualified vacant-land comparables and no inventory to value against them — the largest remaining gap between what this product can value and what it can find.',
+      'The tax-deed *auction* runs on marion.realtaxdeed.com, which answers 403 to an identified client and is therefore out of reach. An earlier investigation stopped there and recorded the whole county as manual-only.',
+      'That was too broad. The auction platform and the lands-available list are different things published by different parties, and the Clerk publishes the list on its own site as two PDFs with embedded text: the inventory, and a monthly price sheet giving the purchase amount for each parcel to the cent. robots.txt disallows nothing.',
+      'That price sheet is the only per-parcel acquisition price this product has found anywhere. Every other source in the registry requires a telephone call to the county to learn what a parcel costs.',
+      'The list is short by construction — it holds what did not sell — but Marion also has the deepest comparable-sales coverage in the registry, so these are the parcels the engine can underwrite end to end rather than merely describe.',
+      'The purchase amount rises every month with accruing interest and omitted taxes, so a figure is only correct for the month of the sheet it came from.',
     ].join(' '),
-    config: {},
+    config: {
+      indexUrl:
+        'https://www.marioncountyclerk.org/departments/records-recording/tax-deeds-and-lands-available-for-taxes/land-available-for-taxes-information/',
+      // The Clerk republishes this file under a new name every month
+      // ("2026-August-LAT-Purchase-Amounts-1.pdf"), so the link is discovered
+      // from the index page rather than pinned.
+      purchaseAmountsPattern: 'LAT[-_ ]?Purchase[-_ ]?Amounts',
+      // The price sheet names a parcel and a figure and nothing else. The
+      // county's parcel layer carries ACRES, TOT_LND_VA, TOT_VAL, TOT_TAXES,
+      // ZONE1 and the boundary for the same identifier, which is the
+      // difference between a price and something that can be underwritten.
+      parcelLayerUrl: 'https://gis.marionfl.org/public/rest/services/General/Parcels/MapServer/0',
+      parcelIdField: 'PARCEL',
+      acquisitionInstructions:
+        'Complete the Clerk’s LAT Purchase Request Form and mail it with a certified cheque for the purchase amount payable to the Tax Collector, plus a separate cheque for recording fees and documentary stamps payable to the Clerk. First come, first served. Confirm the current month’s figure before sending funds — it rises monthly.',
+    },
   },
 
   // =========================================================================
