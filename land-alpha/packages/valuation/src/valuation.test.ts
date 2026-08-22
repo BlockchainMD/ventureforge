@@ -6,6 +6,7 @@ import {
   selectByRadius,
   weightedMedian,
   type CompCandidate,
+  selectByNeighborhood,
 } from './comps';
 import { valueParcel, DEFAULT_VALUATION_CONFIG, crossCheckAssessment } from './valuation';
 import { classifyTier, computeEconomics, maximumBidForTargetRatio } from './economics';
@@ -524,5 +525,36 @@ describe('crossCheckAssessment', () => {
     const result = crossCheckAssessment(20_000_000, 10_000, config);
     expect(result).not.toHaveProperty('value');
     expect(Object.keys(result).sort()).toEqual(['cap', 'warning']);
+  });
+});
+
+describe('selectByNeighborhood', () => {
+  const config = { ...DEFAULT_COMPS_CONFIG, minComps: 3 };
+  const inHood = (n: number) =>
+    Array.from({ length: n }, () => comp({ neighborhood: '04490123', distanceMeters: 38_000 }));
+  const elsewhere = (n: number) =>
+    Array.from({ length: n }, () => comp({ neighborhood: '09112277', distanceMeters: 200 }));
+
+  it('prefers the assessor’s boundary over proximity', () => {
+    // A sale two towns over inside the same coded neighbourhood is a better
+    // comparable than one across the street outside it. Orange County's sales
+    // span $166k to $6.3M per acre inside ten kilometres, so distance alone
+    // reliably collects land that has nothing to do with the subject.
+    const result = selectByNeighborhood([...inHood(4), ...elsewhere(9)], '04490123', config);
+    expect(result?.pool).toHaveLength(4);
+    expect(result?.pool.every((c) => c.neighborhood === '04490123')).toBe(true);
+  });
+
+  it('declines to decide when too few sales share the neighbourhood', () => {
+    const result = selectByNeighborhood([...inHood(2), ...elsewhere(9)], '04490123', config);
+    expect(result?.pool).toHaveLength(0);
+    // Reported rather than silently zero, so the caller can say the fallback
+    // happened instead of implying the neighbourhood was used.
+    expect(result?.matched).toBe(2);
+  });
+
+  it('returns null when the subject has no neighbourhood at all', () => {
+    expect(selectByNeighborhood(inHood(9), null, config)).toBeNull();
+    expect(selectByNeighborhood(inHood(9), '   ', config)).toBeNull();
   });
 });

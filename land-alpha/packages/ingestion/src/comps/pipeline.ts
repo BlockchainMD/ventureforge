@@ -99,6 +99,7 @@ export async function persistComparables(rows: readonly ComparableSaleInput[]): 
       longitude: row.longitude,
       zoning: row.zoning,
       landUse: row.landUse,
+      neighborhood: row.neighborhood ?? null,
       hasUtilities: row.hasUtilities,
       isVacantLand: row.isVacantLand,
       isArmsLength: row.isArmsLength,

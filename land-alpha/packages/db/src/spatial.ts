@@ -210,6 +210,7 @@ export interface NearbyComparableRow {
   salePrice: string;
   acreage: number;
   zoning: string | null;
+  neighborhood: string | null;
   accessClass: string | null;
   hasUtilities: boolean | null;
   source: string;
@@ -251,6 +252,7 @@ export async function findNearbyComparables(params: {
       c."salePrice"::text AS "salePrice",
       c."acreage",
       c."zoning",
+      c."neighborhood",
       c."accessClass"::text AS "accessClass",
       c."hasUtilities",
       c."source",

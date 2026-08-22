@@ -240,6 +240,10 @@ export const arcgisTaxSalePointsAdapter: SourceAdapter = {
         assessedValue: parcel ? centsFrom(parcel.TOTAL_MKT) : null,
         annualTaxEstimate: parcel ? centsFrom(parcel.TAXES) : null,
         zoning: parcel ? str(parcel.ZONING_CODE) : null,
+        // The assessor's own neighbourhood. Comparable selection prefers sales
+        // inside it, because it is the boundary the county drew around land it
+        // considers to trade alike.
+        neighborhood: parcel ? str(parcel.NBHD_CODE) : null,
         zoningSource: parcel ? 'County property appraiser parcel layer' : null,
 
         ownerType: 'COUNTY',
@@ -272,6 +276,20 @@ export function parcelIdCandidates(apn: string): string[] {
     candidates.push([parts[2], parts[1], parts[0], ...tail].join(''));
     // section-township-range -> township-range-section
     candidates.push([parts[1], parts[2], parts[0], ...tail].join(''));
+  } else if (/^\d{15}$/.test(bare)) {
+    // The same reorderings, for an ID that arrives without punctuation.
+    //
+    // Florida's tax roll publishes parcel IDs as a bare fifteen digits and the
+    // county parcel layer stores the first three pairs in the opposite order.
+    // Only the hyphenated form was ever reversed, so 655 Orange comparables
+    // silently matched nothing: 032229262817070 is 292203262817070 in the
+    // layer, and without this branch the two never meet.
+    const sec = bare.slice(0, 2);
+    const twp = bare.slice(2, 4);
+    const rng = bare.slice(4, 6);
+    const tail = bare.slice(6);
+    candidates.push(`${rng}${twp}${sec}${tail}`);
+    candidates.push(`${twp}${rng}${sec}${tail}`);
   }
   return [
     ...new Set(candidates.map((value) => value.replace(/[^A-Za-z0-9]/g, '')).filter(Boolean)),

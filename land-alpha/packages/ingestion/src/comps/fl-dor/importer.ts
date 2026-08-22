@@ -139,6 +139,7 @@ export async function fetchFloridaRollSales(
         longitude: null,
         zoning: null,
         landUse: sale.dorUseCode ?? parcel.dorUseCode,
+        neighborhood: sale.neighborhood,
         hasUtilities: null,
         isVacantLand: true,
         isArmsLength: true,

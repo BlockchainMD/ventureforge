@@ -94,6 +94,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       acreage: row.acreage,
       distanceMeters: row.distance_m == null ? null : Number(row.distance_m),
       zoning: row.zoning,
+      neighborhood: row.neighborhood,
       accessClass: row.accessClass,
       hasUtilities: row.hasUtilities,
       source: row.source,
@@ -126,6 +127,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
           acreage: row.acreage,
           distanceMeters: row.distance_m == null ? null : Number(row.distance_m),
           zoning: row.zoning,
+          neighborhood: row.neighborhood,
           accessClass: row.accessClass,
           hasUtilities: row.hasUtilities,
           source: row.source,
@@ -148,6 +150,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
     {
       subject: {
         acreage: acreage ?? 0,
+        neighborhood: parcel.neighborhood,
         zoning: parcel.zoning,
         accessClass: parcel.accessClass === 'UNKNOWN' ? null : parcel.accessClass,
         hasUtilities: parcel.knownUtilities.length > 0 ? true : null,

@@ -22,6 +22,8 @@ export interface CompCandidate {
   readonly acreage: number;
   readonly distanceMeters: number | null;
   readonly zoning: string | null;
+  /** The assessor's neighbourhood code, where the county publishes one. */
+  readonly neighborhood?: string | null;
   readonly accessClass: string | null;
   readonly hasUtilities: boolean | null;
   readonly source: string;
@@ -35,6 +37,8 @@ export interface CompCandidate {
 
 export interface SubjectProfile {
   readonly acreage: number;
+  /** The assessor's neighbourhood code for the subject, where one exists. */
+  readonly neighborhood?: string | null;
   readonly zoning: string | null;
   readonly accessClass: string | null;
   readonly hasUtilities: boolean | null;
@@ -90,6 +94,37 @@ export interface CompsResult {
  * a whole source — Grant County's layer, or any roll not yet geocoded — the
  * moment one geolocated sale existed.
  */
+/**
+ * Comparables inside the subject's own assessor neighbourhood.
+ *
+ * A radius is a poor proxy for comparability in a metropolitan county. Orange
+ * County's vacant-land sales span $166k to $6.3M per acre inside ten
+ * kilometres, so widening a circle until eight sales fall in it reliably
+ * collects land that has nothing to do with the subject — which is how a
+ * half-acre parcel assessed at $65,000 came to be valued at $821,404.
+ *
+ * The assessor already drew the right boundary. Neighbourhood codes exist to
+ * group land that trades alike, and they follow subdivisions and corridors
+ * rather than distance. Where both the subject and enough sales carry one,
+ * that beats any circle.
+ *
+ * Returns null when the neighbourhood cannot decide it — no code on the
+ * subject, or too few sales sharing it — and the caller falls back to radius.
+ * A subject that has a code but finds no sales in it is worth noticing: it
+ * usually means the two sides were coded by different offices.
+ */
+export function selectByNeighborhood(
+  candidates: readonly CompCandidate[],
+  subjectNeighborhood: string | null | undefined,
+  config: CompsConfig,
+): { pool: readonly CompCandidate[]; matched: number } | null {
+  const code = subjectNeighborhood?.trim();
+  if (!code) return null;
+  const pool = candidates.filter((candidate) => candidate.neighborhood?.trim() === code);
+  if (pool.length < config.minComps) return { pool: [], matched: pool.length };
+  return { pool, matched: pool.length };
+}
+
 export function selectByRadius(
   candidates: readonly CompCandidate[],
   config: CompsConfig,
@@ -140,15 +175,41 @@ export function analyzeComps(
   // Econlockhatchee end up in the same comp set, and the resulting spread makes
   // an honest valuation impossible. Appraisal practice is to start close and
   // widen only when forced to, which is what this does.
-  const { pool, radiusMeters, widened } = selectByRadius(candidates, config);
-  // Sales outside the chosen ring were still considered and dropped, and the
+  // The assessor's neighbourhood beats any circle where it can decide, because
+  // it is a boundary drawn around land that trades alike rather than land that
+  // happens to be nearby.
+  const byNeighborhood = selectByNeighborhood(candidates, subject.neighborhood, config);
+  let pool: readonly CompCandidate[];
+  // Null when the neighbourhood decided the set: distance is then not the
+  // criterion, and a sale two towns over inside the same coded neighbourhood
+  // is a better comparable than one across the street outside it.
+  let selectionRadius: number | null = null;
+  if (byNeighborhood && byNeighborhood.pool.length > 0) {
+    pool = byNeighborhood.pool;
+    warnings.push(
+      `Comparables restricted to assessor neighbourhood ${subject.neighborhood}: ${byNeighborhood.pool.length} sales. This is a tighter test of comparability than distance.`,
+    );
+  } else {
+    if (byNeighborhood) {
+      // The subject has a code and no sale shares it. Usually that means the
+      // two sides were coded by different offices, which is worth saying out
+      // loud rather than silently falling back and looking like it worked.
+      warnings.push(
+        `No comparable sale carries the subject's assessor neighbourhood (${subject.neighborhood}), so selection fell back to distance. Where the sales come from a different publisher than the parcel, the two codings may not correspond.`,
+      );
+    }
+    const byRadius = selectByRadius(candidates, config);
+    pool = byRadius.pool;
+    selectionRadius = byRadius.radiusMeters;
+    if (byRadius.widened != null) {
+      warnings.push(
+        `Only ${byRadius.widened} comparable sales within ${(config.radiusTiers?.[0] ?? 0) / 1000}km, so the search was widened to ${Math.round(byRadius.radiusMeters / 1000)}km. Sales further away are less like the subject.`,
+      );
+    }
+  }
+  // Sales outside the chosen set were still considered and dropped, and the
   // count of what was dropped is part of what makes a valuation auditable.
   rejectedCount += candidates.length - pool.length;
-  if (widened != null) {
-    warnings.push(
-      `Only ${widened} comparable sales within ${(config.radiusTiers?.[0] ?? 0) / 1000}km, so the search was widened to ${Math.round(radiusMeters / 1000)}km. Sales further away are less like the subject.`,
-    );
-  }
 
   for (const candidate of pool) {
     if (candidate.acreage <= 0 || candidate.salePriceCents <= 0) {
@@ -161,7 +222,11 @@ export function analyzeComps(
       rejectedCount += 1;
       continue;
     }
-    if (candidate.distanceMeters != null && candidate.distanceMeters > radiusMeters) {
+    if (
+      selectionRadius != null &&
+      candidate.distanceMeters != null &&
+      candidate.distanceMeters > selectionRadius
+    ) {
       rejectedCount += 1;
       continue;
     }

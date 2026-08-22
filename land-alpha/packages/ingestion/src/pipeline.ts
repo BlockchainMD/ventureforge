@@ -333,6 +333,7 @@ export async function upsertParcel(
     isVacant: item.isVacant ?? null,
     currentUse: item.currentUse ?? null,
     zoning: item.zoning ?? null,
+    neighborhood: item.neighborhood ?? null,
     zoningSource: item.zoningSource ?? null,
     zoningConfidence: item.zoning ? ('HIGH' as const) : ('UNKNOWN' as const),
     annualTaxEstimate: toDecimal(item.annualTaxEstimate ?? null),

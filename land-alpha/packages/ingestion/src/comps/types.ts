@@ -56,6 +56,12 @@ export interface ComparableSaleInput {
   readonly longitude: number | null;
   readonly zoning: string | null;
   readonly landUse: string | null;
+  /**
+   * The assessor's neighbourhood code. Comparable selection prefers sales
+   * inside the same one: it is the boundary the county drew around land it
+   * considers to trade alike, which is a sharper test than any radius.
+   */
+  readonly neighborhood?: string | null;
   readonly hasUtilities: boolean | null;
   /** Both must be true for the sale to inform a valuation. */
   readonly isVacantLand: boolean;

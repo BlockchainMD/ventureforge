@@ -68,6 +68,8 @@ export interface ParcelOpportunityInput {
   readonly isVacant?: boolean | null;
   readonly currentUse?: string | null;
   readonly zoning?: string | null;
+  /** The assessor's neighbourhood code, where the county publishes one. */
+  readonly neighborhood?: string | null;
   readonly zoningSource?: string | null;
   readonly annualTaxEstimate?: UsdCents | null;
 

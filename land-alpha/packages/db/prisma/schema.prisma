@@ -527,6 +527,10 @@ model ParcelOpportunity {
   currentUse               String?
   zoning                   String?
   zoningSource             String?
+  /// The assessor's neighbourhood code for this parcel. Comparable selection
+  /// prefers sales inside the same neighbourhood, because that is the boundary
+  /// the county itself drew around land it considers to trade alike.
+  neighborhood             String?
   zoningConfidence         ConfidenceLevel @default(UNKNOWN)
   minimumLotSizeAcres      Float?
   knownUtilities           String[] @default([])
@@ -816,6 +820,10 @@ model ComparableSale {
   centroid       Unsupported("geometry(Point, 4326)")?
   zoning         String?
   landUse        String?
+  /// The assessor's neighbourhood code. Assessors draw these boundaries for
+  /// exactly this purpose — grouping land that trades alike — which makes them
+  /// a sharper comparability test than any radius drawn on a map.
+  neighborhood   String?
   accessClass    AccessClass?
   hasUtilities   Boolean?
   isVacantLand   Boolean  @default(true)
@@ -829,6 +837,7 @@ model ComparableSale {
   links ComparableLink[]
 
   @@index([state, county, saleDate])
+  @@index([state, county, neighborhood])
   @@index([acreage])
   @@unique([state, county, apn, saleDate, salePrice])
 }
