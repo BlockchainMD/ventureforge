@@ -1,5 +1,12 @@
 import { describe, expect, it, beforeAll } from 'vitest';
-import { prisma, getActiveScoringConfig, spatial, toCents } from '@land-alpha/db';
+import {
+  prisma,
+  getActiveScoringConfig,
+  spatial,
+  toCents,
+  dashboardStats,
+  listOpportunities,
+} from '@land-alpha/db';
 import { FIXTURE_APN_PREFIX, FIXTURE_PARCELS } from '@land-alpha/db/seed/fixture-parcels';
 import {
   collectRealisedOutcomes,
@@ -24,6 +31,7 @@ import {
 } from '@land-alpha/core';
 import { buildAmortizationSchedule, calibrateFromOutcomes } from '@land-alpha/valuation';
 import { normalizeApn } from '@land-alpha/shared/ids';
+import { DEFAULT_FILTER, filterFromSearchParams, filterToSearchParams } from '@land-alpha/shared';
 import robots from '../apps/web/src/app/robots';
 import sitemap from '../apps/web/src/app/sitemap';
 
@@ -142,6 +150,56 @@ describe('fixture specifications', () => {
       }
     });
   }
+});
+
+describe('offered for sale is distinguished from merely held', () => {
+  spec('counts only what a county has actually put up', async () => {
+    // St. Louis County publishes its entire tax-forfeited roll — 14,220 parcels
+    // at the time of writing — and says in its own notes that appearing on it is
+    // not the same as being offered. Counting those as opportunities buried the
+    // fifty-odd parcels a county had genuinely offered under a list 99.6% of
+    // which nobody can buy.
+    const stats = await dashboardStats();
+    expect(stats.offeredForSale).toBeLessThanOrEqual(stats.activeOpportunities);
+
+    const offered = await prisma.parcelOpportunity.count({
+      where: {
+        removedFromSourceAt: null,
+        rejected: false,
+        status: { notIn: ['REJECTED', 'ACQUIRED', 'SOLD'] },
+        saleStatus: { in: ['AVAILABLE', 'SCHEDULED'] },
+      },
+    });
+    expect(stats.offeredForSale).toBe(offered);
+  });
+
+  spec('the filter returns only offered inventory', async () => {
+    const page = await listOpportunities({ ...DEFAULT_FILTER, offeredOnly: true, pageSize: 50 });
+    expect(page.rows.length).toBeGreaterThan(0);
+
+    // The summary projection does not carry saleStatus, so check the rows it
+    // actually returned rather than widening the payload for a test.
+    const statuses = await prisma.parcelOpportunity.findMany({
+      where: { id: { in: page.rows.map((r) => r.id) } },
+      select: { saleStatus: true },
+    });
+    for (const row of statuses) {
+      expect(['AVAILABLE', 'SCHEDULED']).toContain(row.saleStatus);
+    }
+
+    // And it must actually narrow: an unfiltered page on this database is
+    // dominated by inventory no county has offered.
+    const all = await listOpportunities({ ...DEFAULT_FILTER, pageSize: 50 });
+    expect(all.total).toBeGreaterThan(page.total);
+  });
+
+  spec('the filter round-trips through the URL', async () => {
+    const params = filterToSearchParams({ ...DEFAULT_FILTER, offeredOnly: true });
+    expect(filterFromSearchParams(params).offeredOnly).toBe(true);
+    // Absent means unset, not false: an operator who has never touched the
+    // toggle should see everything rather than silently having inventory hidden.
+    expect(filterFromSearchParams(new URLSearchParams()).offeredOnly).toBeUndefined();
+  });
 });
 
 describe('scoring invariants', () => {

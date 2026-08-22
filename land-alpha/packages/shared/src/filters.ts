@@ -45,6 +45,16 @@ export interface OpportunityFilter {
   auctionAfter?: string;
   /** Only inventory that can be bought on demand rather than at auction. */
   otcOnly?: boolean;
+  /**
+   * Only parcels a county has actually put up for sale.
+   *
+   * Most sources publish a government-held inventory, not an offer list. St.
+   * Louis County publishes its entire tax-forfeited roll — 14,220 parcels — and
+   * says in its own notes that being on it is not the same as being offered.
+   * Without this the ranked list is 99.6% land nobody can buy, and the fifty-odd
+   * parcels a county has genuinely offered are impossible to find in it.
+   */
+  offeredOnly?: boolean;
   noReserveOnly?: boolean;
   minFailedSaleCount?: number;
   statuses?: ParcelStatus[];
@@ -175,6 +185,7 @@ export function filterFromSearchParams(
   if (statuses.length) filter.statuses = statuses;
 
   if (get('otcOnly') === 'true') filter.otcOnly = true;
+  if (get('offeredOnly') === 'true') filter.offeredOnly = true;
   if (get('noReserveOnly') === 'true') filter.noReserveOnly = true;
   if (get('watchlistedOnly') === 'true') filter.watchlistedOnly = true;
   if (get('includeRejected') === 'true') filter.includeRejected = true;

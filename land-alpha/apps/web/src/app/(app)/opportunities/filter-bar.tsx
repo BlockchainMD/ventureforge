@@ -249,6 +249,11 @@ export function FilterBar({ counties }: { counties: { state: string; county: str
 
           <div className="flex items-center gap-2 pb-0.5">
             <Toggle
+              label="Offered for sale"
+              active={filter.offeredOnly === true}
+              onToggle={() => update('offeredOnly', filter.offeredOnly ? null : 'true')}
+            />
+            <Toggle
               label="OTC only"
               active={filter.otcOnly === true}
               onToggle={() => update('otcOnly', filter.otcOnly ? null : 'true')}

@@ -103,6 +103,13 @@ export function buildWhere(filter: OpportunityFilter): Prisma.ParcelOpportunityW
   if (filter.auctionAfter) and.push({ auctionDate: { gte: new Date(filter.auctionAfter) } });
   if (filter.firstSeenAfter) and.push({ firstSeenAt: { gte: new Date(filter.firstSeenAfter) } });
 
+  if (filter.offeredOnly) {
+    // What a county has actually put up, as opposed to what it merely holds.
+    // Everything else is inventory we found in a government record with no
+    // offering attached to it.
+    and.push({ saleStatus: { in: ['AVAILABLE', 'SCHEDULED'] } });
+  }
+
   if (filter.otcOnly) {
     and.push({
       OR: [
@@ -290,6 +297,15 @@ export async function getParcelBySlug(slug: string) {
 
 export interface DashboardStats {
   readonly activeOpportunities: number;
+  /**
+   * Of the active opportunities, those a county has actually offered.
+   *
+   * The gap between this and `activeOpportunities` is the important number on
+   * the dashboard: most sources publish a government-held inventory rather than
+   * an offer list, so the headline count is dominated by parcels nobody can
+   * buy today.
+   */
+  readonly offeredForSale: number;
   readonly newToday: number;
   readonly newThisWeek: number;
   readonly totalAskingCents: number;
@@ -321,6 +337,7 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
 
   const [
     activeOpportunities,
+    offeredForSale,
     newToday,
     newThisWeek,
     sums,
@@ -335,6 +352,9 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
     runStats,
   ] = await Promise.all([
     prisma.parcelOpportunity.count({ where: liveWhere }),
+    prisma.parcelOpportunity.count({
+      where: buildWhere({ includeRejected: false, offeredOnly: true }),
+    }),
     prisma.parcelOpportunity.count({
       where: { AND: [liveWhere, { firstSeenAt: { gte: startOfToday } }] },
     }),
@@ -412,6 +432,7 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
 
   return {
     activeOpportunities,
+    offeredForSale,
     newToday,
     newThisWeek,
     totalAskingCents,

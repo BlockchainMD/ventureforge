@@ -45,11 +45,14 @@ export default async function DashboardPage() {
         title="Acquisition dashboard"
         subtitle={
           <>
-            {formatNumber(stats.activeOpportunities)} live opportunities across{' '}
+            <span className="text-ink">
+              {formatNumber(stats.offeredForSale)} parcels a county has actually offered
+            </span>
+            , out of {formatNumber(stats.activeOpportunities)} held across{' '}
             {formatNumber(stats.sourcesMonitored)} monitored sources.{' '}
             <span className="text-ink-faint">
-              {formatNumber(stats.rejectedCount)} parcels rejected by the screening rules and kept
-              out of your way.
+              {formatNumber(stats.rejectedCount)} rejected by the screening rules and kept out of
+              your way.
             </span>
           </>
         }
@@ -60,8 +63,18 @@ export default async function DashboardPage() {
         <Panel>
           <PanelBody>
             <MetricGrid columns={6}>
-              <Metric label="Active opportunities" hint="Live, unrejected inventory">
-                {formatNumber(stats.activeOpportunities)}
+              <Metric
+                label="Offered for sale"
+                hint="A county has put these up: status AVAILABLE or SCHEDULED. This is the inventory you can actually act on."
+                tone={stats.offeredForSale > 0 ? 'text-alpha' : undefined}
+              >
+                {formatNumber(stats.offeredForSale)}
+              </Metric>
+              <Metric
+                label="Held, not offered"
+                hint="Found in a government inventory with no offering attached. St. Louis County publishes its whole tax-forfeited roll and says in its own notes that appearing on it is not the same as being for sale — so these need an offering confirmed before anything else."
+              >
+                {formatNumber(stats.activeOpportunities - stats.offeredForSale)}
               </Metric>
               <Metric label="New today">
                 <span className={stats.newToday > 0 ? 'text-alpha' : undefined}>
