@@ -115,4 +115,70 @@ describe('fetchRoads', () => {
     expect(result.roads).toHaveLength(0);
     expect(result.note).toContain('No mapped road');
   });
+
+  it('reads a maintaining body out of whichever column the county used', async () => {
+    // Three counties, three schemas. Ottawa states it in RoadClass, Orange in
+    // MAINTENANCE, and St. Louis not at all — its ROUTE_SYS is a bare numeric
+    // code, so public maintenance stays unknown rather than being invented.
+    const cases = [
+      {
+        label: 'Ottawa MI',
+        attributes: { RoadClass: 'County Local', Act51LegalDesignation: 3, StreetName: 'Stump' },
+        expected: { isPublic: true, name: 'Stump' },
+      },
+      {
+        label: 'Orange FL',
+        attributes: {
+          MAINTENANCE: 'Unincorporated',
+          COMPLETE_STREETNAME: '33rd St',
+          SURFACE_TYPE: 'ASPHALT',
+        },
+        expected: { isPublic: true, name: '33rd St' },
+      },
+      {
+        label: 'St. Louis MN',
+        attributes: { ROUTE_SYS: '10', ST_CONCAT: 'North 73rd Avenue West' },
+        expected: { isPublic: null, name: 'North 73rd Avenue West' },
+      },
+      {
+        label: 'an explicitly private road',
+        attributes: { MAINTENANCE: 'Private', COMPLETE_STREETNAME: 'Gated Way' },
+        expected: { isPublic: false, name: 'Gated Way' },
+      },
+    ];
+
+    for (const testCase of cases) {
+      vi.stubGlobal(
+        'fetch',
+        (async () =>
+          new Response(
+            JSON.stringify({
+              features: [
+                {
+                  attributes: testCase.attributes,
+                  geometry: {
+                    paths: [
+                      [
+                        [-92.1946, 46.7517],
+                        [-92.1926, 46.7517],
+                      ],
+                    ],
+                  },
+                },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )) as unknown as typeof fetch,
+      );
+
+      const result = await fetchRoads(
+        { mode: 'live', http: client() } as never,
+        target(-92.1936, 46.7517) as never,
+        { countyRoadLayerUrl: 'https://county.example/roads/FeatureServer/0' },
+      );
+      expect(result.roads[0]?.isPublic, testCase.label).toBe(testCase.expected.isPublic);
+      expect(result.roads[0]?.name, testCase.label).toBe(testCase.expected.name);
+      vi.unstubAllGlobals();
+    }
+  });
 });

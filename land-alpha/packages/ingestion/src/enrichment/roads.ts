@@ -120,17 +120,28 @@ async function fetchCountyRoads(
       const attributes = feature.attributes ?? {};
       roads.push({
         name: pickString(attributes, [
+          // Every county names this column differently, and a road with no
+          // name is a road the memo cannot describe.
+          'COMPLETE_STREETNAME',
+          'ST_CONCAT',
           'STREETNAME',
+          'StreetName',
           'ROADNAME',
+          'RoadName',
           'NAME',
+          'Name',
           'FULLNAME',
+          'FULL_NAME',
           'LABEL',
           'STREET',
+          'ST_NAME',
         ]),
         isPublic: inferPublicMaintenance(attributes),
         isPaved: inferPaved(attributes),
         classification: pickString(attributes, [
+          'STREET_CLASSIFICATION',
           'ROADCLASS',
+          'RoadClass',
           'CLASS',
           'FUNCTIONAL_CLASS',
           'ROUTE_TYPE',
@@ -279,15 +290,35 @@ function pickString(attributes: Record<string, unknown>, keys: string[]): string
   return null;
 }
 
+/**
+ * Whether a county's own layer states that somebody public maintains the road.
+ *
+ * This is the field that separates access class A from B, and county layers
+ * are the only source that carries it — OpenStreetMap will tell you a line
+ * exists, not who is responsible for it.
+ *
+ * Note carefully what this is not. Public maintenance is a fact about the
+ * road; it says nothing about whether this parcel has a legal right to reach
+ * it. Legal access stays UNKNOWN until a recorded instrument is read, on every
+ * parcel, regardless of what this returns.
+ */
 function inferPublicMaintenance(attributes: Record<string, unknown>): boolean | null {
   const text = Object.entries(attributes)
-    .filter(([key]) => /JURIS|MAINT|OWNER|AUTHORITY|SYSTEM/i.test(key))
+    // CLASS and DESIGNATION join the list because several counties state the
+    // maintaining body there and nowhere else: Ottawa's RoadClass reads
+    // "County Primary", and its Act 51 designation is a bare integer.
+    .filter(([key]) => /JURIS|MAINT|OWNER|AUTHORITY|SYSTEM|CLASS|DESIGNATION/i.test(key))
     .map(([, value]) => String(value ?? ''))
     .join(' ')
     .toUpperCase();
   if (!text.trim()) return null;
   if (/PRIVATE/.test(text)) return false;
-  if (/COUNTY|CITY|STATE|TOWNSHIP|MUNICIPAL|TWP|MNDOT|PUBLIC|FEDERAL/.test(text)) return true;
+  // "Unincorporated" is how Orange County's road inventory records a road it
+  // maintains itself rather than one inside a municipality. It is a statement
+  // of county maintenance, not an absence of one.
+  if (/COUNTY|CITY|STATE|TOWNSHIP|MUNICIPAL|TWP|MNDOT|PUBLIC|FEDERAL|UNINCORPORATED/.test(text)) {
+    return true;
+  }
   return null;
 }
 

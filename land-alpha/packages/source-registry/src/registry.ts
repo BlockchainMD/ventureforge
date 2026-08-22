@@ -199,6 +199,9 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
       'Parcel IDs in this layer are in section-township-range order and do NOT match the county parcel layer’s range-township-section ordering, and municipal parcels are absent from the county (BCC) layer entirely. Enrichment is therefore best-effort by design.',
     ].join(' '),
     config: {
+      // Orange County's road inventory. MAINTENANCE states the maintaining body; SURFACE_TYPE and STREET_CLASSIFICATION come free.
+      roadsLayerUrl:
+        'https://services1.arcgis.com/0U8EQ1FrumPeIqDb/arcgis/rest/services/OCSHARE_Roads_Uninc/FeatureServer/0',
       layerUrl:
         'https://services1.arcgis.com/0U8EQ1FrumPeIqDb/arcgis/rest/services/Tax_Sale_Data/FeatureServer/0',
       parcelLayerUrl:
@@ -283,6 +286,9 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
       'Vesting in the treasurer is strong evidence of foreclosure inventory but does not itself confirm a parcel is offered for sale; that must be confirmed against the treasurer’s published auction list.',
     ].join(' '),
     config: {
+      // Act 51 legal designation names the maintaining authority outright, which is exactly the field access class A turns on.
+      roadsLayerUrl:
+        'https://gis.miottawa.org/arcgis/rest/services/HostedServices/StreetCenterlines/FeatureServer/0',
       layerUrl:
         'https://gis.miottawa.org/arcgis/rest/services/HostedServices/ParcelsPublic/FeatureServer/0',
       where:
