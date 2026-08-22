@@ -12,3 +12,8 @@ data/raw/
 data/storage/
 .turbo/
 .vercel/
+
+# Scratch probe scripts written into the repo root by audit agents. Real
+# tooling lives in scripts/ and is committed there deliberately.
+/*.mjs
+!/*.config.mjs

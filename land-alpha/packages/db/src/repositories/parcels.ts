@@ -25,7 +25,18 @@ export function buildWhere(filter: OpportunityFilter): Prisma.ParcelOpportunityW
   // Inventory that has vanished from its source is never a live opportunity.
   and.push({ removedFromSourceAt: null });
 
-  if (!filter.includeRejected) and.push({ rejected: false });
+  // Neither is inventory you already own. `rejected` is the engine's verdict
+  // and `status` is where the parcel has got to, and only the first was being
+  // checked — so a parcel already bought went on being counted as something to
+  // buy, in the headline figure and in the ranked list. It belongs in the
+  // portfolio, not the buy list.
+  and.push({ status: { notIn: ['ACQUIRED', 'SOLD'] } });
+
+  if (!filter.includeRejected) {
+    and.push({ rejected: false });
+    // The analyst's own disposition, as distinct from the engine's.
+    and.push({ status: { not: 'REJECTED' } });
+  }
 
   if (filter.q?.trim()) {
     const q = filter.q.trim();

@@ -11,6 +11,10 @@ export default tseslint.config(
       '**/coverage/**',
       '**/*.d.ts',
       'apps/web/next-env.d.ts',
+      // Scratch probes written into the repo root, never committed (.gitignore
+      // drops them too). Committed tooling lives in scripts/.
+      '/*.mjs',
+      '!eslint.config.mjs',
     ],
   },
   js.configs.recommended,

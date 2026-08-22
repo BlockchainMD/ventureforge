@@ -159,18 +159,61 @@ describe('offered for sale is distinguished from merely held', () => {
     // not the same as being offered. Counting those as opportunities buried the
     // fifty-odd parcels a county had genuinely offered under a list 99.6% of
     // which nobody can buy.
-    const stats = await dashboardStats();
-    expect(stats.offeredForSale).toBeLessThanOrEqual(stats.activeOpportunities);
+    const countOffered = () =>
+      prisma.parcelOpportunity.count({
+        where: {
+          removedFromSourceAt: null,
+          rejected: false,
+          status: { notIn: ['REJECTED', 'ACQUIRED', 'SOLD'] },
+          saleStatus: { in: ['AVAILABLE', 'SCHEDULED'] },
+        },
+      });
 
-    const offered = await prisma.parcelOpportunity.count({
-      where: {
-        removedFromSourceAt: null,
-        rejected: false,
-        status: { notIn: ['REJECTED', 'ACQUIRED', 'SOLD'] },
-        saleStatus: { in: ['AVAILABLE', 'SCHEDULED'] },
-      },
+    // Bracket the reading rather than demanding equality with a single count.
+    // These are three independent queries, and a pipeline run against the same
+    // database will commit between them — which is a race in the test, not a
+    // disagreement about the definition. Bracketing still catches a wrong
+    // definition while surviving concurrent writes.
+    const before = await countOffered();
+    const stats = await dashboardStats();
+    const after = await countOffered();
+
+    expect(stats.offeredForSale).toBeGreaterThanOrEqual(Math.min(before, after));
+    expect(stats.offeredForSale).toBeLessThanOrEqual(Math.max(before, after));
+    expect(stats.offeredForSale).toBeLessThanOrEqual(stats.activeOpportunities);
+  });
+
+  spec('a parcel you already own is not something to buy', async () => {
+    // `rejected` is the engine's verdict and `status` is where the parcel has
+    // got to. Only the first was checked, so an ACQUIRED parcel went on being
+    // counted in the headline figure and listed in the ranked list — an
+    // invitation to buy something already in the portfolio.
+    const parcel = await prisma.parcelOpportunity.findFirst({
+      where: { removedFromSourceAt: null, rejected: false, status: 'DISCOVERED' },
+      select: { id: true, status: true },
     });
-    expect(stats.offeredForSale).toBe(offered);
+    if (!parcel) {
+      console.warn('  (skipped — no live parcel to move through the funnel)');
+      return;
+    }
+
+    const before = await dashboardStats();
+    await prisma.parcelOpportunity.update({
+      where: { id: parcel.id },
+      data: { status: 'ACQUIRED' },
+    });
+    try {
+      const after = await dashboardStats();
+      expect(after.activeOpportunities).toBe(before.activeOpportunities - 1);
+
+      const page = await listOpportunities({ ...DEFAULT_FILTER, pageSize: 200 });
+      expect(page.rows.map((r) => r.id)).not.toContain(parcel.id);
+    } finally {
+      await prisma.parcelOpportunity.update({
+        where: { id: parcel.id },
+        data: { status: parcel.status },
+      });
+    }
   });
 
   spec('the filter returns only offered inventory', async () => {
@@ -762,7 +805,14 @@ describe('speed alerts', () => {
     // inventory. The suite then went red on a database that had simply been
     // used for real work.
     const parcel = await prisma.parcelOpportunity.findFirst({
-      where: { rejected: false, alphaScore: { gte: 50 }, removedFromSourceAt: null },
+      where: {
+        rejected: false,
+        alphaScore: { gte: 50 },
+        removedFromSourceAt: null,
+        // Mirror what the alert engine considers live. Selecting outside that
+        // set is how this test failed twice for reasons unrelated to alerts.
+        status: { notIn: ['REJECTED', 'ACQUIRED', 'SOLD'] },
+      },
       select: { id: true, county: true, state: true },
     });
     if (!parcel) {
