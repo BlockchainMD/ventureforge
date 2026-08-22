@@ -37,7 +37,16 @@ export default async function DashboardPage() {
     }),
   ]);
 
-  const staleSources = health.filter((s) => s.staleness === 'STALE' || s.staleness === 'NEVER_RUN');
+  // Only enabled sources can go stale. A CANDIDATE that has never run is a
+  // lead someone wrote down, not a feed that has stopped — counting it as
+  // needing attention put "3 sources need attention" directly beneath "3 of 4
+  // enabled sources healthy", which cannot both be read as true.
+  const staleSources = health.filter(
+    (s) => s.enabled && (s.staleness === 'STALE' || s.staleness === 'NEVER_RUN'),
+  );
+  const unexploredSources = health.filter(
+    (s) => !s.enabled && (s.staleness === 'STALE' || s.staleness === 'NEVER_RUN'),
+  );
 
   return (
     <>
@@ -194,10 +203,24 @@ export default async function DashboardPage() {
                   </Badge>
                 </div>
               ))}
-              {staleSources.length > 0 ? (
+              {staleSources.length > 0 || unexploredSources.length > 0 ? (
                 <p className="border-t border-line pt-2 text-[10px] text-ink-faint">
-                  {staleSources.length} source{staleSources.length === 1 ? '' : 's'} need attention.
-                  Inventory from a stale source may no longer be available.
+                  {staleSources.length > 0 ? (
+                    <>
+                      {staleSources.length} enabled source
+                      {staleSources.length === 1 ? '' : 's'} need
+                      {staleSources.length === 1 ? 's' : ''} attention. Inventory from a stale
+                      source may no longer be available.{' '}
+                    </>
+                  ) : null}
+                  {unexploredSources.length > 0 ? (
+                    <>
+                      {unexploredSources.length}{' '}
+                      {unexploredSources.length === 1 ? 'candidate county' : 'candidate counties'}{' '}
+                      in the registry {unexploredSources.length === 1 ? 'has' : 'have'} never been
+                      switched on.
+                    </>
+                  ) : null}
                 </p>
               ) : null}
             </PanelBody>
