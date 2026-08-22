@@ -121,6 +121,20 @@ export function buildWhere(filter: OpportunityFilter): Prisma.ParcelOpportunityW
     and.push({ saleStatus: { in: ['AVAILABLE', 'SCHEDULED'] } });
   }
 
+  if (filter.deadlinePassed) {
+    // Must stay identical to the `deadlinePassed` count in dashboardStats, or
+    // the metric and the list it links to describe different sets — which is
+    // the contradiction the source panel used to have.
+    const now = new Date();
+    and.push({ saleStatus: { notIn: ['SOLD', 'WITHDRAWN', 'EXPIRED'] } });
+    and.push({
+      OR: [
+        { auctionDate: { lt: now } },
+        { AND: [{ auctionDate: null }, { offerDeadline: { lt: now } }] },
+      ],
+    });
+  }
+
   if (filter.otcOnly) {
     and.push({
       OR: [
@@ -333,6 +347,16 @@ export interface DashboardStats {
   readonly exceptionalCount: number;
   readonly distressedInventoryCount: number;
   readonly auctionsNext14Days: number;
+  /**
+   * Parcels still presented as buyable after their sale date has gone by.
+   *
+   * Not a count of parcels that are gone — a passed auction does not say what
+   * happened at it, and in Florida an unsold parcel moving to a lands-available
+   * list is precisely how the best inventory appears. It is a count of rows
+   * nobody has been back to the source about, which is a worklist rather than a
+   * verdict.
+   */
+  readonly deadlinePassed: number;
 }
 
 /**
@@ -360,6 +384,7 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
     exceptionalCount,
     distressedInventoryCount,
     auctionsNext14Days,
+    deadlinePassed,
     runStats,
   ] = await Promise.all([
     prisma.parcelOpportunity.count({ where: liveWhere }),
@@ -423,6 +448,13 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
     prisma.parcelOpportunity.count({
       where: { AND: [liveWhere, { auctionDate: { gte: now, lte: inTwoWeeks } }] },
     }),
+    // Built from the same filter the dashboard's link uses, rather than a
+    // second copy of the condition. A metric and the list it links to must
+    // describe the same set, and the only way to guarantee that is to compute
+    // them from one definition.
+    prisma.parcelOpportunity.count({
+      where: buildWhere({ includeRejected: false, deadlinePassed: true }),
+    }),
     prisma.ingestionRun.groupBy({
       by: ['status'],
       _count: { _all: true },
@@ -462,6 +494,7 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
     exceptionalCount,
     distressedInventoryCount,
     auctionsNext14Days,
+    deadlinePassed,
   };
 }
 

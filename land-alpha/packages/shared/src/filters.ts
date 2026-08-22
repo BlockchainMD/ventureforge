@@ -55,6 +55,16 @@ export interface OpportunityFilter {
    * parcels a county has genuinely offered are impossible to find in it.
    */
   offeredOnly?: boolean;
+  /**
+   * Parcels still on offer after their sale date has gone by.
+   *
+   * A worklist, not a verdict: the date passing says nothing about whether the
+   * parcel sold, was withdrawn, or went unsold and moved to a lands-available
+   * list — which in Florida is exactly how the best inventory appears. Only the
+   * source settles that, so these are surfaced for re-checking rather than
+   * resolved by a clock.
+   */
+  deadlinePassed?: boolean;
   noReserveOnly?: boolean;
   minFailedSaleCount?: number;
   statuses?: ParcelStatus[];
@@ -186,6 +196,7 @@ export function filterFromSearchParams(
 
   if (get('otcOnly') === 'true') filter.otcOnly = true;
   if (get('offeredOnly') === 'true') filter.offeredOnly = true;
+  if (get('deadlinePassed') === 'true') filter.deadlinePassed = true;
   if (get('noReserveOnly') === 'true') filter.noReserveOnly = true;
   if (get('watchlistedOnly') === 'true') filter.watchlistedOnly = true;
   if (get('includeRejected') === 'true') filter.includeRejected = true;

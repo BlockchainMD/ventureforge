@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
 import { getParcelDetail, spatial, toCents, getActiveScoringConfig } from '@land-alpha/db';
 import {
+  deadlineStatus,
   ACCESS_CLASS_LABELS,
   centsToDollars,
   formatAcres,
@@ -622,8 +623,24 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
               <KeyValue label="Asking price" value={formatCents(toCents(parcel.askingPrice))} />
               <KeyValue label="Taxes due" value={formatCents(toCents(parcel.taxesDue))} />
               <KeyValue label="Fees" value={formatCents(toCents(parcel.fees))} />
-              <KeyValue label="Auction date" value={formatDate(parcel.auctionDate)} />
-              <KeyValue label="Offer deadline" value={formatDate(parcel.offerDeadline)} />
+              <KeyValue
+                label="Auction date"
+                value={formatDate(parcel.auctionDate)}
+                note={
+                  deadlineStatus(parcel.auctionDate).state === 'PASSED'
+                    ? 'This date has gone by.'
+                    : undefined
+                }
+              />
+              <KeyValue
+                label="Offer deadline"
+                value={formatDate(parcel.offerDeadline)}
+                note={
+                  deadlineStatus(parcel.offerDeadline).state === 'PASSED'
+                    ? 'This date has gone by.'
+                    : undefined
+                }
+              />
               <KeyValue label="Failed sales" value={String(parcel.failedSaleCount)} />
               <KeyValue
                 label="OTC eligible"
@@ -835,18 +852,24 @@ function KeyValue({
   label,
   value,
   emphasis,
+  note,
 }: {
   label: string;
   value: React.ReactNode;
   emphasis?: boolean;
+  /** Qualifies the value in place. Used where a date has gone by. */
+  note?: string;
 }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
       <span className="rule-label">{label}</span>
-      <span
-        className={`num ${emphasis ? 'text-sm font-semibold text-ink' : 'text-xs text-ink-muted'}`}
-      >
-        <Value>{value}</Value>
+      <span className="flex items-baseline gap-1.5">
+        {note ? <span className="text-[10px] uppercase text-bad">{note}</span> : null}
+        <span
+          className={`num ${emphasis ? 'text-sm font-semibold text-ink' : 'text-xs text-ink-muted'}`}
+        >
+          <Value>{value}</Value>
+        </span>
       </span>
     </div>
   );

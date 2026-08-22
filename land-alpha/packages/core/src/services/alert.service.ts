@@ -1,6 +1,6 @@
 import { buildWhere, prisma, toCents, type Prisma } from '@land-alpha/db';
 import type { OpportunityFilter } from '@land-alpha/shared';
-import { formatCents, formatPercent } from '@land-alpha/shared';
+import { deadlineStatus, formatCents, formatPercent, soonestDeadline } from '@land-alpha/shared';
 import { createLogger } from '@land-alpha/shared/logger';
 
 /**
@@ -244,7 +244,7 @@ export function describeChange(
     .filter(Boolean)
     .join(' · ');
 
-  const deadline = soonestDeadline(parcel, now);
+  const deadline = deadlineStatus(soonestDeadline(parcel), now).days;
   const deadlineUrgency: AlertUrgency =
     deadline == null ? 'NORMAL' : deadline <= 3 ? 'IMMEDIATE' : deadline <= 14 ? 'HIGH' : 'NORMAL';
   const deadlineNote =
@@ -294,18 +294,6 @@ export function describeChange(
     default:
       return null;
   }
-}
-
-function soonestDeadline(
-  parcel: { auctionDate: Date | null; offerDeadline: Date | null },
-  now: Date,
-): number | null {
-  const dates = [parcel.auctionDate, parcel.offerDeadline].filter(
-    (date): date is Date => date != null,
-  );
-  if (dates.length === 0) return null;
-  const soonest = dates.reduce((a, b) => (a < b ? a : b));
-  return Math.ceil((soonest.getTime() - now.getTime()) / 86_400_000);
 }
 
 const URGENCY_RANK: Record<AlertUrgency, number> = { NORMAL: 0, HIGH: 1, IMMEDIATE: 2 };

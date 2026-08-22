@@ -126,6 +126,17 @@ export default async function DashboardPage() {
                     {formatNumber(stats.auctionsNext14Days)}
                   </span>
                 </Metric>
+                <Metric
+                  label="Sale date passed"
+                  hint="Still listed after their auction or offer deadline. A passed date does not say the parcel sold — an unsold Florida parcel moving to a lands-available list is how the best inventory appears — so these need re-checking against the source, not deleting."
+                >
+                  <Link
+                    href="/opportunities?deadlinePassed=true"
+                    className={stats.deadlinePassed > 0 ? 'text-bad hover:underline' : undefined}
+                  >
+                    {formatNumber(stats.deadlinePassed)}
+                  </Link>
+                </Metric>
                 <Metric label="Watchlisted">{formatNumber(stats.watchlisted)}</Metric>
                 <Metric label="In due diligence">{formatNumber(stats.inDueDiligence)}</Metric>
                 <Metric label="Source refresh rate" hint="Successful ingestion runs, last 30 days">

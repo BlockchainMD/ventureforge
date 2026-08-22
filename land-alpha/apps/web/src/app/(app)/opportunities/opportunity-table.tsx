@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Eye } from 'lucide-react';
 import {
+  deadlineStatus,
   formatAcres,
   formatCents,
   formatDate,
@@ -75,6 +76,10 @@ export function OpportunityTable({
         ) : (
           rows.map((row) => {
             const deadline = row.offerDeadline ?? row.auctionDate;
+            // A date on its own asks the reader to know today's date and do
+            // the subtraction. For a passed auction that arithmetic is the
+            // difference between a parcel you can bid on and one that is gone.
+            const deadlineState = deadlineStatus(deadline);
             return (
               <Tr key={row.id}>
                 <Td align="right">
@@ -192,9 +197,31 @@ export function OpportunityTable({
                   </span>
                 </Td>
                 <Td>
-                  <span className="num text-[11px] text-ink-muted">
-                    <Value>{deadline == null ? null : formatDate(deadline)}</Value>
-                  </span>
+                  {deadline == null ? (
+                    <span className="num text-[11px] text-ink-muted">
+                      <Value>{null}</Value>
+                    </span>
+                  ) : (
+                    <span
+                      className={`num text-[11px] ${
+                        deadlineState.state === 'PASSED'
+                          ? 'text-bad'
+                          : deadlineState.state === 'IMMINENT'
+                            ? 'text-warn'
+                            : 'text-ink-muted'
+                      }`}
+                      title={
+                        deadlineState.state === 'PASSED'
+                          ? 'The sale date has gone by. Whether this parcel sold, was withdrawn or went unsold is not known until the source is checked again.'
+                          : undefined
+                      }
+                    >
+                      {formatDate(deadline)}
+                      {deadlineState.state === 'PASSED' ? (
+                        <span className="ml-1 uppercase">· {deadlineState.label}</span>
+                      ) : null}
+                    </span>
+                  )}
                 </Td>
                 <Td>
                   <Badge tone={statusTone(row.status)}>{humanizeEnum(row.status)}</Badge>

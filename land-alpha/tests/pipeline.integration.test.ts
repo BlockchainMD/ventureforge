@@ -286,6 +286,54 @@ describe('offered for sale is distinguished from merely held', () => {
     // toggle should see everything rather than silently having inventory hidden.
     expect(filterFromSearchParams(new URLSearchParams()).offeredOnly).toBeUndefined();
   });
+
+  spec('the passed-deadline metric and the list it links to agree', async () => {
+    // The dashboard shows a count and links to a filtered list. If those are
+    // computed from two copies of the same condition they drift, and the
+    // product contradicts itself the way the source panel used to.
+    const stats = await dashboardStats();
+    const page = await listOpportunities({
+      ...DEFAULT_FILTER,
+      deadlinePassed: true,
+      pageSize: 1,
+    });
+    expect(page.total).toBe(stats.deadlinePassed);
+  });
+
+  spec('a passed deadline never widens the list, and every row really has one', async () => {
+    const all = await listOpportunities({ ...DEFAULT_FILTER, pageSize: 100 });
+    const passed = await listOpportunities({
+      ...DEFAULT_FILTER,
+      deadlinePassed: true,
+      pageSize: 100,
+    });
+    expect(passed.total).toBeLessThanOrEqual(all.total);
+
+    if (passed.rows.length === 0) {
+      console.warn('  (skipped — nothing past its sale date in this database)');
+      return;
+    }
+
+    const now = new Date();
+    const rows = await prisma.parcelOpportunity.findMany({
+      where: { id: { in: passed.rows.map((r) => r.id) } },
+      select: { auctionDate: true, offerDeadline: true, saleStatus: true },
+    });
+    for (const row of rows) {
+      const deadline = row.auctionDate ?? row.offerDeadline;
+      expect(deadline).not.toBeNull();
+      expect(deadline!.getTime()).toBeLessThan(now.getTime());
+      // A parcel the county has already resolved needs no chasing, so it must
+      // not appear on a worklist whose whole purpose is "go ask the source".
+      expect(['SOLD', 'WITHDRAWN', 'EXPIRED']).not.toContain(row.saleStatus);
+    }
+  });
+
+  spec('the passed-deadline filter round-trips through the URL', async () => {
+    const params = filterToSearchParams({ ...DEFAULT_FILTER, deadlinePassed: true });
+    expect(filterFromSearchParams(params).deadlinePassed).toBe(true);
+    expect(filterFromSearchParams(new URLSearchParams()).deadlinePassed).toBeUndefined();
+  });
 });
 
 describe('scoring invariants', () => {

@@ -25,3 +25,7 @@ data/storage/
 /*.js
 /*.cjs
 !/*.config.mjs
+# Screenshots and page dumps land in the repo root when a capture is run
+# without OUT set. Same class of stray as the scripts above.
+/*.png
+/*.txt
