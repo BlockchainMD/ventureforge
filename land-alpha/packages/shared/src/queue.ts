@@ -14,6 +14,8 @@ export const JOB_TYPES = [
   'parcel.memo',
   'parcel.listing',
   'alert.evaluate',
+  'finance.sweep',
+  'calibration.run',
   'maintenance.sourceHealth',
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
@@ -27,6 +29,10 @@ export interface JobPayloadMap {
   'parcel.memo': { parcelId: string; requestedBy?: string };
   'parcel.listing': { parcelId: string; requestedBy?: string };
   'alert.evaluate': { alertId?: string; since?: string };
+  /** Re-evaluate live seller-financed notes; delinquency is a function of the calendar. */
+  'finance.sweep': Record<string, never>;
+  /** Grade past predictions against realised outcomes and apply what the evidence supports. */
+  'calibration.run': Record<string, never>;
   'maintenance.sourceHealth': Record<string, never>;
 }
 

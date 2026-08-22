@@ -11,6 +11,7 @@ import {
   previewImport,
   previewFinancing,
   recordPayment,
+  refreshAllNotes,
   refreshNoteStanding,
   scoreParcelById,
   valuateParcel,
@@ -889,6 +890,88 @@ describe('lead notifications', () => {
     } finally {
       await prisma.notification.deleteMany({ where: { title: { contains: 'Offer $19,500' } } });
       await prisma.lead.delete({ where: { id: lead.id } });
+    }
+  });
+});
+
+/**
+ * The sweeps that nothing else triggers.
+ *
+ * Delinquency is a function of the calendar: no payment arrives to prompt a
+ * check, which is exactly the problem. Without a scheduled sweep a buyer who
+ * stops paying is noticed whenever somebody happens to open the note.
+ */
+describe('finance sweep', () => {
+  spec('alerts on the transition into trouble, not on every sweep', async () => {
+    const template = await prisma.parcelOpportunity.findFirst({
+      where: { apn: { startsWith: 'FX-' } },
+      select: { sourceId: true, jurisdictionId: true },
+    });
+    const APN = 'SWEEP-TEST-0001';
+    await prisma.parcelOpportunity.deleteMany({ where: { apn: APN } });
+    const parcel = await prisma.parcelOpportunity.create({
+      data: {
+        apn: APN,
+        apnNormalized: normalizeApn(APN),
+        naturalKey: `ZZ/Sweep/${normalizeApn(APN)}`,
+        state: 'ZZ',
+        county: 'Sweep',
+        sourceId: template!.sourceId,
+        jurisdictionId: template!.jurisdictionId,
+        acreage: 2,
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+      },
+      select: { id: true },
+    });
+
+    try {
+      const noteId = await createNote({
+        parcelId: parcel.id,
+        terms: {
+          salePriceCents: 1_500_000,
+          downPaymentCents: 150_000,
+          annualRate: 0.1,
+          termMonths: 24,
+          documentFeeCents: 0,
+          monthlyFeeCents: 0,
+        },
+        firstPaymentDate: new Date('2026-01-01T00:00:00Z'),
+      });
+      await prisma.financeNote.update({ where: { id: noteId }, data: { status: 'ACTIVE' } });
+
+      // Nothing paid; by March the buyer is well past the grace period.
+      const first = await refreshAllNotes(new Date('2026-03-01T00:00:00Z'));
+      const mine = first.find((standing) => standing.noteId === noteId)!;
+      expect(mine.status).toBe('DELINQUENT');
+      expect(mine.previousStatus).toBe('ACTIVE');
+
+      const afterFirst = await prisma.notification.count({
+        where: { parcelId: parcel.id, title: { contains: 'Payment overdue' } },
+      });
+      expect(afterFirst).toBeGreaterThan(0);
+
+      // Sweeping again with nothing changed must not announce it a second
+      // time. A note delinquent for a fortnight that alerts every sweep turns
+      // the queue into noise and the next real one is missed.
+      await refreshAllNotes(new Date('2026-03-02T00:00:00Z'));
+      expect(
+        await prisma.notification.count({
+          where: { parcelId: parcel.id, title: { contains: 'Payment overdue' } },
+        }),
+      ).toBe(afterFirst);
+
+      // Deterioration is a new fact and does alert.
+      const later = await refreshAllNotes(new Date('2026-06-01T00:00:00Z'));
+      expect(later.find((s) => s.noteId === noteId)!.status).toBe('DEFAULTED');
+      expect(
+        await prisma.notification.count({
+          where: { parcelId: parcel.id, title: { contains: 'default' } },
+        }),
+      ).toBeGreaterThan(0);
+    } finally {
+      await prisma.notification.deleteMany({ where: { parcelId: parcel.id } });
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: APN } });
     }
   });
 });

@@ -53,6 +53,23 @@ async function main(): Promise<void> {
   }, maintenanceIntervalMs);
   maintenance.unref();
 
+  // Calibration is deliberately not on the maintenance sweep. It only changes
+  // when a parcel is sold, so running it every quarter of an hour would burn
+  // work to recompute the same answer — and a correction that moved with the
+  // hour would be noise rather than learning.
+  const calibrationIntervalMs = 24 * 60 * 60_000;
+  const calibration = setInterval(() => {
+    void (async () => {
+      try {
+        const producer = await getQueue();
+        await producer.enqueue('calibration.run', {}, { dedupeKey: 'calibration.run' });
+      } catch (error) {
+        logger.error('failed to schedule calibration', { error: String(error) });
+      }
+    })();
+  }, calibrationIntervalMs);
+  calibration.unref();
+
   logger.info('worker started', {
     driver: config.QUEUE_DRIVER,
     concurrency: config.WORKER_CONCURRENCY,

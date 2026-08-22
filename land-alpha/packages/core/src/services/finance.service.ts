@@ -27,6 +27,8 @@ const logger = createLogger({ component: 'finance-service' });
 export interface NoteStanding {
   readonly noteId: string;
   readonly status: string;
+  /** What the status was before this evaluation, so a sweep can alert on the change. */
+  readonly previousStatus: string;
   readonly principalBalanceCents: number;
   readonly paidToDateCents: number;
   readonly scheduledToDateCents: number;
@@ -261,6 +263,7 @@ export async function refreshNoteStanding(
   return {
     noteId,
     status,
+    previousStatus: note.status,
     principalBalanceCents: principalBalance,
     paidToDateCents: paidToDate,
     scheduledToDateCents: scheduledToDate,
@@ -274,13 +277,76 @@ export async function refreshNoteStanding(
   };
 }
 
-/** Sweep every live note, so delinquency surfaces without anyone asking. */
+/**
+ * Sweep every live note, so delinquency surfaces without anyone asking.
+ *
+ * A buyer who stops paying should be noticed in days rather than whenever
+ * somebody opens the note. The money is recoverable early — a missed payment
+ * is usually a conversation — and much less so once a note is six months
+ * behind.
+ *
+ * Notifications fire on the transition, not the state: a note that has been
+ * delinquent for a fortnight must not announce itself every sweep, or the
+ * queue becomes noise and the next real one is missed.
+ */
 export async function refreshAllNotes(asOf = new Date()): Promise<NoteStanding[]> {
   const notes = await prisma.financeNote.findMany({
-    where: { status: { in: ['ACTIVE', 'DELINQUENT'] } },
+    where: { status: { in: ['ACTIVE', 'DELINQUENT', 'DEFAULTED'] } },
     select: { id: true },
   });
+
   const standings: NoteStanding[] = [];
-  for (const note of notes) standings.push(await refreshNoteStanding(note.id, asOf));
+  const worsened: NoteStanding[] = [];
+  for (const note of notes) {
+    const standing = await refreshNoteStanding(note.id, asOf);
+    standings.push(standing);
+    const before = SEVERITY[standing.previousStatus] ?? 0;
+    const after = SEVERITY[standing.status] ?? 0;
+    if (standing.status !== standing.previousStatus && after > before) worsened.push(standing);
+  }
+
+  if (worsened.length > 0) await notifyNoteTrouble(worsened);
   return standings;
+}
+
+const SEVERITY: Record<string, number> = {
+  PAID_OFF: -1,
+  DRAFT: 0,
+  ACTIVE: 0,
+  DELINQUENT: 1,
+  DEFAULTED: 2,
+  FORFEITED: 3,
+  CANCELLED: 3,
+};
+
+async function notifyNoteTrouble(standings: readonly NoteStanding[]): Promise<void> {
+  const recipients = await prisma.user.findMany({
+    where: { role: { in: ['ADMIN', 'ANALYST'] }, isActive: true },
+    select: { id: true },
+  });
+  if (recipients.length === 0) return;
+
+  for (const standing of standings) {
+    const note = await prisma.financeNote.findUnique({
+      where: { id: standing.noteId },
+      select: { parcelId: true, parcel: { select: { county: true, state: true } } },
+    });
+    if (!note) continue;
+    const where = `${note.parcel.county} County, ${note.parcel.state}`;
+    await prisma.notification.createMany({
+      data: recipients.map((user) => ({
+        userId: user.id,
+        channel: 'IN_APP',
+        parcelId: note.parcelId,
+        urgency: standing.status === 'DEFAULTED' ? 'IMMEDIATE' : 'HIGH',
+        title:
+          standing.status === 'DEFAULTED'
+            ? `Note in default — ${where}`
+            : `Payment overdue — ${where}`,
+        body: `${standing.daysPastDue} days past due, ${(standing.arrearsCents / 100).toFixed(2)} in arrears. A missed payment is usually a conversation; a note six months behind rarely is.`,
+        linkPath: `/opportunities/${note.parcelId}`,
+      })),
+    });
+  }
+  logger.info('note trouble notified', { notes: standings.length });
 }

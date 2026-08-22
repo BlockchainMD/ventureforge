@@ -5,6 +5,8 @@ import {
   discoverSources,
   enrichParcel,
   evaluateAlertRules,
+  refreshAllNotes,
+  runCalibration,
   generateListingForParcel,
   generateMemoForParcel,
   scoreParcelById,
@@ -44,6 +46,9 @@ export const handlers: JobHandlerMap = {
     }
     if (outcome.created > 0 || outcome.changed > 0) {
       await queue.enqueue('alert.evaluate', {}, { dedupeKey: 'alert.evaluate' });
+      // Money already out of the door: a buyer who stops paying should be
+      // noticed in days, not whenever somebody opens the note.
+      await queue.enqueue('finance.sweep', {}, { dedupeKey: 'finance.sweep' });
     }
 
     return {
@@ -99,6 +104,30 @@ export const handlers: JobHandlerMap = {
     generateListingForParcel(payload.parcelId, payload.requestedBy),
 
   'alert.evaluate': async (payload) => evaluateAlertRules({ ruleId: payload.alertId }),
+
+  /**
+   * Re-evaluate every live seller-financed note. Delinquency is a function of
+   * the calendar, so nothing else will surface it — no payment arrives to
+   * trigger a check, which is precisely the problem.
+   */
+  'finance.sweep': async () => {
+    const standings = await refreshAllNotes();
+    const behind = standings.filter((standing) => standing.arrearsCents > 0).length;
+    return { notes: standings.length, behind };
+  },
+
+  /**
+   * Grade past predictions against realised outcomes and apply what the
+   * evidence supports. Reporting only would leave the engine wrong in a known
+   * direction, which is worse than not knowing.
+   */
+  'calibration.run': async () => {
+    const report = await runCalibration({ apply: true });
+    return {
+      outcomes: report.generatedFrom,
+      marketsCorrected: Object.keys(report.valueCalibration).length,
+    };
+  },
 
   'source.discover': async (payload) =>
     discoverSources({
