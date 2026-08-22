@@ -4,10 +4,23 @@
 # no pnpm store, no TypeScript, no dev dependencies. The same image runs
 # locally under docker compose and on any container host.
 
-# ---- deps -------------------------------------------------------------------
-FROM node:22-slim AS deps
+# ---- base -------------------------------------------------------------------
+# corepack downloads the pinned pnpm on first use, so a stage that runs any pnpm
+# command reaches for the network before it does anything else. Doing it once
+# here means the later stages inherit a ready pnpm instead of fetching their own,
+# and there is a single place where a proxy CA has to be trusted.
+FROM node:22-slim AS base
 WORKDIR /app
-RUN corepack enable
+COPY package.json ./
+RUN --mount=type=secret,id=ca_bundle \
+    if [ -s /run/secrets/ca_bundle ]; then \
+      export NODE_EXTRA_CA_CERTS=/run/secrets/ca_bundle; \
+    fi; \
+    corepack enable && corepack install
+
+# ---- deps -------------------------------------------------------------------
+FROM base AS deps
+WORKDIR /app
 
 # Copy only what pnpm needs to resolve the workspace, so a source-only change
 # does not invalidate the install layer.
@@ -28,12 +41,11 @@ RUN --mount=type=secret,id=ca_bundle \
     pnpm install --frozen-lockfile
 
 # ---- build ------------------------------------------------------------------
-FROM node:22-slim AS build
+FROM base AS build
 WORKDIR /app
 # Prisma's query engine links against OpenSSL and warns (then guesses) without
 # it. This stage also runs migrations and the seed for the local stack.
-RUN corepack enable \
- && apt-get update \
+RUN apt-get update \
  && apt-get install -y --no-install-recommends openssl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -46,7 +58,13 @@ COPY --from=deps /app /app
 COPY . .
 
 # Prisma generates into node_modules, so it has to run before the Next build.
-RUN pnpm db:generate
+# It downloads its query and schema engines here, which is the build's last
+# network step and so the last place a proxy CA has to be trusted.
+RUN --mount=type=secret,id=ca_bundle \
+    if [ -s /run/secrets/ca_bundle ]; then \
+      export NODE_EXTRA_CA_CERTS=/run/secrets/ca_bundle; \
+    fi; \
+    pnpm db:generate
 
 # next build reads the environment. Nothing here is a secret and nothing is
 # baked into the image: DATABASE_URL is supplied at run time and this value
@@ -63,8 +81,8 @@ RUN AUTH_SECRET="build-time-placeholder-not-used-at-runtime-0000" \
 # ---- runtime ----------------------------------------------------------------
 FROM node:22-slim AS runtime
 WORKDIR /app
-RUN corepack enable \
- && apt-get update \
+# No pnpm here: this stage runs `node server.js` and nothing else.
+RUN apt-get update \
  && apt-get install -y --no-install-recommends openssl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
