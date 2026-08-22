@@ -36,12 +36,27 @@ export type AlertUrgency = 'IMMEDIATE' | 'HIGH' | 'NORMAL';
 
 const ALERTING_KINDS = ['CREATED', 'PRICE_CHANGED', 'REAPPEARED', 'AUCTION_DATE_CHANGED'] as const;
 
+/**
+ * Most changes one rule will notify about in a single evaluation.
+ *
+ * A cap is right — a county publishing its whole roll for the first time
+ * produced 14,220 change records here, and nobody wants that many
+ * notifications. What was wrong was what happened to the remainder.
+ */
+const MAX_CHANGES_PER_RULE_PER_RUN = 200;
+
 export interface AlertEvaluation {
   readonly ruleId: string;
   readonly ruleName: string;
   readonly matched: number;
   readonly notified: number;
   readonly byKind: Record<string, number>;
+  /**
+   * True when more changes were waiting than one run will notify about. The
+   * cursor stops where this run stopped, so the next run continues rather than
+   * stepping over them.
+   */
+  readonly backlogged: boolean;
 }
 
 export async function evaluateAlertRules(
@@ -64,14 +79,21 @@ export async function evaluateAlertRules(
     // history — a new rule should not deliver a year of old price changes.
     const since = rule.lastEvaluatedAt ?? new Date(now.getTime() - 86_400_000);
 
+    // Oldest first, and one more than the cap so a backlog is detectable.
+    //
+    // This used to take the *newest* 200 and then advance the cursor to `now`
+    // regardless, so any burst larger than the cap silently and permanently
+    // discarded its oldest changes — the ones that had been waiting longest.
+    // A county dumping new inventory is exactly when that happened, and
+    // exactly when this product is supposed to be worth something.
     const changes = await prisma.parcelChange.findMany({
       where: {
-        detectedAt: { gt: since },
+        detectedAt: { gte: since },
         kind: { in: [...ALERTING_KINDS] },
         parcel: where,
       },
-      orderBy: { detectedAt: 'desc' },
-      take: 200,
+      orderBy: [{ detectedAt: 'asc' }, { id: 'asc' }],
+      take: MAX_CHANGES_PER_RULE_PER_RUN + 1,
       include: {
         parcel: {
           select: {
@@ -91,10 +113,13 @@ export async function evaluateAlertRules(
       },
     });
 
+    const backlogged = changes.length > MAX_CHANGES_PER_RULE_PER_RUN;
+    const batch = backlogged ? changes.slice(0, MAX_CHANGES_PER_RULE_PER_RUN) : changes;
+
     let notified = 0;
     const byKind: Record<string, number> = {};
 
-    for (const change of changes) {
+    for (const change of batch) {
       const message = describeChange(change, now);
       if (!message) continue; // e.g. a price increase: recorded, not alerted
 
@@ -122,20 +147,50 @@ export async function evaluateAlertRules(
       byKind[change.kind] = (byKind[change.kind] ?? 0) + 1;
     }
 
+    // Advance only as far as we actually got. The query is `gte` and
+    // notifications are unique per (rule, change), so re-reading the boundary
+    // instant is harmless — which matters because a batched insert stamps many
+    // changes with one timestamp, and a `gt` cursor would step over its
+    // siblings.
+    const lastProcessed = batch.at(-1)?.detectedAt;
+    let cursor = backlogged && lastProcessed ? lastProcessed : now;
+
+    if (backlogged && lastProcessed && lastProcessed.getTime() <= since.getTime()) {
+      // The whole batch landed on one instant and there are still more at it,
+      // so holding the cursor here would never progress. Stepping past it is
+      // the only way forward and it does drop the remainder of that instant —
+      // so say so, rather than losing them quietly the way this used to.
+      cursor = new Date(since.getTime() + 1);
+      logger.warn('alert backlog exceeded the cap within a single instant', {
+        ruleId: rule.id,
+        instant: since.toISOString(),
+        cap: MAX_CHANGES_PER_RULE_PER_RUN,
+      });
+    }
+
     await prisma.alertRule.update({
       where: { id: rule.id },
       data: {
-        lastEvaluatedAt: now,
+        lastEvaluatedAt: cursor,
         ...(notified > 0 ? { lastMatchAt: now, matchCount: { increment: notified } } : {}),
       },
     });
 
+    if (backlogged) {
+      logger.info('alert rule has a backlog; the next run continues from here', {
+        ruleId: rule.id,
+        notified,
+        cursor: cursor.toISOString(),
+      });
+    }
+
     evaluations.push({
       ruleId: rule.id,
       ruleName: rule.name,
-      matched: changes.length,
+      matched: batch.length,
       notified,
       byKind,
+      backlogged,
     });
   }
 

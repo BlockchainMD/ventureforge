@@ -676,6 +676,58 @@ describe('seller financing', () => {
  * product has, and it used to be silent.
  */
 describe('speed alerts', () => {
+  spec('carries a burst larger than one run into the next run', async () => {
+    // A county publishing its whole roll produced 14,220 change records here.
+    // The old implementation took the newest 200 and advanced the cursor to
+    // now, so the oldest changes in any burst were discarded permanently — and
+    // a burst is exactly when this product is supposed to earn its keep.
+    const user = await prisma.user.findFirst({ select: { id: true } });
+    const parcel = await prisma.parcelOpportunity.findFirst({
+      where: { removedFromSourceAt: null },
+      select: { id: true },
+    });
+
+    const rule = await prisma.alertRule.create({
+      data: {
+        userId: user!.id,
+        name: 'Burst test rule',
+        filters: { includeRejected: true },
+        enabled: true,
+        lastEvaluatedAt: new Date(Date.now() - 3_600_000),
+      },
+      select: { id: true },
+    });
+
+    // 250 changes, spread over distinct instants so the cursor can advance.
+    const base = Date.now() - 1_800_000;
+    await prisma.parcelChange.createMany({
+      data: Array.from({ length: 250 }, (_, i) => ({
+        parcelId: parcel!.id,
+        kind: 'CREATED' as const,
+        detectedAt: new Date(base + i * 1000),
+      })),
+    });
+
+    try {
+      const first = await evaluateAlertRules({ ruleId: rule.id });
+      expect(first[0]!.backlogged).toBe(true);
+      const firstRun = first[0]!.notified;
+      expect(firstRun).toBeGreaterThan(0);
+
+      // The remainder must still be reachable. Under the old behaviour this
+      // returned nothing, because the cursor had jumped past them.
+      const second = await evaluateAlertRules({ ruleId: rule.id });
+      expect(second[0]!.notified).toBeGreaterThan(0);
+      expect(firstRun + second[0]!.notified).toBeGreaterThan(firstRun);
+    } finally {
+      await prisma.notification.deleteMany({ where: { alertRuleId: rule.id } });
+      await prisma.parcelChange.deleteMany({
+        where: { parcelId: parcel!.id, detectedAt: { gte: new Date(base) } },
+      });
+      await prisma.alertRule.delete({ where: { id: rule.id } });
+    }
+  });
+
   spec('fires on a price cut for a parcel already notified', async () => {
     const user = await prisma.user.findFirst({ select: { id: true } });
     // Must be a parcel the alert engine would actually evaluate. Selecting one
