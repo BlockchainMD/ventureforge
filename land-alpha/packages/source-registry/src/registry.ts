@@ -205,7 +205,12 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
       // adopted locally. Without this, every Florida parcel is unscreened for
       // flood and buildability is capped at UNKNOWN.
       floodLayerUrl: 'https://ocgis4.ocfl.net/arcgis/rest/services/AGOL_Open_Data/MapServer/19',
-      // Orange County's road inventory. MAINTENANCE states the maintaining body; SURFACE_TYPE and STREET_CLASSIFICATION come free.
+      // Orange County's road inventory. The maintaining body is in S_OWNER
+      // ("COUNTY" or "None"). NOT in MAINTENANCE, which holds the single value
+      // "Unincorporated" for every segment in the layer — it names the layer's
+      // extent, not a maintainer, and reading it as one declared every Orange
+      // road public. DESIGNATION carries codes (FM/NM/NMC/ONM/URW/UB) the
+      // county publishes no dictionary for, so nothing interprets them.
       roadsLayerUrl:
         'https://services1.arcgis.com/0U8EQ1FrumPeIqDb/arcgis/rest/services/OCSHARE_Roads_Uninc/FeatureServer/0',
       layerUrl:

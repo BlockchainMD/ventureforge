@@ -304,7 +304,7 @@ function pickString(attributes: Record<string, unknown>, keys: string[]): string
  * it. Legal access stays UNKNOWN until a recorded instrument is read, on every
  * parcel, regardless of what this returns.
  */
-function inferPublicMaintenance(attributes: Record<string, unknown>): boolean | null {
+export function inferPublicMaintenance(attributes: Record<string, unknown>): boolean | null {
   const text = Object.entries(attributes)
     // CLASS and DESIGNATION join the list because several counties state the
     // maintaining body there and nowhere else: Ottawa's RoadClass reads
@@ -315,15 +315,31 @@ function inferPublicMaintenance(attributes: Record<string, unknown>): boolean | 
     .toUpperCase();
   if (!text.trim()) return null;
   if (/PRIVATE/.test(text)) return false;
-  // "Unincorporated" is how Orange County's road inventory records a road it
-  // maintains itself rather than one inside a municipality. It is a statement
-  // of county maintenance, not an absence of one.
   // MSTU is a Municipal Service Taxing Unit: the mechanism by which a Florida
   // county funds maintenance of roads in an unincorporated subdivision. It
   // names the county as maintainer as surely as the county's own name does.
-  if (
-    /COUNTY|CITY|STATE|TOWNSHIP|MUNICIPAL|TWP|MNDOT|PUBLIC|FEDERAL|UNINCORPORATED|MSTU/.test(text)
-  ) {
+  //
+  // UNINCORPORATED used to be on this list, on the reasoning that it was how
+  // Orange County recorded a road it maintained itself. It is not. Orange's
+  // MAINTENANCE column holds the single value "Unincorporated" for all ~31,000
+  // segments — it is a partition label for the layer (OCSHARE_Roads_Uninc,
+  // roads in unincorporated Orange County), not a statement about maintenance.
+  // Querying the layer for distinct values returns exactly one row.
+  //
+  // The cost was total: every Orange road matched, so touchesPublicRoad was
+  // true for every Orange parcel with any frontage. That switch upgrades a
+  // parcel from access class B to A, adds 15 points to the physical access
+  // score, and deletes the one warning the operator gets — that the adjoining
+  // strip may be a private road or an unopened right-of-way. An unopened
+  // right-of-way is exactly what makes a cheap lot unsellable: no driveway
+  // permit, and the resale comparables do not apply.
+  //
+  // Orange does publish the maintainer, in S_OWNER: "COUNTY" or "None". That
+  // field is picked up by the OWNER key filter above and answers honestly.
+  // DESIGNATION is deliberately not interpreted — the county publishes no
+  // dictionary for its codes, and FM appears on both county-owned and
+  // unowned segments, so reading it would be guessing.
+  if (/COUNTY|CITY|STATE|TOWNSHIP|MUNICIPAL|TWP|MNDOT|PUBLIC|FEDERAL|MSTU/.test(text)) {
     return true;
   }
   return null;

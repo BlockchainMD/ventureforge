@@ -2,7 +2,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 
 process.env.DATABASE_URL ??= 'postgresql://unused:unused@localhost:5432/unused';
 
-const { fetchRoads, clearRoadTileCache } = await import('./roads');
+const { fetchRoads, clearRoadTileCache, inferPublicMaintenance } = await import('./roads');
 const { IngestHttpClient } = await import('../fetch/http');
 
 /**
@@ -127,13 +127,33 @@ describe('fetchRoads', () => {
         expected: { isPublic: true, name: 'Stump' },
       },
       {
-        label: 'Orange FL',
+        // Orange's MAINTENANCE column reads "Unincorporated" on every segment
+        // in the layer, so it says nothing. The maintainer is S_OWNER. This
+        // case previously omitted S_OWNER and still expected `true`, which is
+        // the defect the fixture was written from.
+        label: 'Orange FL, county-owned',
         attributes: {
           MAINTENANCE: 'Unincorporated',
+          S_OWNER: 'COUNTY',
+          DESIGNATION: 'FM',
           COMPLETE_STREETNAME: '33rd St',
           SURFACE_TYPE: 'ASPHALT',
         },
         expected: { isPublic: true, name: '33rd St' },
+      },
+      {
+        // Same layer, same DESIGNATION, no owner recorded. Unknown — and the
+        // operator keeps the warning that this may be a private road or an
+        // unopened right-of-way.
+        label: 'Orange FL, no owner recorded',
+        attributes: {
+          MAINTENANCE: 'Unincorporated',
+          S_OWNER: 'None',
+          DESIGNATION: 'FM',
+          COMPLETE_STREETNAME: 'Holly St',
+          SURFACE_TYPE: 'DIRT',
+        },
+        expected: { isPublic: null, name: 'Holly St' },
       },
       {
         label: 'St. Louis MN',
@@ -180,5 +200,64 @@ describe('fetchRoads', () => {
       expect(result.roads[0]?.name, testCase.label).toBe(testCase.expected.name);
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('inferPublicMaintenance', () => {
+  // Attribute shapes taken from live queries against each county's layer.
+
+  it('does not read a layer partition label as a maintainer', () => {
+    // Orange's MAINTENANCE column holds "Unincorporated" for all ~31,000
+    // segments — the layer is OCSHARE_Roads_Uninc. Reading it as a maintenance
+    // statement made touchesPublicRoad true for every Orange parcel with
+    // frontage, which upgrades access B to A and deletes the private-road
+    // caveat.
+    expect(
+      inferPublicMaintenance({
+        MAINTENANCE: 'Unincorporated',
+        DESIGNATION: 'FM',
+        S_CLASS: 'None',
+        S_OWNER: 'None',
+        STREET_CLASSIFICATION: 'Minor',
+      }),
+    ).toBeNull();
+  });
+
+  it('reads the maintainer Orange actually publishes', () => {
+    expect(
+      inferPublicMaintenance({
+        MAINTENANCE: 'Unincorporated',
+        DESIGNATION: 'FM',
+        S_CLASS: 'UMA',
+        S_OWNER: 'COUNTY',
+        STREET_CLASSIFICATION: 'Major',
+      }),
+    ).toBe(true);
+  });
+
+  it('does not interpret a designation code the county never defined', () => {
+    // FM appears on both county-owned and unowned segments, and Orange
+    // publishes no dictionary for FM/NM/NMC/ONM/URW/UB. Reading them would be
+    // guessing at whether a road is maintained.
+    expect(inferPublicMaintenance({ DESIGNATION: 'FM' })).toBeNull();
+    expect(inferPublicMaintenance({ DESIGNATION: 'NM' })).toBeNull();
+  });
+
+  it('still reads the counties that name the body outright', () => {
+    // Marion states it in Jurisdiction; Ottawa in its Act 51 designation.
+    expect(inferPublicMaintenance({ Jurisdiction: 'County' })).toBe(true);
+    expect(inferPublicMaintenance({ Jurisdiction: 'State of Florida' })).toBe(true);
+    expect(inferPublicMaintenance({ Act51LegalDesignation: 'County Primary' })).toBe(true);
+    expect(inferPublicMaintenance({ Act51LegalDesignation: 'Private Road' })).toBe(false);
+  });
+
+  it('keeps MSTU, which names the county as funder of maintenance', () => {
+    expect(inferPublicMaintenance({ MaintenanceStatus: 'MSTU' })).toBe(true);
+  });
+
+  it('is unknown, not false, when nothing in the row speaks to maintenance', () => {
+    // St. Louis County's centreline layer carries no matching field at all.
+    expect(inferPublicMaintenance({ STREET_NAME: 'Vermilion Rd', SPEED: 55 })).toBeNull();
+    expect(inferPublicMaintenance({})).toBeNull();
   });
 });
