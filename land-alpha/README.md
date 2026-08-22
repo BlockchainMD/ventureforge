@@ -45,6 +45,32 @@ exceptional candidates are worth more than a hundred thousand unranked rows.
 
 ## Quick start
 
+### Just run it (Docker only)
+
+No Node, no pnpm — the whole product, built and served:
+
+```bash
+cd land-alpha
+docker compose --profile app up --build     # http://localhost:3000
+```
+
+That starts Postgres/PostGIS, applies migrations, seeds the demo data and serves a
+production build. First build takes a few minutes; subsequent ones are cached.
+
+Sign in with `analyst@landalpha.local` / `landalpha-dev`.
+
+A fresh stack contains fixture parcels only, so every score reads `unknown` until the
+pipeline has run against real sources:
+
+```bash
+docker compose run --rm seed pnpm ingest      # pull county inventory
+docker compose run --rm seed pnpm pipeline    # enrich, value, score
+```
+
+Stop with `docker compose --profile app down`, or `down -v` to discard the database.
+
+### Develop against the source
+
 Requires Node 22+, pnpm 10+, and Docker (or a local PostgreSQL 14+ with PostGIS).
 
 ```bash
@@ -56,8 +82,6 @@ pnpm install
 pnpm setup                        # generate client, run migrations, seed
 pnpm dev                          # http://localhost:3000
 ```
-
-Sign in with `analyst@landalpha.local` / `landalpha-dev`.
 
 Seeded accounts: `admin@landalpha.local` (ADMIN), `analyst@landalpha.local` (ANALYST),
 `viewer@landalpha.local` (VIEWER) — all with password `landalpha-dev`.
@@ -485,8 +509,23 @@ to a rejection rule that breaks an archetype fails loudly, with the rule named.
 
 ## Deployment
 
-**Web** — Vercel, or any Node host. Set `DATABASE_URL`, `AUTH_SECRET`, and whichever
-integrations you are enabling.
+**Web** — the root `Dockerfile` builds a self-contained image (Next standalone output,
+~630MB) that runs anywhere containers do: Cloud Run, Fly, ECS, a VM. Or Vercel, or any
+Node host. Set `DATABASE_URL`, `AUTH_SECRET`, and whichever integrations you are enabling.
+
+**Migrations** — run as their own step, not on instance start. The `build` stage image
+carries the full workspace:
+
+```bash
+docker run --rm -e DATABASE_URL=... land-alpha-seed pnpm db:migrate
+```
+
+**Building behind a TLS-inspecting proxy** — pass the proxy's CA and it is trusted for the
+install layer only, never copied into an image:
+
+```bash
+docker build --secret id=ca_bundle,src=/path/to/ca.crt -t land-alpha-web .
+```
 
 **Worker** — a separate container (`infra/Dockerfile.worker`). Its workload is long-running
 and scales differently from request traffic.
