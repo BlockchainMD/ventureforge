@@ -50,6 +50,18 @@ export const registryEntrySchema = z.object({
   failedAuctionBecomesOtc: z.boolean().default(false),
   acquisitionMethod: z.string().nullable().default(null),
 
+  /**
+   * What to multiply the assessor's land value by to reach a market estimate,
+   * where no comparable sales exist.
+   *
+   * Jurisdictions do not assess on the same basis. Florida assesses at
+   * something close to full just value, so a small uplift for the lag typical
+   * of vacant land is right. Michigan assesses at half of true cash value by
+   * statute, so the same uplift would understate its land by about half.
+   * Null defers to the engine default.
+   */
+  assessedValueMultiplier: z.number().positive().nullable().default(null),
+
   /** Which adapter implementation handles this source. */
   adapterKey: z.string(),
   parserVersion: z.string().default('1'),

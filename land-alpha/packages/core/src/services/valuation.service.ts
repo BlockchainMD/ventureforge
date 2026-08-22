@@ -28,6 +28,7 @@ import {
 import { estimateCurativeCostCents } from '@land-alpha/title-research';
 import { FIXTURE_COMP_SOURCE } from '@land-alpha/db/seed/comparables';
 import { FIXTURE_APN_PREFIX } from '@land-alpha/db/seed/fixture-parcels';
+import { registryByKey } from '@land-alpha/source-registry';
 
 /**
  * Valuation orchestration.
@@ -160,6 +161,11 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
     },
     {
       ...DEFAULT_VALUATION_CONFIG,
+      // Jurisdictions do not assess on the same basis, so the fallback
+      // multiplier belongs to the source rather than to the engine.
+      assessedValueMultiplier:
+        registryByKey(parcel.source.registryKey)?.assessedValueMultiplier ??
+        DEFAULT_VALUATION_CONFIG.assessedValueMultiplier,
       comps: DEFAULT_COMPS_CONFIG,
       quickSaleDiscount: config.costModel.quickSaleDiscountFromRetail,
       investorLiquidationDiscount: config.costModel.investorLiquidationDiscountFromRetail,

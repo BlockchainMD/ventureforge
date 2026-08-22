@@ -303,6 +303,11 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
         owner: 'OwnerName',
         legalDescription: 'LegalDesc',
         assessedValue: 'AssessedValue',
+        // The inventory is filtered to vacant classes, so the total assessed
+        // value is the land value: there is nothing else on the parcel to
+        // carry any of it. Without this the valuation fallback never fires and
+        // all 99 Ottawa parcels come out unvaluable and so unrankable.
+        landAssessedValue: 'AssessedValue',
         taxableValue: 'TaxableValue',
         propertyClass: 'PropertyClass',
         propertyClassDescription: 'PropertyClassDescription',
@@ -314,6 +319,21 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
       governmentOwner: 'Ottawa County (treasurer / land bank inventory)',
       ownerType: 'COUNTY',
       saleStatus: 'UNKNOWN',
+      /**
+       * Michigan assesses at half of true cash value.
+       *
+       * A statutory property of the state, not a quirk of Ottawa: assessed
+       * value equals the State Equalized Value, and the SEV is set at 50% of
+       * true cash value. Every sampled parcel here has AssessedValue exactly
+       * equal to SEVValue, and the doubling is what makes the numbers read
+       * correctly — a 37.75-acre agricultural parcel at an SEV of $283,100
+       * comes to about $15,000 an acre doubled, which is Ottawa County
+       * farmland; at the SEV alone it would be $7,500 and far too low.
+       *
+       * The 1.15 default suits a jurisdiction assessing at full value, as
+       * Florida does. Applying it here understates Michigan land by half.
+       */
+      assessedValueMultiplier: 2,
       // Michigan property class 4xx/2xx with "VACANT" in the description is the
       // reliable vacant-land signal in this dataset.
       vacantClassPattern: 'VACANT',
