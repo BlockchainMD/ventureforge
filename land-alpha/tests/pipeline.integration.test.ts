@@ -1081,6 +1081,98 @@ describe('bulk acquisition prices', () => {
  * endpoint will hand over do not, and they gate everything behind them — so
  * the one failure mode that matters is nobody being told the queue is full.
  */
+/**
+ * Valuing the land that may actually be built on.
+ *
+ * The comps engine adjusts for size, age, access, utilities and zoning and
+ * nothing for flood, so a parcel almost entirely inside the floodplain was
+ * valued exactly like a dry one and the recommended maximum bid followed. The
+ * floodway is where the correction belongs: it is a regulatory no-build area,
+ * not a market opinion.
+ */
+describe('flood and the value of developable land', () => {
+  async function parcelWith(apn: string, data: Record<string, unknown>): Promise<{ id: string }> {
+    const template = await prisma.parcelOpportunity.findFirst({
+      where: { apn: { startsWith: 'FX-' } },
+      select: { sourceId: true, jurisdictionId: true },
+    });
+    await prisma.parcelOpportunity.deleteMany({ where: { apn } });
+    return prisma.parcelOpportunity.create({
+      data: {
+        apn,
+        apnNormalized: normalizeApn(apn),
+        naturalKey: `ZZ/Flood/${normalizeApn(apn)}`,
+        state: 'ZZ',
+        county: 'Flood',
+        sourceId: template!.sourceId,
+        jurisdictionId: template!.jurisdictionId,
+        acreage: 10,
+        latitude: 46.75,
+        longitude: -92.19,
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+        ...data,
+      },
+      select: { id: true },
+    });
+  }
+
+  spec('values a floodway parcel on what is left of it', async () => {
+    const parcel = await parcelWith('FLOODWAY-TEST-0001', {
+      floodZones: ['FLOODWAY'],
+      floodOverlapFraction: 0.8,
+      inSpecialFloodHazardArea: true,
+      environmentalLayersScreened: ['FLOOD'],
+    });
+    try {
+      const result = await valuateParcel(parcel.id);
+      const warning = result.warnings.find((w) => w.includes('regulatory floodway'));
+      expect(warning).toBeDefined();
+      // Ten gross acres, eight of them undevelopable.
+      expect(warning).toContain('2.00 developable acres');
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: 'FLOODWAY-TEST-0001' } });
+    }
+  });
+
+  spec('does not invent a discount for the rest of the floodplain', async () => {
+    // Building outside the floodway is permitted with elevation, so a discount
+    // is real but it is a market judgement. Picking a percentage here would be
+    // inventing one.
+    const parcel = await parcelWith('SFHA-TEST-0001', {
+      floodZones: ['AE'],
+      floodOverlapFraction: 0.6,
+      inSpecialFloodHazardArea: true,
+      environmentalLayersScreened: ['FLOOD'],
+    });
+    try {
+      const result = await valuateParcel(parcel.id);
+      const warning = result.warnings.find((w) => w.includes('Special Flood Hazard Area'));
+      expect(warning).toBeDefined();
+      expect(warning).toContain('does not make for them');
+      expect(result.warnings.some((w) => w.includes('developable acres'))).toBe(false);
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: 'SFHA-TEST-0001' } });
+    }
+  });
+
+  spec('leaves a dry parcel entirely alone', async () => {
+    const parcel = await parcelWith('DRY-TEST-0001', {
+      floodZones: ['X'],
+      floodOverlapFraction: 0,
+      inSpecialFloodHazardArea: false,
+      environmentalLayersScreened: ['FLOOD'],
+    });
+    try {
+      const result = await valuateParcel(parcel.id);
+      expect(result.warnings.some((w) => w.includes('floodway'))).toBe(false);
+      expect(result.warnings.some((w) => w.includes('Special Flood Hazard Area'))).toBe(false);
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: 'DRY-TEST-0001' } });
+    }
+  });
+});
+
 describe('worklist notification', () => {
   spec('tells whoever can act, once per state of the queue', async () => {
     const template = await prisma.parcelOpportunity.findFirst({

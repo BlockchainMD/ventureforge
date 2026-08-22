@@ -65,7 +65,31 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
   // market — the specification tests would stop measuring the pipeline.
   const fixtures = (parcel.apn ?? '').startsWith(FIXTURE_APN_PREFIX) ? 'only' : 'exclude';
 
-  const acreage = parcel.acreage;
+  // Value the land that may actually be built on.
+  //
+  // The comps engine adjusts for size, age, access, utilities and zoning, and
+  // nothing at all for flood — so until now a parcel 95% inside the floodplain
+  // was valued exactly like a dry one of the same size, and the recommended
+  // maximum bid followed it. That is a direct route to overpaying, and with
+  // seventeen Florida and seventeen Michigan parcels now known to sit in a
+  // Special Flood Hazard Area it is not hypothetical.
+  //
+  // The floodway is the defensible place to make the correction, because it is
+  // a regulatory fact rather than a market opinion: NFIP rules and local
+  // ordinance prohibit development that would raise the base flood elevation,
+  // which in practice bars new structures. Land inside it is not developable
+  // area, so it is excluded from the area being valued. A ten-acre parcel with
+  // five usable acres then prices like a five-acre parcel — which is right,
+  // and is not the same as half the ten-acre price, because the size curve
+  // applies to the usable figure.
+  //
+  // The rest of the 100-year floodplain is deliberately left alone. Building
+  // there is permitted with elevation, so the discount is real but it is a
+  // market judgement, and picking a percentage would be inventing one. It is
+  // recorded as a warning instead.
+  const developable = developableAcreage(parcel);
+  const acreage = developable.acreage;
+  if (developable.note) warnings.push(developable.note);
   const centroid =
     parcel.longitude != null && parcel.latitude != null
       ? ([parcel.longitude, parcel.latitude] as [number, number])
@@ -366,4 +390,49 @@ export function totalCosts(economics: OpportunityEconomics): number {
     economics.carryingCost,
     economics.marketingCost,
   );
+}
+
+/**
+ * Acreage the valuation should be built on, after removing regulatory
+ * no-build area.
+ *
+ * Only the floodway is removed. That is a rule, not an estimate: it is the
+ * channel that has to carry the base flood discharge, and development raising
+ * the flood elevation is prohibited in it.
+ */
+function developableAcreage(parcel: {
+  acreage: number | null;
+  floodZones: string[];
+  floodOverlapFraction: number | null;
+  inSpecialFloodHazardArea: boolean | null;
+}): { acreage: number | null; note: string | null } {
+  const gross = parcel.acreage;
+  if (gross == null || gross <= 0) return { acreage: gross, note: null };
+
+  const inFloodway = parcel.floodZones.some((zone) => /floodway/i.test(zone));
+  const share = parcel.floodOverlapFraction;
+
+  if (inFloodway && share != null && share > 0) {
+    const usable = gross * (1 - share);
+    // Below a tenth of an acre there is no meaningful building envelope left,
+    // and the size curve would start returning implausible per-acre figures on
+    // the sliver that remains. The parcel is valued on the sliver anyway and
+    // the buildability engine is left to reject it, rather than this function
+    // quietly deciding it is worthless.
+    return {
+      acreage: Math.max(usable, 0.01),
+      note: `About ${(share * 100).toFixed(0)}% of this parcel lies in the regulatory floodway, where development is prohibited. It is valued on the roughly ${usable.toFixed(2)} developable acres that remain rather than its ${gross.toFixed(2)} gross acres.`,
+    };
+  }
+
+  if (parcel.inSpecialFloodHazardArea === true) {
+    return {
+      acreage: gross,
+      note: `This parcel is in a Special Flood Hazard Area${
+        share == null ? '' : ` across about ${(share * 100).toFixed(0)}% of its area`
+      }. Building there is permitted with elevation, so the value is not reduced here — the discount a buyer would apply is a market judgement this engine does not make for them.`,
+    };
+  }
+
+  return { acreage: gross, note: null };
 }
