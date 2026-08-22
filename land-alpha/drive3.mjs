@@ -1,0 +1,17 @@
+import { chromium } from 'playwright';
+const PID = '5cc07b00-0aa6-49e6-950f-9dcd2374b974';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const ctx = await b.newContext({ viewport: { width: 1600, height: 1400 } });
+const p = await ctx.newPage();
+await p.goto('http://localhost:3000/login', { waitUntil: 'domcontentloaded' });
+await p.fill('input[type=email]', 'analyst@landalpha.local');
+await p.fill('input[type=password]', 'landalpha-dev');
+await p.click('button[type=submit]');
+await p.waitForURL(/dashboard/, { timeout: 30000 }).catch(()=>{});
+await p.goto(`http://localhost:3000/opportunities/${PID}`, { waitUntil: 'networkidle' });
+const t = await p.locator('body').innerText();
+const i = t.indexOf('RECOMMENDED MAXIMUM BID');
+console.log('### RECOMMENDED region:\n' + t.slice(Math.max(0,i-200), i+300));
+const j = t.indexOf('Approve maximum bid');
+console.log('### APPROVE region:\n' + t.slice(Math.max(0,j-700), j+700));
+await b.close();

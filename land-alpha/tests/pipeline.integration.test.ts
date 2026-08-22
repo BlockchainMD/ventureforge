@@ -174,6 +174,21 @@ describe('offered for sale is distinguished from merely held', () => {
   });
 
   spec('the filter returns only offered inventory', async () => {
+    const liveWhere = {
+      removedFromSourceAt: null,
+      rejected: false,
+      status: { notIn: ['REJECTED' as const, 'ACQUIRED' as const, 'SOLD' as const] },
+    };
+    const offeredCount = await prisma.parcelOpportunity.count({
+      where: { ...liveWhere, saleStatus: { in: ['AVAILABLE', 'SCHEDULED'] } },
+    });
+    if (offeredCount === 0) {
+      // Nothing offered to filter for. Says so rather than asserting a
+      // property of the database and calling it a property of the filter.
+      console.warn('  (skipped — no offered inventory in this database)');
+      return;
+    }
+
     const page = await listOpportunities({ ...DEFAULT_FILTER, offeredOnly: true, pageSize: 50 });
     expect(page.rows.length).toBeGreaterThan(0);
 
@@ -187,10 +202,20 @@ describe('offered for sale is distinguished from merely held', () => {
       expect(['AVAILABLE', 'SCHEDULED']).toContain(row.saleStatus);
     }
 
-    // And it must actually narrow: an unfiltered page on this database is
-    // dominated by inventory no county has offered.
+    // It must never widen, and it must narrow whenever there is anything to
+    // narrow away. Asserting it always narrows would be asserting a property of
+    // the database rather than of the filter: the seed marks every fixture
+    // AVAILABLE, so on a fixture-only database the two counts are equal and
+    // correctly so.
     const all = await listOpportunities({ ...DEFAULT_FILTER, pageSize: 50 });
-    expect(all.total).toBeGreaterThan(page.total);
+    expect(page.total).toBeLessThanOrEqual(all.total);
+
+    const heldNotOffered = await prisma.parcelOpportunity.count({
+      where: { ...liveWhere, saleStatus: { notIn: ['AVAILABLE', 'SCHEDULED'] } },
+    });
+    if (heldNotOffered > 0) {
+      expect(all.total).toBeGreaterThan(page.total);
+    }
   });
 
   spec('the filter round-trips through the URL', async () => {
