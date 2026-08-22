@@ -875,7 +875,8 @@ model ParcelValuationSnapshot {
 model ParcelScoreSnapshot {
   id            String   @id @default(uuid())
   parcelId      String
-  alphaScore    Float
+  /// Null when the parcel could not be valued and so could not be ranked.
+  alphaScore    Float?
   configVersion String
   components    Json
   breakdown     Json

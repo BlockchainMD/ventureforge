@@ -279,7 +279,15 @@ export interface RejectionReason {
 }
 
 export interface AlphaScoreResult {
-  readonly alphaScore: number;
+  /**
+   * Null when the parcel cannot be valued.
+   *
+   * The score is an estimate of return. Without a value estimate there is no
+   * return to estimate, and a weighted mean over unknowns lands near the
+   * neutral 50 — which is how a parcel nobody knows anything about outranks
+   * one that has been assessed and found merely decent.
+   */
+  readonly alphaScore: number | null;
   readonly rejected: boolean;
   readonly rejectionReasons: readonly RejectionReason[];
   readonly breakdown: readonly ScoreBreakdownEntry[];

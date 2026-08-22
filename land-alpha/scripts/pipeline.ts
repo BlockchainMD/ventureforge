@@ -9,6 +9,8 @@ import { prisma } from '@land-alpha/db';
 import { enrichParcel, scoreParcelById, valuateParcel } from '@land-alpha/core';
 import { createLogger } from '@land-alpha/shared/logger';
 import { IngestHttpClient } from '@land-alpha/ingestion';
+import { FIXTURE_APN_PREFIX } from '@land-alpha/db/seed/fixture-parcels';
+import { env } from '@land-alpha/shared/env';
 
 const logger = createLogger({ component: 'pipeline-cli' });
 
@@ -26,7 +28,19 @@ async function main(): Promise<void> {
   const parcels = id
     ? await prisma.parcelOpportunity.findMany({ where: { id }, select: { id: true, apn: true } })
     : await prisma.parcelOpportunity.findMany({
-        where: { removedFromSourceAt: null, ...(state ? { state } : {}) },
+        where: {
+          removedFromSourceAt: null,
+          // Fixture parcels carry real Minnesota coordinates, so a *live* run
+          // happily replaces their curated values with whatever the network
+          // said today — and the specifications that assert on them then fail
+          // for reasons having nothing to do with the code under test. In
+          // fixture mode they are exactly what the pipeline is meant to
+          // process, so they stay in.
+          ...(env().ENRICHMENT_MODE === 'live'
+            ? { apn: { not: { startsWith: FIXTURE_APN_PREFIX } } }
+            : {}),
+          ...(state ? { state } : {}),
+        },
         select: { id: true, apn: true },
         orderBy: { firstSeenAt: 'desc' },
         ...(limit ? { take: limit } : {}),

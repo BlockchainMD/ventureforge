@@ -681,7 +681,7 @@ describe('scoreParcel', () => {
       scoringInputs({ economics: economics({ basisToQsv: 0.05 }) }),
       DEFAULT_SCORING_CONFIG,
     );
-    expect(exceptionalDiscount.alphaScore).toBeLessThan(withAccess.alphaScore - 10);
+    expect(exceptionalDiscount.alphaScore!).toBeLessThan(withAccess.alphaScore! - 10);
   });
 
   it('rejects when basis meets or exceeds quick-sale value', () => {
@@ -733,6 +733,20 @@ describe('scoreParcel', () => {
     expect(result.rejectionReasons.map((r) => r.rule)).not.toContain('BASIS_EXCEEDS_QSV');
   });
 
+  it('leaves a parcel it cannot value unranked rather than average', () => {
+    // Every component that depends on value scores neutral, so the weighted
+    // mean lands near 50 — which is how ten Ottawa parcels with no comparable
+    // sales and no valuation came to sit at the top of the buy list, above
+    // parcels that had been assessed and found ordinary.
+    const unvalued = scoreParcel(
+      { ...scoringInputs({ economics: null }), valuation: null },
+      DEFAULT_SCORING_CONFIG,
+    );
+    expect(unvalued.alphaScore).toBeNull();
+    // Not rejected: nothing is wrong with the parcel, we simply cannot say.
+    expect(unvalued.rejected).toBe(false);
+  });
+
   it('honours an analyst override on an overridable rule', () => {
     const inputs = scoringInputs({ shape: shape({ likelyRoadwayRemnant: true }) });
     const overridden = scoreParcel(
@@ -781,6 +795,9 @@ describe('scoreParcel', () => {
     ];
     for (const variant of variants) {
       const result = scoreParcel(scoringInputs(variant), DEFAULT_SCORING_CONFIG);
+      // Null is a legitimate outcome — a parcel with no valuation is unranked,
+      // not zero and not average — but a number must always be in range.
+      if (result.alphaScore === null) continue;
       expect(result.alphaScore).toBeGreaterThanOrEqual(0);
       expect(result.alphaScore).toBeLessThanOrEqual(100);
       expect(Number.isFinite(result.alphaScore)).toBe(true);
@@ -796,7 +813,7 @@ describe('scoreParcel', () => {
       scoringInputs({ economics: economics({ basisToQsv: 0.45, tier: 'WEAK' }) }),
       DEFAULT_SCORING_CONFIG,
     );
-    expect(cheap.alphaScore).toBeGreaterThan(dear.alphaScore);
+    expect(cheap.alphaScore!).toBeGreaterThan(dear.alphaScore!);
   });
 });
 

@@ -195,8 +195,15 @@ export function scoreParcel(inputs: ScoringInputs, config: ScoringConfigValue): 
 
   const rejected = effectiveRejections.length > 0;
 
+  // A parcel with no value estimate is not a mediocre opportunity; it is an
+  // unmeasured one. Every component that depends on value scores neutral, the
+  // weighted mean lands near 50, and it outranks a parcel that has actually
+  // been assessed and found ordinary. Unranked is the honest answer, and it
+  // keeps the buy list made of parcels somebody could act on.
+  const valuable = inputs.valuation?.quickSale != null || inputs.valuation?.retail != null;
+
   return {
-    alphaScore: rejected ? 0 : Math.round(rawAlpha),
+    alphaScore: rejected ? 0 : valuable ? Math.round(rawAlpha) : null,
     rejected,
     rejectionReasons: effectiveRejections,
     breakdown,
