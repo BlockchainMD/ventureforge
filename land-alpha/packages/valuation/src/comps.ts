@@ -121,7 +121,16 @@ export function selectByNeighborhood(
   const code = subjectNeighborhood?.trim();
   if (!code) return null;
   const pool = candidates.filter((candidate) => candidate.neighborhood?.trim() === code);
-  if (pool.length < config.minComps) return { pool: [], matched: pool.length };
+  // A higher bar than minComps, deliberately.
+  //
+  // Overriding distance is a strong claim and needs a solid sample behind it.
+  // Measured on Orange County: 655 sales spread across 184 neighbourhoods, so
+  // most neighbourhoods are thin, and letting three sales decide produced
+  // valuations wilder than the radius set they replaced — one parcel went from
+  // nine times the county's assessment to seventy-two. A thin neighbourhood is
+  // noisier than a broader ring, not tighter.
+  const required = config.preferredComps ?? config.minComps;
+  if (pool.length < required) return { pool: [], matched: pool.length };
   return { pool, matched: pool.length };
 }
 
@@ -195,7 +204,7 @@ export function analyzeComps(
       // two sides were coded by different offices, which is worth saying out
       // loud rather than silently falling back and looking like it worked.
       warnings.push(
-        `No comparable sale carries the subject's assessor neighbourhood (${subject.neighborhood}), so selection fell back to distance. Where the sales come from a different publisher than the parcel, the two codings may not correspond.`,
+        `Too few comparable sales share the subject's assessor neighbourhood (${subject.neighborhood}) to value on them alone, so selection fell back to distance.`,
       );
     }
     const byRadius = selectByRadius(candidates, config);

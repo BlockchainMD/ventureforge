@@ -27,7 +27,15 @@ async function main(): Promise<void> {
   if (!layerUrl) throw new Error(`${key} has no parcelLayerUrl configured`);
 
   const comps = await prisma.comparableSale.findMany({
-    where: { state: entry.state, county: entry.county ?? '', apn: { not: null } },
+    where: {
+      state: entry.state,
+      county: entry.county ?? '',
+      apn: { not: null },
+      // Fixture comparables are demonstration rows with invented parcel ids.
+      // They never match a real county layer, and including them in the probe
+      // would understate whichever ordering is right.
+      NOT: { apn: { startsWith: 'FIX-' } },
+    },
     select: { id: true, apn: true },
   });
   console.log(`${comps.length} comparable sales in ${entry.county}, ${entry.state}`);
@@ -36,45 +44,50 @@ async function main(): Promise<void> {
 
   // Work out which spelling this county uses before asking for all of them.
   //
-  // parcelIdCandidates offers four orderings because counties disagree about
-  // where section, township and range go. Firing all four at a public service
-  // quadruples the load to learn something a sample of thirty settles, and a
-  // county uses one ordering consistently — so probe, then commit to the
-  // winner.
-  const probeComps = comps.slice(0, 30);
-  const orderings = new Map<number, number>();
-  for (const comp of probeComps) {
-    const spellings = parcelIdCandidates(comp.apn ?? '');
-    for (const [index, spelling] of spellings.entries()) {
-      try {
-        const hits = await client.queryAll(layerUrl, {
-          where: `PARCEL = '${spelling.replace(/'/g, "''")}'`,
-          returnGeometry: false,
-          maxFeatures: 2,
-        });
-        if (hits.length === 1) {
-          orderings.set(index, (orderings.get(index) ?? 0) + 1);
-          break;
-        }
-      } catch {
-        // A probe that fails tells us nothing about the ordering; keep going.
-      }
+  // parcelIdCandidates offers several orderings because counties disagree
+  // about where section, township and range go. Firing all of them at a public
+  // service multiplies the load to learn something a sample settles — and a
+  // county uses one ordering consistently, so probe, then commit to the winner.
+  //
+  // The probe is one query per ordering, not one per parcel per ordering: the
+  // serial version needed ninety throttled round trips and had not finished in
+  // four minutes.
+  const probes = comps.slice(0, 40);
+  const spellingCount = Math.max(
+    ...probes.map((comp) => parcelIdCandidates(comp.apn ?? '').length),
+    0,
+  );
+
+  let winner: { index: number; hits: number } | null = null;
+  for (let index = 0; index < spellingCount; index += 1) {
+    const spellings = probes
+      .map((comp) => parcelIdCandidates(comp.apn ?? '')[index])
+      .filter((value): value is string => Boolean(value));
+    if (spellings.length === 0) continue;
+    try {
+      const hits = await client.queryAll(layerUrl, {
+        where: `PARCEL IN (${spellings.map((v) => `'${v.replace(/'/g, "''")}'`).join(',')})`,
+        returnGeometry: false,
+        maxFeatures: spellings.length * 2,
+      });
+      console.log(`  spelling #${index}: ${hits.length}/${spellings.length} probes matched`);
+      if (!winner || hits.length > winner.hits) winner = { index, hits: hits.length };
+      // A clean sweep needs no further probing.
+      if (hits.length >= spellings.length) break;
+    } catch (error) {
+      logger.warn('probe failed', { index, error: String(error).slice(0, 160) });
     }
-    // Thirty probes is plenty, and a clear winner earlier is plenty sooner.
-    const best = [...orderings.values()].sort((a, b) => b - a)[0] ?? 0;
-    if (best >= 10) break;
   }
 
-  const winner = [...orderings.entries()].sort((a, b) => b[1] - a[1])[0];
-  if (!winner) {
+  if (!winner || winner.hits === 0) {
     console.log('  no parcel-id spelling matched the layer; nothing to backfill');
     return;
   }
-  console.log(`  spelling #${winner[0]} matched ${winner[1]} of the probes; using it for the rest`);
+  console.log(`  using spelling #${winner.index} for the remaining lookups`);
 
   const byCandidate = new Map<string, string[]>();
   for (const comp of comps) {
-    const spelling = parcelIdCandidates(comp.apn ?? '')[winner[0]];
+    const spelling = parcelIdCandidates(comp.apn ?? '')[winner.index];
     if (!spelling) continue;
     const list = byCandidate.get(spelling) ?? [];
     list.push(comp.id);

@@ -529,7 +529,7 @@ describe('crossCheckAssessment', () => {
 });
 
 describe('selectByNeighborhood', () => {
-  const config = { ...DEFAULT_COMPS_CONFIG, minComps: 3 };
+  const config = { ...DEFAULT_COMPS_CONFIG, minComps: 3, preferredComps: 4 };
   const inHood = (n: number) =>
     Array.from({ length: n }, () => comp({ neighborhood: '04490123', distanceMeters: 38_000 }));
   const elsewhere = (n: number) =>
@@ -546,11 +546,15 @@ describe('selectByNeighborhood', () => {
   });
 
   it('declines to decide when too few sales share the neighbourhood', () => {
-    const result = selectByNeighborhood([...inHood(2), ...elsewhere(9)], '04490123', config);
+    // A thin neighbourhood is noisier than a broader ring, not tighter. On
+    // Orange County's 655 sales across 184 neighbourhoods, letting three
+    // decide moved one parcel from nine times the county's assessment to
+    // seventy-two.
+    const result = selectByNeighborhood([...inHood(3), ...elsewhere(9)], '04490123', config);
     expect(result?.pool).toHaveLength(0);
     // Reported rather than silently zero, so the caller can say the fallback
     // happened instead of implying the neighbourhood was used.
-    expect(result?.matched).toBe(2);
+    expect(result?.matched).toBe(3);
   });
 
   it('returns null when the subject has no neighbourhood at all', () => {
