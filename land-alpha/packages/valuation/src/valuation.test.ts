@@ -335,6 +335,45 @@ describe('valueParcel', () => {
     expect(result.warnings.some((w) => w.includes('must not be scored'))).toBe(true);
   });
 
+  it('uses the assessor when the comparables disagree by an order of magnitude', () => {
+    // Orange County's top-ranked parcel: half an acre assessed at $65,000,
+    // valued from comparables at $821,408. Capping confidence was not enough —
+    // the worklist sorts by quick-sale value and the maximum bid is solved from
+    // it, so the parcel led the buy list at a figure the engine disowned.
+    const result = valueParcel({
+      subject: { ...subject, acreage: 0.51 },
+      candidates: [
+        comp({ acreage: 0.5, salePriceCents: 750_000_00 }),
+        comp({ acreage: 0.5, salePriceCents: 750_000_00 }),
+        comp({ acreage: 0.5, salePriceCents: 750_000_00 }),
+        comp({ acreage: 0.5, salePriceCents: 750_000_00 }),
+      ],
+      landAssessedValueCents: 65_000_00,
+      now: NOW,
+    });
+    expect(result.retail!.method).toContain('Assessor land value');
+    // The label has to say which fallback this is. "No comparable sales
+    // available" would be a lie: there were four, and they were rejected.
+    expect(result.retail!.method).toContain('rejected as describing other land');
+    // The comparables would have produced roughly $765,000 against an
+    // assessment of $65,000. Whatever the parcel is worth, it is not that.
+    expect(result.retail!.mid).toBeLessThan(200_000_00);
+    expect(result.warnings.some((w) => w.includes('describing a different location'))).toBe(true);
+    expect(result.warnings.some((w) => w.includes('a floor and a placeholder'))).toBe(true);
+  });
+
+  it('keeps the comparables when the assessment merely lags', () => {
+    // A 2× gap is ordinary on vacant land and must not trigger the fallback,
+    // or every parcel in the product reverts to the assessor's number.
+    const result = valueParcel({
+      subject,
+      candidates: [comp(), comp(), comp(), comp()],
+      landAssessedValueCents: 3_000_00,
+      now: NOW,
+    });
+    expect(result.retail!.method).toContain('Comparable sales');
+  });
+
   it('refuses to value a parcel of unknown acreage', () => {
     const result = valueParcel({
       subject: { ...subject, acreage: 0 },
@@ -491,7 +530,11 @@ describe('crossCheckAssessment', () => {
   it('says nothing about the ordinary gap between market and assessment', () => {
     // Across Orange County the median ratio is 1.5. Assessors lag the market
     // on vacant land; that is expected and is not a fault.
-    expect(crossCheckAssessment(150_000, 100_000, config)).toEqual({ warning: null, cap: null });
+    expect(crossCheckAssessment(150_000, 100_000, config)).toEqual({
+      warning: null,
+      cap: null,
+      severe: false,
+    });
   });
 
   it('caps confidence when the valuation runs well ahead of the assessment', () => {
@@ -505,6 +548,7 @@ describe('crossCheckAssessment', () => {
     // valued at $206,986. That is not the assessor being behind the market.
     const result = crossCheckAssessment(20_698_643, 10_000, config);
     expect(result.cap).toBe('UNKNOWN');
+    expect(result.severe).toBe(true);
     expect(result.warning).toContain('different location');
   });
 
@@ -515,16 +559,35 @@ describe('crossCheckAssessment', () => {
   });
 
   it('stays silent when the county publishes no land value', () => {
-    expect(crossCheckAssessment(150_000, null, config)).toEqual({ warning: null, cap: null });
-    expect(crossCheckAssessment(150_000, 0, config)).toEqual({ warning: null, cap: null });
+    expect(crossCheckAssessment(150_000, null, config)).toEqual({
+      warning: null,
+      cap: null,
+      severe: false,
+    });
+    expect(crossCheckAssessment(150_000, 0, config)).toEqual({
+      warning: null,
+      cap: null,
+      severe: false,
+    });
   });
 
-  it('never replaces the valuation, only qualifies it', () => {
-    // The assessment is the number the county last agreed with the owner, not
-    // the market. It qualifies a comps valuation; it does not overrule one.
+  it('reports a verdict rather than a replacement value', () => {
+    // The check does not price the parcel. At the severe threshold it says the
+    // comparables are unusable and leaves the caller to fall back to the
+    // assessor; short of that it qualifies the comps valuation and nothing
+    // more. Either way the number it returns is a confidence, never a price.
     const result = crossCheckAssessment(20_000_000, 10_000, config);
     expect(result).not.toHaveProperty('value');
-    expect(Object.keys(result).sort()).toEqual(['cap', 'warning']);
+    expect(Object.keys(result).sort()).toEqual(['cap', 'severe', 'warning']);
+  });
+
+  it('leaves an assessment that merely lags in charge of nothing', () => {
+    // Two thresholds, and only the far one displaces the comparables. A 2× gap
+    // is the median across Orange County; treating that as a disagreement would
+    // revert the whole product to assessor values.
+    expect(crossCheckAssessment(200_000, 100_000, config).severe).toBe(false);
+    expect(crossCheckAssessment(500_000, 100_000, config).severe).toBe(false);
+    expect(crossCheckAssessment(1_000_000, 100_000, config).severe).toBe(true);
   });
 });
 
