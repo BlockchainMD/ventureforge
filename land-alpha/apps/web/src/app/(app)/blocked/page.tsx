@@ -6,6 +6,7 @@ import { getSessionUser, hasRole } from '@/server/auth';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { BlockedRow } from './blocked-row';
 import { CountyRequest } from './county-request';
+import { summariseWorklist } from '@land-alpha/core';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,6 +82,8 @@ export default async function BlockedPage() {
       titleCurativeCents: null,
     });
   };
+
+  const { dark } = await summariseWorklist();
 
   const needsPrice = parcels.filter((parcel) => parcel.askingPrice == null);
 
@@ -195,6 +198,35 @@ export default async function BlockedPage() {
           )}
         </PanelBody>
       </Panel>
+
+      {dark.length > 0 ? (
+        <Panel>
+          <PanelHeader
+            title="Cannot be valued"
+            subtitle="Not rejected, not ranked, and not waiting on anybody"
+          />
+          <PanelBody className="p-0">
+            <ul className="divide-y divide-line">
+              {dark.map((county) => (
+                <li key={`${county.state}/${county.county}`} className="px-3 py-2.5">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-xs text-ink">
+                      {county.county} County, {county.state}
+                    </span>
+                    <span className="num text-xs text-ink-muted">{county.parcels} parcels</span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-ink-faint">{county.reason}</p>
+                </li>
+              ))}
+            </ul>
+            <p className="border-t border-line px-3 py-2 text-[10px] leading-relaxed text-ink-faint">
+              Nothing is wrong with this land. There is no way to say what it is worth, so it
+              carries no score and appears in no ranking — which is also how it would look if it had
+              been quietly lost, and the difference is worth stating.
+            </p>
+          </PanelBody>
+        </Panel>
+      ) : null}
 
       <Panel>
         <PanelHeader

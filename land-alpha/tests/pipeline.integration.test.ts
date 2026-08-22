@@ -1141,6 +1141,49 @@ describe('worklist notification', () => {
     }
   });
 
+  spec('counts inventory that cannot be valued, and says why', async () => {
+    // These parcels are not rejected — nothing is wrong with the land — and
+    // they carry no score, because a score estimates return and there is no
+    // value to estimate against. That combination makes them invisible in
+    // every list, which looks identical to having quietly lost them.
+    const template = await prisma.parcelOpportunity.findFirst({
+      where: { apn: { startsWith: 'FX-' } },
+      select: { sourceId: true, jurisdictionId: true },
+    });
+    const APN = 'DARK-TEST-0001';
+    await prisma.parcelOpportunity.deleteMany({ where: { apn: APN } });
+    await prisma.parcelOpportunity.create({
+      data: {
+        apn: APN,
+        apnNormalized: normalizeApn(APN),
+        naturalKey: `ZZ/Dark/${normalizeApn(APN)}`,
+        state: 'ZZ',
+        county: 'Dark',
+        sourceId: template!.sourceId,
+        jurisdictionId: template!.jurisdictionId,
+        quickSaleValue: null,
+        alphaScore: null,
+        rejected: false,
+        valuationWarnings: [
+          'No comparable sales and no assessor land value. This parcel cannot be valued and must not be scored on economics.',
+        ],
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+      },
+    });
+
+    try {
+      const summary = await summariseWorklist();
+      const mine = summary.dark.find((county) => county.county === 'Dark');
+      expect(mine?.parcels).toBe(1);
+      // The reason is read from the valuation's own warnings rather than
+      // re-derived, so the page cannot drift from what the engine concluded.
+      expect(mine?.reason).toContain('cannot be valued');
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: APN } });
+    }
+  });
+
   spec('stays quiet when the queue is empty', async () => {
     await prisma.notification.deleteMany({
       where: { title: { startsWith: 'Prices outstanding' } },

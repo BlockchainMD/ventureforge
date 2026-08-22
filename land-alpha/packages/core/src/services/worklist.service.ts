@@ -27,11 +27,30 @@ export interface WorklistCounty {
   readonly quickSaleValueCents: number;
 }
 
+/**
+ * A county whose inventory cannot be valued at all.
+ *
+ * These parcels are not rejected — nothing is wrong with the land — and they
+ * carry no Alpha Score, because a score estimates return and there is no value
+ * to estimate one against. That combination makes them invisible: absent from
+ * the ranking, absent from the price queue, absent from the rejected list. A
+ * quarter of inventory sitting in a place nobody looks is a fact worth one
+ * line on a page rather than a discovery someone makes months later.
+ */
+export interface DarkCounty {
+  readonly state: string;
+  readonly county: string;
+  readonly parcels: number;
+  readonly reason: string;
+}
+
 export interface WorklistSummary {
   readonly awaitingPrice: number;
   readonly awaitingScreen: number;
   readonly quickSaleValueCents: number;
   readonly counties: readonly WorklistCounty[];
+  /** Counties whose parcels cannot be valued, and why. */
+  readonly dark: readonly DarkCounty[];
 }
 
 /**
@@ -88,6 +107,7 @@ export async function summariseWorklist(): Promise<WorklistSummary> {
     awaitingPrice,
     awaitingScreen,
     quickSaleValueCents,
+    dark: await summariseDark(),
     counties: [...counties.values()]
       .sort((a, b) => b.cents - a.cents)
       .map((group) => ({
@@ -97,6 +117,56 @@ export async function summariseWorklist(): Promise<WorklistSummary> {
         quickSaleValueCents: group.cents,
       })),
   };
+}
+
+/**
+ * Inventory that cannot be valued, grouped by county and cause.
+ *
+ * The cause is read from the valuation's own warnings rather than re-derived,
+ * so the page says what the engine concluded instead of a second opinion that
+ * can drift from it.
+ */
+async function summariseDark(): Promise<DarkCounty[]> {
+  const parcels = await prisma.parcelOpportunity.findMany({
+    where: {
+      removedFromSourceAt: null,
+      rejected: false,
+      alphaScore: null,
+      status: { notIn: ['REJECTED', 'ACQUIRED', 'SOLD'] },
+    },
+    select: { state: true, county: true, valuationWarnings: true },
+  });
+
+  const groups = new Map<
+    string,
+    { state: string; county: string; n: number; reasons: Set<string> }
+  >();
+  for (const parcel of parcels) {
+    const key = `${parcel.state}/${parcel.county}`;
+    const group = groups.get(key) ?? {
+      state: parcel.state,
+      county: parcel.county,
+      n: 0,
+      reasons: new Set<string>(),
+    };
+    group.n += 1;
+    const cause = parcel.valuationWarnings.find((warning) =>
+      warning.startsWith('No comparable sales'),
+    );
+    if (cause) group.reasons.add(cause);
+    groups.set(key, group);
+  }
+
+  return [...groups.values()]
+    .sort((a, b) => b.n - a.n)
+    .map((group) => ({
+      state: group.state,
+      county: group.county,
+      parcels: group.n,
+      reason:
+        [...group.reasons][0] ??
+        'No valuation could be established, and the engine recorded no reason.',
+    }));
 }
 
 /**
