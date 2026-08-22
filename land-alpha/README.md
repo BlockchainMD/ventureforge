@@ -494,7 +494,15 @@ pnpm smoke         # drive the real app in a browser (needs pnpm dev running)
 pnpm audit:responsive   # check every route at a phone viewport (needs pnpm dev running)
 pnpm calibrate     # grade past predictions against realised outcomes
 pnpm comps --enrich-fl Orange   # fill parcel facts from the Florida roll
+pnpm comps --geocode-fl Orange  # put the county's comparables on the map
 ```
+
+**Importing comparables is two steps, and the second one is not optional.**
+`pnpm comps <source>` loads the sales; `pnpm comps --geocode-fl <County>` gives them
+coordinates from the statewide parcel-centroid layer. A sale with no coordinates cannot be
+distance-filtered, so a county imported without the second step values every parcel off sales
+that could be anywhere in it — and every valuation there comes back LOW, with the parcel page
+saying so. Running it on Marion moved its two priced parcels from LOW to MEDIUM and HIGH.
 
 Integration tests run against a real PostGIS database and **skip themselves** when none is
 reachable, so `pnpm test` is green on a fresh clone.
