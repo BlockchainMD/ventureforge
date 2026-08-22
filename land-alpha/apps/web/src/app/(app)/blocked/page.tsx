@@ -62,6 +62,7 @@ export default async function BlockedPage() {
       quickSaleValue: true,
       askingPrice: true,
       comparableCount: true,
+      saleStatus: true,
       environmentalLayersScreened: true,
       accessClass: true,
       sourceRecordId: true,
@@ -93,7 +94,23 @@ export default async function BlockedPage() {
 
   const { dark } = await summariseWorklist();
 
-  const needsPrice = parcels.filter((parcel) => parcel.askingPrice == null);
+  // Two different errands, and running them together sends an analyst to ring
+  // a county about parcels it may not be selling.
+  //
+  // "Awaiting a price" is only the right description of a parcel the county has
+  // confirmed is for sale. St. Louis County's layer marks land as tax-forfeited,
+  // which its own disposition notes say is not the same as offered; Ottawa's
+  // marks land vested in the treasurer, which is evidence of foreclosure
+  // inventory and not an offering. Between them that is 249 of the 254 real
+  // parcels here, and asking for a payoff figure on any of them puts the second
+  // question before the first.
+  const awaitingPrice = parcels.filter(
+    (parcel) => parcel.askingPrice == null && parcel.saleStatus === 'AVAILABLE',
+  );
+  const unconfirmed = parcels.filter(
+    (parcel) => parcel.askingPrice == null && parcel.saleStatus !== 'AVAILABLE',
+  );
+  const needsPrice = awaitingPrice;
 
   // Grouped by county, because a county holds one list and answers one enquiry.
   // Forty-six of these sit behind a single Comptroller's office; treating them
@@ -132,18 +149,38 @@ export default async function BlockedPage() {
         <p className="mt-1 max-w-3xl text-xs leading-relaxed text-ink-muted">
           Parcels with an established value that cannot be ranked or bid until someone obtains a
           fact no public endpoint will give us. Everything here is minutes of work per parcel, and
-          none of it closes on its own.
+          none of it closes on its own. The queue is split by which fact is missing: a parcel the
+          county has confirmed is for sale needs a price, and a parcel that is merely forfeited or
+          treasurer-held needs confirming as an offering first.
         </p>
       </header>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Stat label="Awaiting a price" value={String(needsPrice.length)} />
-        <Stat label="Awaiting a hazard screen" value={String(needsScreen.length)} />
+        <Stat label="Confirmed for sale, awaiting a price" value={String(needsPrice.length)} />
+        <Stat label="Not confirmed for sale" value={String(unconfirmed.length)} />
         <Stat
           label="Quick-sale value behind the price queue"
           value={strandedCents > 0 ? formatCents(strandedCents) : '—'}
         />
       </div>
+
+      {unconfirmed.length > 0 ? (
+        <Panel>
+          <PanelHeader
+            title="Not confirmed for sale"
+            subtitle={`${unconfirmed.length} parcels · the county publishes these as forfeited or treasurer-held, which is not the same as offered`}
+          />
+          <PanelBody>
+            <p className="max-w-3xl text-xs leading-relaxed text-ink-muted">
+              Asking a county for a payoff figure on one of these puts the second question before
+              the first. The errand here is to confirm the parcel is offered at all — against the
+              treasurer’s auction list, or the Land &amp; Minerals over-the-counter list — and only
+              then to ask what it costs. Until that is done these are inventory the county happens
+              to own, not inventory anyone can buy.
+            </p>
+          </PanelBody>
+        </Panel>
+      ) : null}
 
       {byCounty.map(([key, group]) => (
         <Panel key={key}>
