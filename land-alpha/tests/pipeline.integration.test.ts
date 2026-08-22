@@ -842,15 +842,37 @@ describe('indexing rules', () => {
  */
 describe('lead notifications', () => {
   spec('notifies everyone who can act, and nobody who cannot', async () => {
-    const parcel = await prisma.parcelOpportunity.findFirst({
-      where: { apn: { not: { startsWith: 'FX-' } } },
+    // Creates its own parcel rather than borrowing one. A seeded database
+    // holds only fixtures, so looking for real inventory here passed locally
+    // and failed in CI — which is the test being wrong about its environment,
+    // not the environment being wrong.
+    const template = await prisma.parcelOpportunity.findFirst({
+      where: { apn: { startsWith: 'FX-' } },
+      select: { sourceId: true, jurisdictionId: true },
+    });
+    expect(template, 'a seeded parcel is needed as a template').not.toBeNull();
+
+    const LEAD_APN = 'LEAD-TEST-0001';
+    await prisma.parcelOpportunity.deleteMany({ where: { apn: LEAD_APN } });
+    const parcel = await prisma.parcelOpportunity.create({
+      data: {
+        apn: LEAD_APN,
+        apnNormalized: normalizeApn(LEAD_APN),
+        naturalKey: `ZZ/Lead/${normalizeApn(LEAD_APN)}`,
+        state: 'ZZ',
+        county: 'Lead',
+        sourceId: template!.sourceId,
+        jurisdictionId: template!.jurisdictionId,
+        acreage: 5.23,
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+      },
       select: { id: true, county: true, state: true },
     });
-    expect(parcel).not.toBeNull();
 
     const lead = await prisma.lead.create({
       data: {
-        parcelId: parcel!.id,
+        parcelId: parcel.id,
         name: 'Integration Buyer',
         email: 'buyer@example.test',
         offerAmount: '19500',
@@ -870,7 +892,7 @@ describe('lead notifications', () => {
       expect(sent).toBe(actors);
 
       const notifications = await prisma.notification.findMany({
-        where: { parcelId: parcel!.id, title: { contains: 'Offer' } },
+        where: { parcelId: parcel.id, title: { contains: 'Offer' } },
         include: { user: { select: { role: true } } },
       });
       expect(notifications.length).toBe(actors);
@@ -888,8 +910,9 @@ describe('lead notifications', () => {
       expect(first.body).toContain('buyer@example.test');
       expect(first.linkPath).toBe('/leads');
     } finally {
-      await prisma.notification.deleteMany({ where: { title: { contains: 'Offer $19,500' } } });
-      await prisma.lead.delete({ where: { id: lead.id } });
+      await prisma.notification.deleteMany({ where: { parcelId: parcel.id } });
+      await prisma.lead.deleteMany({ where: { id: lead.id } });
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: LEAD_APN } });
     }
   });
 });

@@ -66,9 +66,16 @@ export const envSchema = z.object({
   FEMA_NFHL_URL: z
     .string()
     .default('https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer'),
+  /**
+   * The National Wetlands Inventory service. Hosted by USGS on behalf of the
+   * Fish and Wildlife Service — the fws.gov address now 301s here, and
+   * following a redirect on every enrichment call is a cost paid for nothing.
+   */
   USFWS_WETLANDS_URL: z
     .string()
-    .default('https://www.fws.gov/wetlandsmapservice/rest/services/Wetlands/MapServer'),
+    .default(
+      'https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer',
+    ),
   USDA_SOILS_URL: z.string().default('https://sdmdataaccess.sc.egov.usda.gov/Tabular/post.rest'),
   EPA_FRS_URL: z.string().default('https://data.epa.gov/efservice'),
   USGS_EPQS_URL: z.string().default('https://epqs.nationalmap.gov/v1/json'),
