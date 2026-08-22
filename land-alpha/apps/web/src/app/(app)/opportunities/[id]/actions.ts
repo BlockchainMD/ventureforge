@@ -462,3 +462,60 @@ export async function setAcquisitionPriceAction(
     message: trimmed ? 'Price recorded. Economics and rank updated.' : 'Price cleared.',
   };
 }
+
+export interface BulkPriceResult extends ActionResult {
+  readonly applied: number;
+  readonly unmatched: string[];
+}
+
+/**
+ * Record acquisition prices in bulk from a county's reply.
+ *
+ * A county holds one list and answers one request. Orange has forty-six
+ * parcels waiting on a payoff figure and one Comptroller; the reply comes back
+ * as a list, and re-typing forty-six numbers one page at a time is where this
+ * work stops being done.
+ *
+ * Accepts anything with a reference and an amount on each line — comma, tab or
+ * whitespace separated — because the reply will be pasted out of a spreadsheet
+ * or an email and should not have to be cleaned up first. References match
+ * against the source record ID (a TDA number) or the APN, in that order.
+ * Anything unmatched is reported rather than silently dropped: a line that
+ * quietly did nothing is how a parcel ends up priced in someone's head and not
+ * in the system.
+ */
+export async function recordPricesInBulkAction(
+  state: string,
+  county: string,
+  pasted: string,
+): Promise<BulkPriceResult> {
+  const user = await requireRole('ANALYST');
+  const { recordPricesInBulk } = await import('@land-alpha/core');
+  const outcome = await recordPricesInBulk(state, county, pasted);
+
+  if (outcome.applied > 0) {
+    await recordActivity(user, {
+      action: 'parcel.acquisition-price.bulk',
+      entityType: 'Source',
+      entityId: `${state}/${county}`,
+      summary: `Recorded ${outcome.applied} acquisition prices for ${county} County, ${state}`,
+      metadata: { applied: outcome.applied, unmatched: outcome.unmatched.length },
+    });
+  }
+
+  revalidatePath('/blocked');
+  revalidatePath('/opportunities');
+  return {
+    ok: outcome.applied > 0,
+    applied: outcome.applied,
+    unmatched: [...outcome.unmatched],
+    message:
+      outcome.applied === 0
+        ? 'No lines matched a parcel in this county.'
+        : `Recorded ${outcome.applied} price${outcome.applied === 1 ? '' : 's'}.${
+            outcome.unmatched.length > 0
+              ? ` ${outcome.unmatched.length} line(s) did not match.`
+              : ''
+          }`,
+  };
+}

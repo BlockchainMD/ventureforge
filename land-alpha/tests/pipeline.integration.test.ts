@@ -16,6 +16,7 @@ import {
   scoreParcelById,
   valuateParcel,
   recordManualScreen,
+  recordPricesInBulk,
   loadManualScreens,
   assessEnvironment,
 } from '@land-alpha/core';
@@ -996,6 +997,80 @@ async function assessFromScreens(parcelId: string) {
       : { types: [], overlapFraction: null, available: false, source: 'USFWS NWI' },
   });
 }
+
+/**
+ * Bulk price entry.
+ *
+ * A county holds one list and answers one enquiry, and the reply comes back as
+ * a list. If recording it means re-typing forty-six figures one parcel page at
+ * a time, the queue does not move — so the parser has to survive whatever
+ * shape the county's reply arrives in.
+ */
+describe('bulk acquisition prices', () => {
+  spec('matches on either reference and tolerates however the reply is formatted', async () => {
+    const template = await prisma.parcelOpportunity.findFirst({
+      where: { apn: { startsWith: 'FX-' } },
+      select: { sourceId: true, jurisdictionId: true },
+    });
+    const made: string[] = [];
+    const rows = [
+      { apn: 'BULK-TEST-0001', ref: '2024-16234' },
+      { apn: 'BULK-TEST-0002', ref: '2022-9704_1' },
+      { apn: 'BULK-TEST-0003', ref: null },
+    ];
+    await prisma.parcelOpportunity.deleteMany({
+      where: { apn: { in: rows.map((row) => row.apn) } },
+    });
+    for (const row of rows) {
+      const created = await prisma.parcelOpportunity.create({
+        data: {
+          apn: row.apn,
+          apnNormalized: normalizeApn(row.apn),
+          naturalKey: `ZZ/Bulk/${normalizeApn(row.apn)}`,
+          state: 'ZZ',
+          county: 'Bulk',
+          sourceId: template!.sourceId,
+          jurisdictionId: template!.jurisdictionId,
+          sourceRecordId: row.ref,
+          firstSeenAt: new Date(),
+          lastSeenAt: new Date(),
+        },
+        select: { id: true },
+      });
+      made.push(created.id);
+    }
+
+    try {
+      const result = await recordPricesInBulk(
+        'ZZ',
+        'Bulk',
+        [
+          '2024-16234, 4275.00', // comma, plain decimal
+          '2022-9704_1\t3810', // tab, integer
+          'BULK-TEST-0003 $6,204.55', // APN, currency and thousands separator
+          'not-a-parcel, 100', // reference we do not hold
+          'gibberish', // no amount at all
+        ].join('\n'),
+      );
+
+      expect(result.applied).toBe(3);
+      // A line that quietly did nothing is how a parcel ends up priced in
+      // someone's head and not in the system.
+      expect(result.unmatched).toEqual(['not-a-parcel, 100', 'gibberish']);
+
+      const priced = await prisma.parcelOpportunity.findMany({
+        where: { id: { in: made } },
+        select: { apn: true, askingPrice: true },
+        orderBy: { apn: 'asc' },
+      });
+      expect(priced.map((p) => toCents(p.askingPrice))).toEqual([427_500, 381_000, 620_455]);
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({
+        where: { apn: { in: rows.map((row) => row.apn) } },
+      });
+    }
+  });
+});
 
 describe('lead notifications', () => {
   spec('notifies everyone who can act, and nobody who cannot', async () => {

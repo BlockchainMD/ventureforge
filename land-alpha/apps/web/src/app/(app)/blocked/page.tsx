@@ -5,6 +5,7 @@ import { formatAcres, formatCents } from '@land-alpha/shared';
 import { getSessionUser, hasRole } from '@/server/auth';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { BlockedRow } from './blocked-row';
+import { CountyRequest } from './county-request';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +40,8 @@ export default async function BlockedPage() {
       // no amount of typing will produce. Those belong on the sources page as
       // a coverage problem, not here as a task.
       quickSaleValue: { not: null },
+      // A parcel the engine has already rejected is not waiting on anybody.
+      rejected: false,
       OR: [{ askingPrice: null }, { environmentalLayersScreened: { isEmpty: true } }],
     },
     select: {
@@ -55,6 +58,7 @@ export default async function BlockedPage() {
       latitude: true,
       longitude: true,
       source: { select: { acquisitionMethod: true, name: true } },
+      rejected: true,
     },
     orderBy: [{ quickSaleValue: 'desc' }],
     take: 200,
@@ -78,6 +82,25 @@ export default async function BlockedPage() {
   };
 
   const needsPrice = parcels.filter((parcel) => parcel.askingPrice == null);
+
+  // Grouped by county, because a county holds one list and answers one enquiry.
+  // Forty-six of these sit behind a single Comptroller's office; treating them
+  // as forty-six separate errands is the reason the queue does not move.
+  const byCounty = [
+    ...needsPrice
+      .reduce((groups, parcel) => {
+        const key = `${parcel.state}/${parcel.county}`;
+        const group = groups.get(key) ?? {
+          state: parcel.state,
+          county: parcel.county,
+          parcels: [] as typeof needsPrice,
+        };
+        group.parcels.push(parcel);
+        groups.set(key, group);
+        return groups;
+      }, new Map<string, { state: string; county: string; parcels: typeof needsPrice }>())
+      .entries(),
+  ].sort((a, b) => b[1].parcels.length - a[1].parcels.length);
   const needsScreen = parcels.filter(
     (parcel) => parcel.askingPrice != null && parcel.environmentalLayersScreened.length === 0,
   );
@@ -110,10 +133,30 @@ export default async function BlockedPage() {
         />
       </div>
 
+      {byCounty.map(([key, group]) => (
+        <Panel key={key}>
+          <PanelHeader
+            title={`${group.county} County, ${group.state}`}
+            subtitle={`${group.parcels.length} parcels · ${formatCents(
+              group.parcels.reduce((total, p) => total + (toCents(p.quickSaleValue) ?? 0), 0),
+            )} of quick-sale value waiting on one answer`}
+          />
+          <PanelBody>
+            <CountyRequest
+              state={group.state}
+              county={group.county}
+              references={group.parcels.map((p) => p.sourceRecordId ?? p.apn ?? '').filter(Boolean)}
+              acquisitionMethod={group.parcels[0]?.source?.acquisitionMethod ?? null}
+              canAct={canAct}
+            />
+          </PanelBody>
+        </Panel>
+      ))}
+
       <Panel>
         <PanelHeader
           title="Awaiting an acquisition price"
-          subtitle="Valued, comparable-backed, and not yet biddable"
+          subtitle="Valued and not yet biddable — enter one at a time, or use the county request above"
         />
         <PanelBody className="p-0">
           {needsPrice.length === 0 ? (
@@ -149,17 +192,6 @@ export default async function BlockedPage() {
           )}
         </PanelBody>
       </Panel>
-
-      {needsPrice[0]?.source?.acquisitionMethod ? (
-        <Panel>
-          <PanelHeader title="How these are bought" />
-          <PanelBody>
-            <p className="text-xs leading-relaxed text-ink-muted">
-              {needsPrice[0].source.acquisitionMethod}
-            </p>
-          </PanelBody>
-        </Panel>
-      ) : null}
 
       <Panel>
         <PanelHeader
