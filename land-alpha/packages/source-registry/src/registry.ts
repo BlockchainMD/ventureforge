@@ -269,6 +269,17 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
       // difference between a price and something that can be underwritten.
       parcelLayerUrl: 'https://gis.marionfl.org/public/rest/services/General/Parcels/MapServer/0',
       parcelIdField: 'PARCEL',
+      // The county's adoption of the 2017 FIRM, republished by the county
+      // itself and carrying the identical NFHL schema — FLD_ZONE, SFHA_TF,
+      // ZONE_SUBTY — because it is the same data.
+      floodLayerUrl:
+        'https://gis.marionfl.org/public/rest/services/General/FEMAFloodZones2017/MapServer/1',
+      zoningLayerUrl:
+        'https://gis.marionfl.org/public/rest/services/General/PlanningZoning/MapServer/20',
+      // Marion states the maintaining body outright in Jurisdiction, which is
+      // the field legal access turns on, and marks Paved as a flag.
+      roadsLayerUrl:
+        'https://gis.marionfl.org/public/rest/services/General/RoadMaintenance/MapServer/7',
       acquisitionInstructions:
         'Complete the Clerk’s LAT Purchase Request Form and mail it with a certified cheque for the purchase amount payable to the Tax Collector, plus a separate cheque for recording fees and documentary stamps payable to the Clerk. First come, first served. Confirm the current month’s figure before sending funds — it rises monthly.',
     },
@@ -304,6 +315,26 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
     failedAuctionBecomesOtc: true,
     acquisitionMethod:
       'Act 123 tax foreclosure auction, followed by a second no-minimum-bid sale. Parcels still unsold remain in treasurer or land bank inventory and may be sold by negotiated offer.',
+    /**
+     * Michigan assesses at half of true cash value.
+     *
+     * A statutory property of the state, not a quirk of Ottawa: assessed value
+     * equals the State Equalized Value, and the SEV is set at 50% of true cash
+     * value. Every sampled parcel here has AssessedValue exactly equal to
+     * SEVValue, and the doubling is what makes the numbers read correctly — a
+     * 37.75-acre agricultural parcel at an SEV of $283,100 comes to about
+     * $15,000 an acre doubled, which is Ottawa County farmland; at the SEV
+     * alone it would be $7,500 and far too low.
+     *
+     * The 1.15 default suits a jurisdiction assessing at full value, as Florida
+     * does. Applying it here understates Michigan land by half.
+     *
+     * This belongs to the entry, not to `config`. `config` is a bag of unknowns
+     * the adapter reads; this is read by the valuation service through
+     * `registryByKey(...).assessedValueMultiplier`, so a copy inside `config`
+     * type-checks, looks configured, and does nothing at all.
+     */
+    assessedValueMultiplier: 2,
     adapterKey: 'arcgis-parcel-inventory',
     parserVersion: '1',
     officialUrl: 'https://www.miottawa.org/',
@@ -362,21 +393,6 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
       governmentOwner: 'Ottawa County (treasurer / land bank inventory)',
       ownerType: 'COUNTY',
       saleStatus: 'UNKNOWN',
-      /**
-       * Michigan assesses at half of true cash value.
-       *
-       * A statutory property of the state, not a quirk of Ottawa: assessed
-       * value equals the State Equalized Value, and the SEV is set at 50% of
-       * true cash value. Every sampled parcel here has AssessedValue exactly
-       * equal to SEVValue, and the doubling is what makes the numbers read
-       * correctly — a 37.75-acre agricultural parcel at an SEV of $283,100
-       * comes to about $15,000 an acre doubled, which is Ottawa County
-       * farmland; at the SEV alone it would be $7,500 and far too low.
-       *
-       * The 1.15 default suits a jurisdiction assessing at full value, as
-       * Florida does. Applying it here understates Michigan land by half.
-       */
-      assessedValueMultiplier: 2,
       // Michigan property class 4xx/2xx with "VACANT" in the description is the
       // reliable vacant-land signal in this dataset.
       vacantClassPattern: 'VACANT',

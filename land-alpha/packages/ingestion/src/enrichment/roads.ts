@@ -134,6 +134,7 @@ async function fetchCountyRoads(
           'FULL_NAME',
           'LABEL',
           'STREET',
+          'Street',
           'ST_NAME',
         ]),
         isPublic: inferPublicMaintenance(attributes),
@@ -144,6 +145,7 @@ async function fetchCountyRoads(
           'RoadClass',
           'CLASS',
           'FUNCTIONAL_CLASS',
+          'FunctionalClassification',
           'ROUTE_TYPE',
         ]),
         geometry:
@@ -316,15 +318,36 @@ function inferPublicMaintenance(attributes: Record<string, unknown>): boolean | 
   // "Unincorporated" is how Orange County's road inventory records a road it
   // maintains itself rather than one inside a municipality. It is a statement
   // of county maintenance, not an absence of one.
-  if (/COUNTY|CITY|STATE|TOWNSHIP|MUNICIPAL|TWP|MNDOT|PUBLIC|FEDERAL|UNINCORPORATED/.test(text)) {
+  // MSTU is a Municipal Service Taxing Unit: the mechanism by which a Florida
+  // county funds maintenance of roads in an unincorporated subdivision. It
+  // names the county as maintainer as surely as the county's own name does.
+  if (
+    /COUNTY|CITY|STATE|TOWNSHIP|MUNICIPAL|TWP|MNDOT|PUBLIC|FEDERAL|UNINCORPORATED|MSTU/.test(text)
+  ) {
     return true;
   }
   return null;
 }
 
 function inferPaved(attributes: Record<string, unknown>): boolean | null {
-  const text = Object.entries(attributes)
-    .filter(([key]) => /SURF|PAVE|MATERIAL/i.test(key))
+  const candidates = Object.entries(attributes).filter(([key]) =>
+    /SURF|PAVE|MATERIAL/i.test(key),
+  );
+
+  // Some counties answer the question with a flag rather than a surface.
+  // Marion's road inventory carries `Paved` as 1 or 0, which stringifies to
+  // something no surface-material pattern matches — so the parcel came back
+  // unpaved-unknown next to a road the county has explicitly marked paved.
+  for (const [key, value] of candidates) {
+    if (!/^(IS_?)?PAVED$/i.test(key)) continue;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1 ? true : value === 0 ? false : null;
+    if (typeof value === 'string' && /^(0|1|Y|N|YES|NO|TRUE|FALSE)$/i.test(value.trim())) {
+      return /^(1|Y|YES|TRUE)$/i.test(value.trim());
+    }
+  }
+
+  const text = candidates
     .map(([, value]) => String(value ?? ''))
     .join(' ')
     .toUpperCase();
