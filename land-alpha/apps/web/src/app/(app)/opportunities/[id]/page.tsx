@@ -37,6 +37,12 @@ import { FinancingPanel } from './financing-panel';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * What an unscreened layer says. A blank cell reads as "nothing there", which
+ * is the one thing it must never mean here.
+ */
+const NOT_SCREENED = 'not screened';
+
 export default async function ParcelPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [parcel, geometry, user, config, financing] = await Promise.all([
@@ -407,11 +413,24 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
 
           {/* --- Environmental --------------------------------------------- */}
           <Panel>
-            <PanelHeader title="Environmental" subtitle="Public screening layers" />
+            <PanelHeader
+              title="Environmental"
+              subtitle={
+                parcel.environmentalLayersScreened.length === 0
+                  ? 'Not screened — no public layer returned data'
+                  : `Screened: ${parcel.environmentalLayersScreened
+                      .map((layer) => layer.toLowerCase())
+                      .join(', ')}`
+              }
+            />
             <PanelBody>
               <MetricGrid columns={4}>
                 <Metric label="Flood zones">
-                  <Value>{parcel.floodZones.join(', ') || null}</Value>
+                  <Value mono={parcel.environmentalLayersScreened.includes('FLOOD')}>
+                    {parcel.environmentalLayersScreened.includes('FLOOD')
+                      ? parcel.floodZones.join(', ') || 'None mapped'
+                      : NOT_SCREENED}
+                  </Value>
                 </Metric>
                 <Metric
                   label="Flood overlap"
@@ -424,7 +443,11 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                   </Value>
                 </Metric>
                 <Metric label="Wetland types">
-                  <Value>{parcel.wetlandTypes.join(', ') || null}</Value>
+                  <Value mono={parcel.environmentalLayersScreened.includes('WETLANDS')}>
+                    {parcel.environmentalLayersScreened.includes('WETLANDS')
+                      ? parcel.wetlandTypes.join(', ') || 'None mapped'
+                      : NOT_SCREENED}
+                  </Value>
                 </Metric>
                 <Metric label="Wetland overlap">
                   <Value>
@@ -459,13 +482,16 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                       : undefined
                   }
                 >
-                  <Value>
-                    {parcel.nearestContaminatedSiteMeters == null
-                      ? null
-                      : `${formatNumber(Math.round(parcel.nearestContaminatedSiteMeters))} m`}
+                  <Value mono={parcel.environmentalLayersScreened.includes('CONTAMINATION')}>
+                    {!parcel.environmentalLayersScreened.includes('CONTAMINATION')
+                      ? NOT_SCREENED
+                      : parcel.nearestContaminatedSiteMeters == null
+                        ? 'None within radius'
+                        : `${formatNumber(Math.round(parcel.nearestContaminatedSiteMeters))} m`}
                   </Value>
                 </Metric>
               </MetricGrid>
+              <EvidenceList items={[]} unknowns={parcel.environmentalUnknowns} />
               <Disclaimer>{ENVIRONMENTAL_DISCLAIMER}</Disclaimer>
             </PanelBody>
           </Panel>

@@ -66,6 +66,7 @@ function cleanEnvironment(
     floodZones: ['X'],
     floodOverlapFraction: 0,
     inSpecialFloodHazardArea: false,
+    layersScreened: ['FLOOD', 'WETLANDS', 'SOILS', 'CONTAMINATION', 'TERRAIN'],
     wetlandTypes: [],
     wetlandOverlapFraction: 0,
     soilSeries: ['Cloquet sandy loam'],
@@ -247,6 +248,59 @@ describe('assessEnvironment', () => {
       wetlands: { types: [], overlapFraction: 0, available: true, source: 'USFWS NWI' },
     });
     expect(result.unknowns.some((u) => u.includes('does not prove absence'))).toBe(true);
+  });
+
+  it('refuses to call terrain alone a screening', () => {
+    // Elevation is the layer that is easiest to obtain and least able to
+    // decide anything. A parcel we know only the slope of has not been
+    // screened, and calling that LOW confidence would let buildability rate it.
+    const result = assessEnvironment({
+      terrain: {
+        meanElevationMeters: 402,
+        minElevationMeters: 399,
+        maxElevationMeters: 405,
+        meanSlopePercent: 3.1,
+        available: true,
+        source: 'USGS EPQS',
+      },
+    });
+    expect(result.layersScreened).toEqual(['TERRAIN']);
+    expect(result.confidence).toBe('UNKNOWN');
+  });
+
+  it('keeps LOW confidence once a hazard layer has actually answered', () => {
+    const result = assessEnvironment({
+      flood: { zones: ['X'], overlapFraction: 0, available: true, source: 'FEMA NFHL' },
+      terrain: {
+        meanElevationMeters: 402,
+        minElevationMeters: 399,
+        maxElevationMeters: 405,
+        meanSlopePercent: 3.1,
+        available: true,
+        source: 'USGS EPQS',
+      },
+    });
+    expect(result.layersScreened).toEqual(['FLOOD', 'TERRAIN']);
+    expect(result.confidence).toBe('LOW');
+  });
+
+  it('carries the reason a layer was skipped into the unknowns', () => {
+    // "Not available" invites a retry tonight. "The publisher forbids automated
+    // queries" tells an analyst to open the map viewer, which is the only thing
+    // that will ever close this gap.
+    const result = assessEnvironment({
+      flood: {
+        zones: [],
+        overlapFraction: null,
+        available: false,
+        source: 'FEMA NFHL',
+        unavailableReason:
+          'the publisher does not permit automated queries against this service, so it must be checked by hand at https://msc.fema.gov/portal/search',
+      },
+    });
+    const line = result.unknowns.find((u) => u.startsWith('FEMA flood hazard mapping'));
+    expect(line).toContain('msc.fema.gov');
+    expect(result.layersScreened).not.toContain('FLOOD');
   });
 });
 

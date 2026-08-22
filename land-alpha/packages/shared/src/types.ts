@@ -146,6 +146,12 @@ export interface EnvironmentalAssessment {
   readonly maxElevationMeters: number | null;
   readonly meanSlopePercent: number | null;
   readonly environmentalRiskScore: number;
+  /**
+   * Layers that actually returned data — FLOOD, WETLANDS, SOILS, CONTAMINATION,
+   * TERRAIN. Absent from this list means unscreened, which is not the same as
+   * clear and must never be rendered as clear.
+   */
+  readonly layersScreened: readonly string[];
   readonly evidence: readonly string[];
   readonly unknowns: readonly string[];
   readonly confidence: ConfidenceLevel;

@@ -3,6 +3,7 @@ import { env } from '@land-alpha/shared/env';
 import type { AnyGeometry } from '@land-alpha/shared';
 import { envelopeParam } from './fema';
 import type { EnrichmentContext, EnrichmentTarget } from './types';
+import { describeUnavailable } from './unavailable';
 
 /**
  * USFWS National Wetlands Inventory.
@@ -90,7 +91,10 @@ export async function fetchWetlands(
       polygons: [],
       available: false,
       source,
-      note: `unavailable: ${String(error)}`,
+      note: describeUnavailable(
+        error,
+        'https://www.fws.gov/program/national-wetlands-inventory/wetlands-mapper',
+      ),
     };
   }
 }

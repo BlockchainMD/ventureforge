@@ -237,6 +237,7 @@ export async function enrichParcel(
             overlapFraction: parcel.floodOverlapFraction,
             available: floodStored,
             source: 'Previously recorded observation',
+            unavailableReason: flood.note,
           },
       wetlands: wetlands.available
         ? {
@@ -250,6 +251,7 @@ export async function enrichParcel(
             overlapFraction: parcel.wetlandOverlapFraction,
             available: wetlandStored,
             source: 'Previously recorded observation',
+            unavailableReason: wetlands.note,
           },
       contamination: contamination.available
         ? {
@@ -272,6 +274,7 @@ export async function enrichParcel(
             searchRadiusMeters: contamination.searchRadiusMeters,
             available: parcel.nearestContaminatedSiteMeters != null,
             source: 'Previously recorded observation',
+            unavailableReason: contamination.note,
           },
       terrain: terrain.available
         ? {
@@ -289,6 +292,7 @@ export async function enrichParcel(
             meanSlopePercent: parcel.meanSlopePercent,
             available: parcel.meanSlopePercent != null,
             source: 'Previously recorded observation',
+            unavailableReason: terrain.note,
           },
     });
 
@@ -311,6 +315,8 @@ export async function enrichParcel(
         meanSlopePercent: environmental.meanSlopePercent,
         environmentalRiskScore: environmental.environmentalRiskScore,
         environmentalConfidence: environmental.confidence,
+        environmentalUnknowns: [...environmental.unknowns],
+        environmentalLayersScreened: [...environmental.layersScreened],
       },
     });
 

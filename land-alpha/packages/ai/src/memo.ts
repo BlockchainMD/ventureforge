@@ -79,6 +79,13 @@ export interface MemoFacts {
   readonly buildabilityUnknowns: readonly string[];
   readonly buildabilityBlockers: readonly string[];
 
+  /**
+   * Layers that actually returned data. Gate every claim of absence on this:
+   * an unqueried layer and a clear parcel look identical in the data, and only
+   * one of them is safe to tell a buyer about.
+   */
+  readonly environmentalLayersScreened: readonly string[];
+  readonly environmentalUnknowns: readonly string[];
   readonly floodZones: readonly string[];
   readonly floodOverlapFraction: number | null;
   readonly wetlandTypes: readonly string[];
@@ -270,18 +277,25 @@ export function renderDeterministicMemo(facts: MemoFacts): Record<string, string
     ].join('\n'),
 
     ENVIRONMENTAL: [
-      facts.floodZones.length > 0
-        ? `FEMA flood zones intersecting the parcel: ${facts.floodZones.join(', ')}${facts.floodOverlapFraction == null ? '' : ` covering ${formatPercent(facts.floodOverlapFraction, 0)} of its area`} [floodZones].`
-        : `No FEMA flood hazard data recorded: ${unknown}.`,
-      facts.wetlandTypes.length > 0
-        ? `NWI wetlands mapped: ${facts.wetlandTypes.join(', ')}${facts.wetlandOverlapFraction == null ? '' : ` covering ${formatPercent(facts.wetlandOverlapFraction, 0)}`} [wetlands].`
-        : 'No NWI wetlands identified. Absence from the inventory does not prove absence of jurisdictional wetlands.',
+      screened(facts, 'FLOOD')
+        ? facts.floodZones.length > 0
+          ? `FEMA flood zones intersecting the parcel: ${facts.floodZones.join(', ')}${facts.floodOverlapFraction == null ? '' : ` covering ${formatPercent(facts.floodOverlapFraction, 0)} of its area`} [floodZones].`
+          : 'No FEMA Special Flood Hazard Area intersects the parcel [floodZones].'
+        : `Flood hazard: ${unknown} — the FEMA layer was not screened.`,
+      screened(facts, 'WETLANDS')
+        ? facts.wetlandTypes.length > 0
+          ? `NWI wetlands mapped: ${facts.wetlandTypes.join(', ')}${facts.wetlandOverlapFraction == null ? '' : ` covering ${formatPercent(facts.wetlandOverlapFraction, 0)}`} [wetlands].`
+          : 'No NWI wetlands identified. Absence from the inventory does not prove absence of jurisdictional wetlands.'
+        : `Wetlands: ${unknown} — the National Wetlands Inventory was not screened.`,
       facts.meanSlopePercent == null
         ? `Slope: ${unknown}.`
         : `Mean slope ${facts.meanSlopePercent.toFixed(1)}%.`,
-      facts.nearestContaminatedSiteMeters == null
-        ? 'No regulated cleanup site identified within the search radius.'
-        : `Nearest regulated cleanup site approximately ${Math.round(facts.nearestContaminatedSiteMeters)} m away.`,
+      screened(facts, 'CONTAMINATION')
+        ? facts.nearestContaminatedSiteMeters == null
+          ? 'No regulated cleanup site identified within the search radius.'
+          : `Nearest regulated cleanup site approximately ${Math.round(facts.nearestContaminatedSiteMeters)} m away.`
+        : `Regulated cleanup sites: ${unknown} — no proximity search was run.`,
+      ...facts.environmentalUnknowns.map((line) => `- ${unknown}: ${line}`),
       'This is a screening review of public mapping layers, not a Phase I Environmental Site Assessment.',
     ].join('\n'),
 
@@ -370,11 +384,17 @@ function recommendationFor(facts: MemoFacts): string {
   }
 }
 
+/** True when the named environmental layer actually returned data. */
+function screened(facts: MemoFacts, layer: string): boolean {
+  return facts.environmentalLayersScreened.includes(layer);
+}
+
 function collectUnknowns(facts: MemoFacts): string[] {
   const unknowns = new Set<string>([
     ...facts.remainingQuestions,
     ...facts.accessUnknowns,
     ...facts.buildabilityUnknowns,
+    ...facts.environmentalUnknowns,
   ]);
   if (facts.titleRiskScore == null) unknowns.add('Title pre-screen has not been run.');
   if (facts.acreage == null) unknowns.add('Parcel acreage is not established.');

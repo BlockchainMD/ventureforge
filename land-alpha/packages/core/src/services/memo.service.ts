@@ -84,6 +84,8 @@ export async function generateMemoForParcel(
     buildability: parcel.buildability,
     buildabilityReasons: parcel.buildabilityReasons,
     buildabilityUnknowns: parcel.buildabilityUnknowns,
+    environmentalLayersScreened: parcel.environmentalLayersScreened,
+    environmentalUnknowns: parcel.environmentalUnknowns,
     buildabilityBlockers: parcel.buildabilityBlockers,
 
     floodZones: parcel.floodZones,

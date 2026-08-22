@@ -1,18 +1,33 @@
-import { env } from '@land-alpha/shared/env';
 import type { ContaminatedSiteHit } from '@land-alpha/shared';
-import { distanceMeters } from '@land-alpha/gis';
 import type { EnrichmentContext, EnrichmentTarget } from './types';
 
 /**
- * EPA Facility Registry Service.
+ * EPA regulated-cleanup-site screening.
  *
- * Screens for regulated cleanup sites near the parcel: Superfund (NPL),
- * brownfields, RCRA corrective action and state cleanup programs.
+ * Proximity to a Superfund, brownfield or RCRA corrective-action site is a
+ * screening signal, not a finding about the parcel itself. A neighbouring site
+ * does not mean this land is contaminated — but it does mean a buyer's lender
+ * will ask, which is why the rejection rule it feeds is weighted heavily and
+ * why an analyst can override it.
  *
- * Proximity is a screening signal, not a finding about the parcel itself. A
- * neighbouring site does not mean this land is contaminated — but it does mean
- * a buyer's lender will ask, which is why it is weighted heavily and why the
- * rejection rule it feeds is explicitly overridable by an analyst.
+ * This adapter does not automate the screen, because as of August 2026 no EPA
+ * endpoint both carries facility coordinates and permits automated queries:
+ *
+ *  - The Envirofacts REST interface (`data.epa.gov/efservice`) still serves the
+ *    FRS tables, but `frs_facility_site` and `frs_program_facility` no longer
+ *    expose `latitude83`/`longitude83` at all. Worse, its parser accepts a
+ *    numeric range filter and then ignores it — a query bounded to Duluth
+ *    returns facilities in Massachusetts with a 200. A source that answers
+ *    confidently with the wrong rows is more dangerous than one that fails.
+ *  - The FRS geospatial services on `geopub.epa.gov` do carry coordinates, and
+ *    that host's robots.txt disallows `/arcgis/` outright.
+ *
+ * So the screen is a MANUAL_SOURCE. Returning `available: false` with a reason
+ * is the whole point: the environmental engine turns that into a named unknown,
+ * the unknown suppresses the buildability rating, and nothing downstream is
+ * able to treat "we never looked" as "nothing there". Writing a plausible
+ * adapter against an endpoint that returns the wrong rows would defeat every
+ * one of those protections while looking like progress.
  */
 
 export interface ContaminationObservation {
@@ -23,90 +38,22 @@ export interface ContaminationObservation {
   readonly note: string | null;
 }
 
-interface FrsRecord {
-  REGISTRY_ID?: string;
-  PRIMARY_NAME?: string;
-  LATITUDE83?: string | number;
-  LONGITUDE83?: string | number;
-  FED_FACILITY_CODE?: string;
-  SITE_TYPE_NAME?: string;
-  INTEREST_TYPES?: string;
-}
+/** Where an analyst screens a parcel by hand. */
+export const EPA_MANUAL_SCREEN_URL = 'https://geopub.epa.gov/myem/efmap/index.html';
 
 export async function fetchContamination(
-  ctx: EnrichmentContext,
-  target: EnrichmentTarget,
+  _ctx: EnrichmentContext,
+  _target: EnrichmentTarget,
   radiusMeters = 1600,
 ): Promise<ContaminationObservation> {
   const source = 'EPA Facility Registry Service';
-  if (ctx.mode === 'fixture') {
-    return {
-      sites: [],
-      searchRadiusMeters: radiusMeters,
-      available: false,
-      source,
-      note: 'fixture mode',
-    };
-  }
-
-  const [lon, lat] = target.centroid;
-  // The FRS REST interface takes a bounding box; the radius filter is applied
-  // afterwards so the reported distance is a true great-circle distance rather
-  // than a box artefact.
-  const padding = radiusMeters / 111_000;
-  const url =
-    `${env().EPA_FRS_URL}/frs.frs_facility_site/` +
-    `latitude83/>/${(lat - padding).toFixed(5)}/latitude83/</${(lat + padding).toFixed(5)}/` +
-    `longitude83/>/${(lon - padding).toFixed(5)}/longitude83/</${(lon + padding).toFixed(5)}/` +
-    `rows/0:200/JSON`;
-
-  try {
-    const response = await ctx.http.getJson<FrsRecord[] | { Results?: FrsRecord[] }>(url);
-    const records: FrsRecord[] = Array.isArray(response) ? response : (response.Results ?? []);
-
-    const sites: ContaminatedSiteHit[] = [];
-    for (const record of records) {
-      const siteLat = Number(record.LATITUDE83);
-      const siteLon = Number(record.LONGITUDE83);
-      if (!Number.isFinite(siteLat) || !Number.isFinite(siteLon)) continue;
-      const distance = distanceMeters([lon, lat], [siteLon, siteLat]);
-      if (distance > radiusMeters) continue;
-
-      const program = classifyProgram(record);
-      // Only sites in a cleanup program matter here; the FRS also contains
-      // every permitted facility in the country, which is noise for this purpose.
-      if (!program) continue;
-
-      sites.push({
-        program,
-        name: record.PRIMARY_NAME ?? 'Unnamed regulated site',
-        distanceMeters: Math.round(distance),
-        registryId: record.REGISTRY_ID ?? null,
-        url: record.REGISTRY_ID
-          ? `https://frs-public.epa.gov/ords/frs_public2/fii_query_dtl.disp_program_facility?p_registry_id=${record.REGISTRY_ID}`
-          : null,
-      });
-    }
-
-    sites.sort((a, b) => a.distanceMeters - b.distanceMeters);
-    return { sites, searchRadiusMeters: radiusMeters, available: true, source, note: null };
-  } catch (error) {
-    return {
-      sites: [],
-      searchRadiusMeters: radiusMeters,
-      available: false,
-      source,
-      note: `unavailable: ${String(error)}`,
-    };
-  }
-}
-
-function classifyProgram(record: FrsRecord): ContaminatedSiteHit['program'] | null {
-  const interests = `${record.INTEREST_TYPES ?? ''} ${record.SITE_TYPE_NAME ?? ''}`.toUpperCase();
-  if (interests.includes('SUPERFUND') || interests.includes('NPL')) return 'SUPERFUND';
-  if (interests.includes('BROWNFIELD')) return 'BROWNFIELD';
-  if (interests.includes('CORRECTIVE ACTION') || interests.includes('RCRA'))
-    return 'RCRA_CORRECTIVE';
-  if (interests.includes('CLEANUP') || interests.includes('REMEDIATION')) return 'STATE_CLEANUP';
-  return null;
+  return {
+    sites: [],
+    searchRadiusMeters: radiusMeters,
+    available: false,
+    source,
+    note:
+      'EPA publishes no facility-coordinate endpoint that permits automated ' +
+      `queries, so cleanup sites near the parcel must be screened by hand at ${EPA_MANUAL_SCREEN_URL}`,
+  };
 }

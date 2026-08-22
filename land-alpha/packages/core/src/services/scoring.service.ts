@@ -95,8 +95,9 @@ export async function scoreParcelById(parcelId: string): Promise<AlphaScoreResul
           maxElevationMeters: parcel.maxElevationMeters,
           meanSlopePercent: parcel.meanSlopePercent,
           environmentalRiskScore: parcel.environmentalRiskScore ?? 0,
+          layersScreened: parcel.environmentalLayersScreened,
           evidence: [],
-          unknowns: [],
+          unknowns: parcel.environmentalUnknowns,
           confidence: parcel.environmentalConfidence,
         };
 

@@ -2,6 +2,7 @@ import { env } from '@land-alpha/shared/env';
 import { distanceMeters } from '@land-alpha/gis';
 import type { Position } from '@land-alpha/shared';
 import type { EnrichmentContext, EnrichmentTarget } from './types';
+import { describeUnavailable } from './unavailable';
 
 /**
  * Terrain from the USGS 3DEP elevation point query service.
@@ -47,6 +48,11 @@ export async function fetchTerrain(
   const samples = samplePositions(target);
   const elevations: { position: Position; elevation: number }[] = [];
 
+  // Kept so that a run where *every* sample failed can say why. One dropped
+  // sample is noise; all of them dropped is a fact about the service, and
+  // "no elevation samples returned" hides which.
+  let lastError: unknown = null;
+
   for (const position of samples) {
     if (ctx.signal?.aborted) break;
     const url = `${env().USGS_EPQS_URL}?x=${position[0].toFixed(6)}&y=${position[1].toFixed(6)}&units=Meters&wkid=4326&includeDate=false`;
@@ -57,13 +63,19 @@ export async function fetchTerrain(
       if (Number.isFinite(value) && value > -1000) {
         elevations.push({ position, elevation: value });
       }
-    } catch {
+    } catch (error) {
       // A missing sample is tolerable; a missing service is reported below.
+      lastError = error;
     }
   }
 
   if (elevations.length === 0) {
-    return { ...empty, note: 'no elevation samples returned' };
+    return {
+      ...empty,
+      note: lastError
+        ? describeUnavailable(lastError, null)
+        : 'the elevation service returned no samples for this location',
+    };
   }
 
   const values = elevations.map((sample) => sample.elevation);

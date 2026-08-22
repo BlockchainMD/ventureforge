@@ -572,6 +572,15 @@ model ParcelOpportunity {
   meanSlopePercent           Float?
   environmentalRiskScore     Float?
   environmentalConfidence    ConfidenceLevel @default(UNKNOWN)
+  /// What the environmental screen could not establish, and why. Populated by
+  /// the screening engine, which distinguishes "the layer says this parcel is
+  /// clear" from "we were never permitted to ask" — a distinction that is
+  /// worthless unless it is stored and shown.
+  environmentalUnknowns      String[] @default([])
+  /// Which public layers actually answered: FLOOD, WETLANDS, SOILS,
+  /// CONTAMINATION, TERRAIN. Every downstream statement of the form "no
+  /// wetlands here" must be gated on the corresponding layer appearing here.
+  environmentalLayersScreened String[] @default([])
 
   // ---- Buildability -------------------------------------------------------
   buildability             BuildabilityRating @default(UNKNOWN)

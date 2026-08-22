@@ -2,6 +2,7 @@ import { esriPolygonToGeoJson, type EsriPolygon } from '@land-alpha/gis';
 import { env } from '@land-alpha/shared/env';
 import type { AnyGeometry } from '@land-alpha/shared';
 import type { EnrichmentContext, EnrichmentTarget } from './types';
+import { describeUnavailable } from './unavailable';
 
 /**
  * FEMA National Flood Hazard Layer.
@@ -90,7 +91,7 @@ export async function fetchFloodHazard(
       polygons: [],
       available: false,
       source,
-      note: `unavailable: ${String(error)}`,
+      note: describeUnavailable(error, 'https://msc.fema.gov/portal/search'),
     };
   }
 }

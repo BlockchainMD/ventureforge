@@ -26,12 +26,24 @@ export interface EnvironmentalObservations {
     readonly overlapFraction: number | null;
     readonly available: boolean;
     readonly source: string;
+    /**
+     * Why the layer produced nothing. A layer we were not permitted to query
+     * and a layer that says the parcel is clear are opposite facts, and the
+     * difference has to survive all the way to the analyst.
+     */
+    readonly unavailableReason?: string | null;
   };
   readonly wetlands?: {
     readonly types: readonly string[];
     readonly overlapFraction: number | null;
     readonly available: boolean;
     readonly source: string;
+    /**
+     * Why the layer produced nothing. A layer we were not permitted to query
+     * and a layer that says the parcel is clear are opposite facts, and the
+     * difference has to survive all the way to the analyst.
+     */
+    readonly unavailableReason?: string | null;
   };
   readonly soils?: {
     readonly series: readonly string[];
@@ -40,12 +52,24 @@ export interface EnvironmentalObservations {
     readonly hydricFraction: number | null;
     readonly available: boolean;
     readonly source: string;
+    /**
+     * Why the layer produced nothing. A layer we were not permitted to query
+     * and a layer that says the parcel is clear are opposite facts, and the
+     * difference has to survive all the way to the analyst.
+     */
+    readonly unavailableReason?: string | null;
   };
   readonly contamination?: {
     readonly sites: readonly ContaminatedSiteHit[];
     readonly searchRadiusMeters: number;
     readonly available: boolean;
     readonly source: string;
+    /**
+     * Why the layer produced nothing. A layer we were not permitted to query
+     * and a layer that says the parcel is clear are opposite facts, and the
+     * difference has to survive all the way to the analyst.
+     */
+    readonly unavailableReason?: string | null;
   };
   readonly terrain?: {
     readonly meanElevationMeters: number | null;
@@ -54,6 +78,12 @@ export interface EnvironmentalObservations {
     readonly meanSlopePercent: number | null;
     readonly available: boolean;
     readonly source: string;
+    /**
+     * Why the layer produced nothing. A layer we were not permitted to query
+     * and a layer that says the parcel is clear are opposite facts, and the
+     * difference has to survive all the way to the analyst.
+     */
+    readonly unavailableReason?: string | null;
   };
 }
 
@@ -69,6 +99,21 @@ export function isSpecialFloodHazardZone(zone: string): boolean {
   if (NON_SFHA_ZONES.has(normalized)) return false;
   if (normalized.startsWith('X')) return false;
   return SFHA_ZONE_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+}
+
+/**
+ * Phrases a missing layer so the reason survives.
+ *
+ * "FEMA flood hazard data was not available" reads like a transient outage. If
+ * the truth is that the publisher's robots.txt forbids automated queries, that
+ * is a permanent condition an analyst has to work around by hand, and saying so
+ * is the difference between a gap someone closes and a gap someone ignores.
+ */
+function unavailable(layer: string, observation?: { unavailableReason?: string | null }): string {
+  const reason = observation?.unavailableReason?.trim();
+  return reason
+    ? `${layer} was not checked: ${reason}`
+    : `${layer} was not available for this location.`;
 }
 
 export function assessEnvironment(
@@ -103,7 +148,7 @@ export function assessEnvironment(
       confidence = minConfidence(confidence, 'MEDIUM');
     }
   } else {
-    unknowns.push('FEMA flood hazard data was not available for this location.');
+    unknowns.push(unavailable('FEMA flood hazard mapping', observations.flood));
     confidence = minConfidence(confidence, 'MEDIUM');
   }
 
@@ -134,7 +179,7 @@ export function assessEnvironment(
       );
     }
   } else {
-    unknowns.push('National Wetlands Inventory data was not available for this location.');
+    unknowns.push(unavailable('National Wetlands Inventory mapping', observations.wetlands));
     confidence = minConfidence(confidence, 'MEDIUM');
   }
 
@@ -159,7 +204,7 @@ export function assessEnvironment(
       'Soil survey data does not establish septic suitability. On-site percolation testing and county health-department approval are required.',
     );
   } else {
-    unknowns.push('NRCS soil survey data was not available for this location.');
+    unknowns.push(unavailable('NRCS soil survey data', observations.soils));
   }
 
   // ---- Contamination -------------------------------------------------------
@@ -182,7 +227,7 @@ export function assessEnvironment(
       );
     }
   } else {
-    unknowns.push('EPA contaminated-site data was not available for this location.');
+    unknowns.push(unavailable('EPA regulated-cleanup-site screening', observations.contamination));
     confidence = minConfidence(confidence, 'MEDIUM');
   }
 
@@ -197,7 +242,7 @@ export function assessEnvironment(
       } (${terrain.source}).`,
     );
   } else {
-    unknowns.push('Elevation and slope data was not available for this location.');
+    unknowns.push(unavailable('Elevation and slope data', observations.terrain));
   }
 
   const environmentalRiskScore = computeEnvironmentalRisk({
@@ -210,6 +255,20 @@ export function assessEnvironment(
     meanSlopePercent: terrain?.meanSlopePercent ?? null,
   });
 
+  /**
+   * Which layers actually answered. Downstream text is written from this, not
+   * from an empty array: "the inventory maps no wetlands here" and "we never
+   * asked the inventory" both produce an empty list of wetland types, and only
+   * one of them is a fact about the land.
+   */
+  const layersScreened = [
+    observations.flood?.available ? 'FLOOD' : null,
+    observations.wetlands?.available ? 'WETLANDS' : null,
+    observations.soils?.available ? 'SOILS' : null,
+    observations.contamination?.available ? 'CONTAMINATION' : null,
+    observations.terrain?.available ? 'TERRAIN' : null,
+  ].filter((layer): layer is string => layer !== null);
+
   const availableLayers = [
     observations.flood?.available,
     observations.wetlands?.available,
@@ -218,7 +277,20 @@ export function assessEnvironment(
     observations.terrain?.available,
   ].filter(Boolean).length;
 
-  if (availableLayers === 0) confidence = 'UNKNOWN';
+  // Terrain is the easy layer to get and the least decisive one. Slope alone
+  // tells you a parcel is flat; it does not tell you the flat thing is a marsh
+  // inside a floodway next to a Superfund site. If none of the three hazard
+  // layers answered, we have not screened this parcel — and the honest word for
+  // that is UNKNOWN, not LOW. Buildability collapses to UNKNOWN in turn, which
+  // is the point: the pipeline must not be able to call a parcel buildable on
+  // the strength of an elevation query.
+  const hazardLayers = [
+    observations.flood?.available,
+    observations.wetlands?.available,
+    observations.contamination?.available,
+  ].filter(Boolean).length;
+
+  if (availableLayers === 0 || hazardLayers === 0) confidence = 'UNKNOWN';
   else if (availableLayers <= 2) confidence = minConfidence(confidence, 'LOW');
 
   return {
@@ -237,6 +309,7 @@ export function assessEnvironment(
     maxElevationMeters: terrain?.maxElevationMeters ?? null,
     meanSlopePercent: terrain?.meanSlopePercent ?? null,
     environmentalRiskScore,
+    layersScreened,
     evidence,
     unknowns,
     confidence,
