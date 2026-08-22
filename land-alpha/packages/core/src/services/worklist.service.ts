@@ -41,6 +41,12 @@ export interface DarkCounty {
   readonly state: string;
   readonly county: string;
   readonly parcels: number;
+  /**
+   * How many of them the pipeline has simply never reached, as opposed to
+   * having tried and failed. Two different errands, and reporting them as one
+   * sent the operator hunting a data problem that was really a queue.
+   */
+  readonly neverProcessed: number;
   readonly reason: string;
 }
 
@@ -134,12 +140,12 @@ async function summariseDark(): Promise<DarkCounty[]> {
       alphaScore: null,
       status: { notIn: ['REJECTED', 'ACQUIRED', 'SOLD'] },
     },
-    select: { state: true, county: true, valuationWarnings: true },
+    select: { state: true, county: true, valuationWarnings: true, scoredAt: true },
   });
 
   const groups = new Map<
     string,
-    { state: string; county: string; n: number; reasons: Set<string> }
+    { state: string; county: string; n: number; neverProcessed: number; reasons: Set<string> }
   >();
   for (const parcel of parcels) {
     const key = `${parcel.state}/${parcel.county}`;
@@ -147,9 +153,17 @@ async function summariseDark(): Promise<DarkCounty[]> {
       state: parcel.state,
       county: parcel.county,
       n: 0,
+      neverProcessed: 0,
       reasons: new Set<string>(),
     };
     group.n += 1;
+    // Untouched means the engines left no trace at all. A parcel carrying
+    // valuation warnings has been through the valuation service and has a real
+    // reason recorded, even where scoring never completed — so warnings, not
+    // just a missing scoredAt, are what distinguish the two.
+    if (parcel.scoredAt == null && parcel.valuationWarnings.length === 0) {
+      group.neverProcessed += 1;
+    }
     const cause = parcel.valuationWarnings.find((warning) =>
       warning.startsWith('No comparable sales'),
     );
@@ -163,10 +177,34 @@ async function summariseDark(): Promise<DarkCounty[]> {
       state: group.state,
       county: group.county,
       parcels: group.n,
-      reason:
-        [...group.reasons][0] ??
-        'No valuation could be established, and the engine recorded no reason.',
+      neverProcessed: group.neverProcessed,
+      reason: describeDarkness(group),
     }));
+}
+
+/**
+ * Why a county is dark, in the words the errand deserves.
+ *
+ * "No valuation could be established, and the engine recorded no reason" was
+ * shown against fourteen thousand St. Louis parcels the pipeline had never
+ * been run over. Nothing had gone wrong with them and there was no reason to
+ * record: they were simply still in the queue. Saying otherwise sends whoever
+ * reads it looking for a data-quality problem that is not there.
+ */
+function describeDarkness(group: {
+  n: number;
+  neverProcessed: number;
+  reasons: Set<string>;
+}): string {
+  const measured = [...group.reasons][0];
+  if (group.neverProcessed === group.n) {
+    return 'Not yet enriched or scored — these are waiting on a pipeline run, not on a missing fact.';
+  }
+  if (group.neverProcessed > 0) {
+    const processed = group.n - group.neverProcessed;
+    return `${group.neverProcessed} of these have not been through the pipeline yet. Of the ${processed} that have, ${measured ?? 'no valuation could be established and the engine recorded no reason'}`;
+  }
+  return measured ?? 'No valuation could be established, and the engine recorded no reason.';
 }
 
 /**

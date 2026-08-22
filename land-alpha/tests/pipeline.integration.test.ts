@@ -152,6 +152,24 @@ describe('fixture specifications', () => {
   }
 });
 
+describe('the dark list names the right errand', () => {
+  spec('does not blame the engine for parcels it never reached', async () => {
+    // "No valuation could be established, and the engine recorded no reason"
+    // was shown against fourteen thousand parcels the pipeline had never been
+    // run over. Nothing had gone wrong and there was no reason to record — they
+    // were still in the queue. Saying otherwise sends the reader hunting a
+    // data-quality problem that does not exist.
+    const { dark } = await summariseWorklist();
+    for (const county of dark) {
+      expect(county.neverProcessed).toBeLessThanOrEqual(county.parcels);
+      if (county.neverProcessed === county.parcels) {
+        expect(county.reason).toContain('pipeline run');
+        expect(county.reason).not.toContain('recorded no reason');
+      }
+    }
+  });
+});
+
 describe('offered for sale is distinguished from merely held', () => {
   spec('counts only what a county has actually put up', async () => {
     // St. Louis County publishes its entire tax-forfeited roll — 14,220 parcels
