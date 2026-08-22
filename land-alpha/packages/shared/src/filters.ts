@@ -65,6 +65,16 @@ export interface OpportunityFilter {
    * resolved by a clock.
    */
   deadlinePassed?: boolean;
+  /**
+   * Let the flood and wetland thresholds pass parcels that were never screened.
+   *
+   * Off by default, because a threshold that admits unmeasured parcels is not a
+   * threshold. On, for the discovery case: seeing fresh inventory before anyone
+   * has been able to screen it. FEMA and the USGS wetlands service both refuse
+   * us (ADR 0011), so this is the difference between a handful of parcels and
+   * effectively all of them.
+   */
+  includeUnscreened?: boolean;
   noReserveOnly?: boolean;
   minFailedSaleCount?: number;
   statuses?: ParcelStatus[];
@@ -197,6 +207,7 @@ export function filterFromSearchParams(
   if (get('otcOnly') === 'true') filter.otcOnly = true;
   if (get('offeredOnly') === 'true') filter.offeredOnly = true;
   if (get('deadlinePassed') === 'true') filter.deadlinePassed = true;
+  if (get('includeUnscreened') === 'true') filter.includeUnscreened = true;
   if (get('noReserveOnly') === 'true') filter.noReserveOnly = true;
   if (get('watchlistedOnly') === 'true') filter.watchlistedOnly = true;
   if (get('includeRejected') === 'true') filter.includeRejected = true;

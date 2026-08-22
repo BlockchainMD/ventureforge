@@ -18,10 +18,38 @@ that flattered the parcel.
 | `scoring.ts` | No valuation → neutral 50 | Parcels with no comparable sales and no value outranked every parcel that had been assessed |
 | `allocation.service.ts` | Unpriced parcel → costs-only floor treated as the basis | The capital plan committed $46,000 across twelve parcels whose price nobody had, at a reported 584% a year |
 | `env.ts` | `z.coerce.boolean()` → every non-empty string is `true` | `PUBLIC_SITE_ENABLED=false` read as **true**. The switch that keeps the unauthenticated listing site off did nothing, and the only spelling that worked was the empty string |
+| `parcels.ts` | Unmeasured flood/wetland overlap → passes any threshold | `FLOOD ≤ 0%` returned **14,247 of 14,310** live parcels while presenting itself as a satisfied constraint. Screened-only, the honest answer is **30** |
 
 Each one is individually defensible in isolation, which is precisely why they
 accumulated. A `?? 0` looks like defensive programming. An empty array looks
 like an empty result. A neutral score looks fair.
+
+## The eighth was in a filter, where the analyst had asked the question out loud
+
+The seven above are all things the system computed and handed to a reader. The
+eighth is different in a way that makes it worse: the analyst had *typed a
+constraint*. Setting `FLOOD ≤ 10%` is an explicit request to see only parcels
+screened and found dry, and the filter answered with the entire inventory —
+14,247 of 14,310 live parcels, 99.6% of them never measured — while counting
+itself among the "N filters active".
+
+The comment justifying it was the usual individually-defensible reasoning:
+excluding parcels "we simply have not measured yet" would hide new inventory.
+That assumed a backlog. ADR 0011 records that there is none — FEMA's NFHL
+disallows us in `robots.txt` and the USGS wetlands service WAF-blocks our
+User-Agent, so both layers are MANUAL_SOURCE and stay null for almost
+everything. 113 of 14,331 live parcels carry a flood measurement; 20 carry a
+wetland one. "Not yet" is the steady state.
+
+The tell was sitting in the same function the whole time. `maxTitleRisk` uses a
+plain `lte`, which excludes its 14,312 nulls. One filter bar, two opposite
+policies on unknowns, and no label saying which was which.
+
+Screened-only is now the default, `includeUnscreened` brings the old behaviour
+back for the discovery case the comment was reaching for, and the controls say
+which population they are filtering — "Flood ≤ (%), screened" or "or
+unscreened". Turning it on takes `FLOOD ≤ 0%` from 30 parcels back to 14,247,
+which is the correct number for a question nobody should ask by accident.
 
 ## The seventh instance was not a domain value
 

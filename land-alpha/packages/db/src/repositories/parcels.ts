@@ -90,24 +90,46 @@ export function buildWhere(filter: OpportunityFilter): Prisma.ParcelOpportunityW
   if (filter.buildability?.length) and.push({ buildability: { in: filter.buildability } });
   if (filter.maxTitleRisk != null) and.push({ titleRiskScore: { lte: filter.maxTitleRisk } });
 
-  // Environmental overlap filters treat "unknown" as passing: excluding parcels
-  // we simply have not measured yet would hide new inventory, which is the
-  // opposite of what an analyst screening for fresh opportunities wants.
+  // These used to treat "unknown" as passing, on the reasoning that excluding
+  // parcels we had not measured yet would hide new inventory. That reasoning
+  // assumed a backlog. There is none: ADR 0011 records that FEMA's NFHL
+  // disallows us in robots.txt and the USGS wetlands service answers our
+  // User-Agent with a WAF block, so both layers are MANUAL_SOURCE and stay
+  // null for almost everything. 113 of 14,331 live parcels have a flood
+  // measurement; 20 have a wetland one.
+  //
+  // So `FLOOD ≤ 0%` returned 99.5% of the inventory while presenting itself as
+  // a satisfied constraint, and an analyst reading that list believed every row
+  // had been screened and found dry. Buying a parcel that is wholly inside a
+  // special flood hazard area, priced as buildable upland, is a total loss.
+  //
+  // An unknown must not resolve favourably (ADR 0013). `maxTitleRisk` above
+  // already excludes its nulls; these now agree with it. `includeUnscreened`
+  // brings the old behaviour back deliberately, for the discovery case the
+  // original comment was reaching for.
   if (filter.maxFloodOverlap != null) {
-    and.push({
-      OR: [
-        { floodOverlapFraction: { lte: filter.maxFloodOverlap } },
-        { floodOverlapFraction: null },
-      ],
-    });
+    and.push(
+      filter.includeUnscreened
+        ? {
+            OR: [
+              { floodOverlapFraction: { lte: filter.maxFloodOverlap } },
+              { floodOverlapFraction: null },
+            ],
+          }
+        : { floodOverlapFraction: { lte: filter.maxFloodOverlap, not: null } },
+    );
   }
   if (filter.maxWetlandOverlap != null) {
-    and.push({
-      OR: [
-        { wetlandOverlapFraction: { lte: filter.maxWetlandOverlap } },
-        { wetlandOverlapFraction: null },
-      ],
-    });
+    and.push(
+      filter.includeUnscreened
+        ? {
+            OR: [
+              { wetlandOverlapFraction: { lte: filter.maxWetlandOverlap } },
+              { wetlandOverlapFraction: null },
+            ],
+          }
+        : { wetlandOverlapFraction: { lte: filter.maxWetlandOverlap, not: null } },
+    );
   }
 
   if (filter.auctionBefore) and.push({ auctionDate: { lte: new Date(filter.auctionBefore) } });

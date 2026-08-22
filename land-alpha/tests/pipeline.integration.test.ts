@@ -329,6 +329,59 @@ describe('offered for sale is distinguished from merely held', () => {
     }
   });
 
+  spec('an environmental threshold never passes a parcel nobody screened', async () => {
+    // The defect: buildWhere ORed the null case in, so `flood <= 0` returned
+    // 14,247 of 14,310 live parcels while presenting itself as a satisfied
+    // constraint. FEMA and the USGS wetlands service both refuse us (ADR 0011),
+    // so "not measured yet" is the steady state, not a backlog.
+    const strict = await listOpportunities({
+      ...DEFAULT_FILTER,
+      maxFloodOverlap: 0,
+      pageSize: 100,
+    });
+    if (strict.rows.length > 0) {
+      const rows = await prisma.parcelOpportunity.findMany({
+        where: { id: { in: strict.rows.map((r) => r.id) } },
+        select: { floodOverlapFraction: true },
+      });
+      for (const row of rows) {
+        expect(row.floodOverlapFraction).not.toBeNull();
+        expect(row.floodOverlapFraction!).toBeLessThanOrEqual(0);
+      }
+    }
+
+    // The old behaviour stays reachable, but only by asking for it.
+    const loose = await listOpportunities({
+      ...DEFAULT_FILTER,
+      maxFloodOverlap: 0,
+      includeUnscreened: true,
+      pageSize: 1,
+    });
+    expect(loose.total).toBeGreaterThanOrEqual(strict.total);
+
+    const unscreened = await prisma.parcelOpportunity.count({
+      where: {
+        removedFromSourceAt: null,
+        rejected: false,
+        status: { notIn: ['REJECTED' as const, 'ACQUIRED' as const, 'SOLD' as const] },
+        floodOverlapFraction: null,
+      },
+    });
+    if (unscreened > 0) {
+      // If anything is unscreened at all, the two must differ — otherwise the
+      // opt-in is not opting into anything and the fix is inert.
+      expect(loose.total).toBeGreaterThan(strict.total);
+    }
+  });
+
+  spec('the unscreened opt-in round-trips through the URL', async () => {
+    const params = filterToSearchParams({ ...DEFAULT_FILTER, includeUnscreened: true });
+    expect(filterFromSearchParams(params).includeUnscreened).toBe(true);
+    // Absent must mean "screened only". If this ever defaults to true the
+    // threshold silently stops being a threshold again.
+    expect(filterFromSearchParams(new URLSearchParams()).includeUnscreened).toBeUndefined();
+  });
+
   spec('the passed-deadline filter round-trips through the URL', async () => {
     const params = filterToSearchParams({ ...DEFAULT_FILTER, deadlinePassed: true });
     expect(filterFromSearchParams(params).deadlinePassed).toBe(true);
