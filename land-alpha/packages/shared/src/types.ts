@@ -233,6 +233,12 @@ export interface ComparableSummary {
 
 export interface OpportunityEconomics {
   readonly acquisitionPrice: UsdCents;
+  /**
+   * Whether `acquisitionPrice` is a published figure or a placeholder zero.
+   * When false the basis is a floor covering closing and carrying costs only,
+   * every ratio below is null, and the tier is UNKNOWN.
+   */
+  readonly priced: boolean;
   readonly governmentFees: UsdCents;
   readonly recordingCost: UsdCents;
   readonly titleCost: UsdCents;

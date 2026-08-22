@@ -172,8 +172,12 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
   }
 
   // ---- Economics -----------------------------------------------------------
+  // Null, not zero. Nothing in this chain may substitute a favourable number
+  // for a missing one: a parcel priced at nothing scores as the best deal on
+  // the board, which is precisely inverted from the truth that nobody has
+  // obtained its payoff figure yet.
   const acquisitionPriceCents =
-    toCents(parcel.askingPrice) ?? toCents(parcel.minimumBid) ?? toCents(parcel.taxesDue) ?? 0;
+    toCents(parcel.askingPrice) ?? toCents(parcel.minimumBid) ?? toCents(parcel.taxesDue) ?? null;
 
   const curativeCents = parcel.titleRiskScore != null ? await curativeCostFor(parcelId) : 0;
 
@@ -211,25 +215,28 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
         )
       : null;
 
-  const recommendedMaxBidCents =
-    valuation.quickSale && acquisitionPriceCents >= 0
-      ? maximumBidForTargetRatio({
-          quickSaleValueCents: valuation.quickSale.mid,
-          targetBasisToQsv: config.thresholds.strongBasisToQsv,
-          costs: config.costModel,
-          governmentFeesCents: toCents(parcel.fees) ?? 0,
-          annualTaxCents: toCents(parcel.annualTaxEstimate),
-          titleCurativeCents: curativeCents,
-        })
-      : null;
+  // Computed whether or not the price is known — when it is not, this is the
+  // single most useful number on the page: what the parcel is worth bidding.
+  const recommendedMaxBidCents = valuation.quickSale
+    ? maximumBidForTargetRatio({
+        quickSaleValueCents: valuation.quickSale.mid,
+        targetBasisToQsv: config.thresholds.strongBasisToQsv,
+        costs: config.costModel,
+        governmentFeesCents: toCents(parcel.fees) ?? 0,
+        annualTaxCents: toCents(parcel.annualTaxEstimate),
+        titleCurativeCents: curativeCents,
+      })
+    : null;
 
   // ---- Persist -------------------------------------------------------------
   const valuationConfidence: ConfidenceLevel =
-    acquisitionPriceCents === 0 ? minConfidence(valuation.confidence, 'LOW') : valuation.confidence;
+    acquisitionPriceCents == null
+      ? minConfidence(valuation.confidence, 'LOW')
+      : valuation.confidence;
 
-  if (acquisitionPriceCents === 0) {
+  if (acquisitionPriceCents == null) {
     warnings.push(
-      'No acquisition price is published for this parcel, so the all-in basis is a floor rather than an estimate.',
+      'No acquisition price is published for this parcel. The all-in basis shown is a floor covering closing and carrying costs only, and no return, margin or acquisition tier can be computed until the payoff figure is obtained.',
     );
   }
 
@@ -248,7 +255,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       valuationMethod: valuation.retail?.method ?? null,
       valuationWarnings: warnings.slice(0, 20),
 
-      estimatedAcquisitionCost: toDecimal(acquisitionPriceCents || null),
+      estimatedAcquisitionCost: toDecimal(acquisitionPriceCents),
       estimatedAllInBasis: toDecimal(economics?.allInBasis ?? null),
       estimatedCarryingCost: toDecimal(economics?.carryingCost ?? null),
       estimatedTitleCost: toDecimal(economics?.titleCost ?? null),

@@ -35,6 +35,7 @@ import { NotesPanel } from './notes-panel';
 import { ListingPanel, MemoPanel } from './memo-panel';
 import { FinancingPanel } from './financing-panel';
 import { EnvironmentalScreenForm } from './environmental-screen';
+import { AcquisitionPriceControl } from './acquisition-price';
 
 export const dynamic = 'force-dynamic';
 
@@ -651,6 +652,25 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                   {parcel.acquisitionInstructions}
                 </p>
               ) : null}
+            </PanelBody>
+          </Panel>
+
+          <Panel>
+            <PanelHeader
+              title="Acquisition price"
+              subtitle={acquisitionPriceCents == null ? 'Not obtained' : 'Recorded'}
+            />
+            <PanelBody>
+              <AcquisitionPriceControl
+                parcelId={parcel.id}
+                currentDollars={
+                  acquisitionPriceCents == null
+                    ? null
+                    : Math.round(centsToDollars(acquisitionPriceCents))
+                }
+                acquisitionUrl={parcel.source?.acquisitionMethod ?? null}
+                canAct={canAct}
+              />
             </PanelBody>
           </Panel>
 

@@ -504,6 +504,7 @@ describe('assessBuildability', () => {
 function economics(overrides: Partial<OpportunityEconomics> = {}): OpportunityEconomics {
   return {
     acquisitionPrice: 314_000,
+    priced: true,
     governmentFees: 0,
     recordingCost: 6_000,
     titleCost: 45_000,

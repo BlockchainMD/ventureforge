@@ -158,6 +158,7 @@ export async function scoreParcelById(parcelId: string): Promise<AlphaScoreResul
       ? null
       : {
           acquisitionPrice: toCents(parcel.estimatedAcquisitionCost) ?? 0,
+          priced: parcel.estimatedAcquisitionCost != null,
           governmentFees: toCents(parcel.fees) ?? 0,
           recordingCost: toCents(parcel.estimatedRecordingCost) ?? 0,
           titleCost: toCents(parcel.estimatedTitleCost) ?? 0,

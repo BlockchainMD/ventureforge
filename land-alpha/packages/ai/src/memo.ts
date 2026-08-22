@@ -231,7 +231,9 @@ export function renderDeterministicMemo(facts: MemoFacts): Record<string, string
     'INVESTMENT THESIS': [
       `${facts.acreage == null ? 'A parcel of unknown acreage' : formatAcres(facts.acreage)} in ${facts.county} County, ${facts.state}, offered through ${facts.sourceName} as ${humanizeEnum(facts.sourceType)} inventory [source].`,
       facts.basisToQsv == null
-        ? 'No quick-sale value could be established, so no economic thesis can be stated.'
+        ? facts.acquisitionPriceCents == null && facts.quickSaleValueCents != null
+          ? `Conservative quick-sale value is ${money(facts.quickSaleValueCents)}, but no acquisition price has been obtained, so no economic thesis can be stated. Obtaining the payoff figure is the next step.`
+          : 'No quick-sale value could be established, so no economic thesis can be stated.'
         : `Estimated all-in basis of ${money(facts.allInBasisCents)} against a conservative quick-sale value of ${money(facts.quickSaleValueCents)} — ${formatPercent(facts.basisToQsv, 1)} of value [basisToQsv].`,
       facts.alphaScore == null
         ? ''
@@ -399,6 +401,11 @@ function collectUnknowns(facts: MemoFacts): string[] {
   if (facts.titleRiskScore == null) unknowns.add('Title pre-screen has not been run.');
   if (facts.acreage == null) unknowns.add('Parcel acreage is not established.');
   if (facts.comparableCount === 0) unknowns.add('No comparable sales support the valuation.');
+  if (facts.acquisitionPriceCents == null) {
+    unknowns.add(
+      'No acquisition price has been obtained. Until it is, the all-in basis omits its largest component and no return can be computed.',
+    );
+  }
   return [...unknowns];
 }
 

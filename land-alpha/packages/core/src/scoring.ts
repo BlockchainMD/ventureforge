@@ -235,9 +235,20 @@ interface ComponentScore {
 function scoreDiscountToQsv(inputs: ScoringInputs, config: ScoringConfigValue): ComponentScore {
   const economics = inputs.economics;
   if (!economics || economics.basisToQsv == null) {
+    // Two different gaps produce the same null, and an analyst can act on one
+    // of them in an afternoon: a missing price is a phone call to the
+    // Comptroller, a missing quick-sale value needs comparable sales that may
+    // not exist. Saying which is missing is the difference between a queue
+    // someone works and a queue someone ignores.
+    const missing =
+      economics == null
+        ? 'Neither an acquisition price nor a quick-sale value has been established'
+        : !economics.priced && inputs.valuation?.quickSale != null
+          ? 'No acquisition price has been obtained for this parcel, so the discount cannot be computed'
+          : 'No quick-sale value could be established, so the discount is unknown';
     return {
       score: NEUTRAL,
-      rationale: 'No quick-sale value could be established, so the discount is unknown.',
+      rationale: `${missing}.`,
       confidence: 'UNKNOWN',
     };
   }

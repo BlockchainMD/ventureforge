@@ -346,6 +346,39 @@ describe('valueParcel', () => {
 });
 
 describe('computeEconomics', () => {
+  it('refuses to price a parcel whose cost nobody knows', () => {
+    // Tax-deed inventory is published without a price. Coercing that to zero
+    // yields a basis of pure closing costs, a basis/QSV ratio near zero and a
+    // tier of EXCEPTIONAL — which is how an unpriced parcel reaches the top of
+    // a buy list carrying a fabricated four-figure return.
+    const economics = computeEconomics(
+      { acquisitionPriceCents: null, quickSaleValueCents: 4_584_038 },
+      COSTS,
+      THRESHOLDS,
+    );
+    expect(economics.priced).toBe(false);
+    expect(economics.tier).toBe('UNKNOWN');
+    expect(economics.basisToQsv).toBeNull();
+    expect(economics.basisToRetail).toBeNull();
+    expect(economics.roiAtQsv).toBeNull();
+    expect(economics.annualizedRoiAtQsv).toBeNull();
+    expect(economics.grossProfitAtQsv).toBeNull();
+    // The basis is still reported: it is a genuine floor, and knowing that
+    // owning the parcel costs $3,300 before you have paid for it is useful.
+    expect(economics.allInBasis).toBeGreaterThan(0);
+  });
+
+  it('treats a genuinely free parcel differently from an unpriced one', () => {
+    const free = computeEconomics(
+      { acquisitionPriceCents: 0, quickSaleValueCents: 4_584_038 },
+      COSTS,
+      THRESHOLDS,
+    );
+    expect(free.priced).toBe(true);
+    expect(free.basisToQsv).not.toBeNull();
+    expect(free.tier).not.toBe('UNKNOWN');
+  });
+
   it('builds an all-in basis that exceeds the acquisition price', () => {
     const economics = computeEconomics(
       { acquisitionPriceCents: 314_000, quickSaleValueCents: 2_600_000 },

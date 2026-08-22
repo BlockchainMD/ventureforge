@@ -400,3 +400,65 @@ export async function recordEnvironmentalScreenAction(
   revalidatePath(`/opportunities/${parcelId}`);
   return { ok: true, message: `Recorded. ${input.layer} is now screened.` };
 }
+
+/**
+ * Record the acquisition price an analyst obtained.
+ *
+ * Tax-deed and lands-available inventory is published without a price: Orange
+ * County's layer carries a TDA number, a sale date and a status, and the payoff
+ * figure — opening bid plus accrued taxes, interest and fees — comes from the
+ * Comptroller on request. Until someone asks, the parcel has no cost, and
+ * without a cost there is no spread, no return and nothing to rank.
+ *
+ * Writing it to `askingPrice` puts it exactly where a published price would go,
+ * so valuation, scoring and the memo consume it with no special case. What the
+ * audit log preserves is that a person supplied it.
+ */
+export async function setAcquisitionPriceAction(
+  parcelId: string,
+  dollars: string,
+  note: string,
+): Promise<ActionResult> {
+  const user = await requireRole('ANALYST');
+
+  const trimmed = dollars.trim();
+  if (!trimmed) {
+    await prisma.parcelOpportunity.update({
+      where: { id: parcelId },
+      data: { askingPrice: null },
+    });
+    await recordActivity(user, {
+      action: 'parcel.acquisition-price',
+      entityType: 'ParcelOpportunity',
+      entityId: parcelId,
+      summary: 'Cleared the acquisition price',
+    });
+  } else {
+    const amount = Number(trimmed.replace(/[$,]/g, ''));
+    if (!Number.isFinite(amount) || amount < 0) {
+      return { ok: false, message: 'Enter the price in dollars, or leave it blank to clear it.' };
+    }
+    await prisma.parcelOpportunity.update({
+      where: { id: parcelId },
+      data: { askingPrice: toDecimal(Math.round(amount * 100)) },
+    });
+    await recordActivity(user, {
+      action: 'parcel.acquisition-price',
+      entityType: 'ParcelOpportunity',
+      entityId: parcelId,
+      summary: `Recorded an acquisition price of $${amount.toLocaleString('en-US')}${note.trim() ? ` — ${note.trim()}` : ''}`,
+      metadata: { amount, note: note.trim() || null },
+    });
+  }
+
+  // Re-price and re-rank immediately. A figure entered and not acted on is the
+  // same as no figure at all.
+  await valuateParcel(parcelId);
+  await scoreParcelById(parcelId);
+  revalidatePath(`/opportunities/${parcelId}`);
+  revalidatePath('/opportunities');
+  return {
+    ok: true,
+    message: trimmed ? 'Price recorded. Economics and rank updated.' : 'Price cleared.',
+  };
+}
