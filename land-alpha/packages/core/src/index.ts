@@ -16,3 +16,4 @@ export * from './services/manual-import.service';
 export * from './services/lead.service';
 export * from './services/manual-screen.service';
 export * from './services/bulk-price.service';
+export * from './services/worklist.service';

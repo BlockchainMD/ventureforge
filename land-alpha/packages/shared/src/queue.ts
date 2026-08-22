@@ -14,6 +14,7 @@ export const JOB_TYPES = [
   'parcel.memo',
   'parcel.listing',
   'alert.evaluate',
+  'worklist.notify',
   'finance.sweep',
   'calibration.run',
   'maintenance.sourceHealth',
@@ -29,6 +30,8 @@ export interface JobPayloadMap {
   'parcel.memo': { parcelId: string; requestedBy?: string };
   'parcel.listing': { parcelId: string; requestedBy?: string };
   'alert.evaluate': { alertId?: string; since?: string };
+  /** Nudge whoever can act that parcels are blocked on a fact only a person can obtain. */
+  'worklist.notify': Record<string, never>;
   /** Re-evaluate live seller-financed notes; delinquency is a function of the calendar. */
   'finance.sweep': Record<string, never>;
   /** Grade past predictions against realised outcomes and apply what the evidence supports. */

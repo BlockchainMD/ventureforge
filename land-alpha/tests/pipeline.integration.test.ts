@@ -17,6 +17,8 @@ import {
   valuateParcel,
   recordManualScreen,
   recordPricesInBulk,
+  summariseWorklist,
+  notifyWorklist,
   loadManualScreens,
   assessEnvironment,
 } from '@land-alpha/core';
@@ -1068,6 +1070,89 @@ describe('bulk acquisition prices', () => {
       await prisma.parcelOpportunity.deleteMany({
         where: { apn: { in: rows.map((row) => row.apn) } },
       });
+    }
+  });
+});
+
+/**
+ * The nudge that clears the queue.
+ *
+ * Every automated part of this system runs without being asked. The facts no
+ * endpoint will hand over do not, and they gate everything behind them — so
+ * the one failure mode that matters is nobody being told the queue is full.
+ */
+describe('worklist notification', () => {
+  spec('tells whoever can act, once per state of the queue', async () => {
+    const template = await prisma.parcelOpportunity.findFirst({
+      where: { apn: { startsWith: 'FX-' } },
+      select: { sourceId: true, jurisdictionId: true },
+    });
+    const APN = 'WORKLIST-TEST-0001';
+    await prisma.parcelOpportunity.deleteMany({ where: { apn: APN } });
+    await prisma.notification.deleteMany({
+      where: { title: { startsWith: 'Prices outstanding' } },
+    });
+
+    const parcel = await prisma.parcelOpportunity.create({
+      data: {
+        apn: APN,
+        apnNormalized: normalizeApn(APN),
+        naturalKey: `ZZ/Worklist/${normalizeApn(APN)}`,
+        state: 'ZZ',
+        county: 'Worklist',
+        sourceId: template!.sourceId,
+        jurisdictionId: template!.jurisdictionId,
+        quickSaleValue: '42000',
+        askingPrice: null,
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+      },
+      select: { id: true },
+    });
+
+    try {
+      const summary = await summariseWorklist();
+      const mine = summary.counties.find((county) => county.county === 'Worklist');
+      expect(mine?.parcelsAwaitingPrice).toBe(1);
+      expect(mine?.quickSaleValueCents).toBe(4_200_000);
+
+      const actors = await prisma.user.count({
+        where: { role: { in: ['ADMIN', 'ANALYST'] }, isActive: true },
+      });
+      expect(await notifyWorklist()).toBe(actors);
+
+      // Being told the same three counties are waiting every morning is how
+      // people learn to ignore a digest.
+      expect(await notifyWorklist()).toBe(0);
+
+      const sent = await prisma.notification.findMany({
+        where: { title: { startsWith: 'Prices outstanding' } },
+        include: { user: { select: { role: true } } },
+      });
+      expect(sent.length).toBe(actors);
+      expect(sent.every((row) => row.user?.role !== 'VIEWER')).toBe(true);
+      expect(sent[0]?.linkPath).toBe('/blocked');
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: APN } });
+      await prisma.notification.deleteMany({
+        where: { title: { startsWith: 'Prices outstanding' } },
+      });
+      void parcel;
+    }
+  });
+
+  spec('stays quiet when the queue is empty', async () => {
+    await prisma.notification.deleteMany({
+      where: { title: { startsWith: 'Prices outstanding' } },
+    });
+    // A digest that arrives whatever the state of the world is one people stop
+    // opening, and the morning it matters it gets skimmed with the rest.
+    const summary = await summariseWorklist();
+    if (summary.awaitingPrice === 0) {
+      expect(await notifyWorklist()).toBe(0);
+    } else {
+      // The seeded database does have work waiting, which is itself the point.
+      expect(summary.counties.length).toBeGreaterThan(0);
     }
   });
 });

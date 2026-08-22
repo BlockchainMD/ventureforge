@@ -9,6 +9,7 @@ import {
   runCalibration,
   generateListingForParcel,
   generateMemoForParcel,
+  notifyWorklist,
   scoreParcelById,
   valuateParcel,
 } from '@land-alpha/core';
@@ -129,6 +130,16 @@ export const handlers: JobHandlerMap = {
     };
   },
 
+  /**
+   * Nudge whoever can act that parcels are blocked on a person.
+   *
+   * Everything else in this worker runs without being asked. The facts no
+   * public endpoint will hand over — a county's payoff figure, a flood layer
+   * whose publisher forbids automated queries — do not, and they gate the
+   * ranking of everything behind them.
+   */
+  'worklist.notify': async () => ({ notified: await notifyWorklist() }),
+
   'source.discover': async (payload) =>
     discoverSources({
       state: payload.state,
@@ -154,6 +165,7 @@ export const handlers: JobHandlerMap = {
       );
     }
     await queue.enqueue('alert.evaluate', {}, { dedupeKey: 'alert.evaluate' });
+    await queue.enqueue('worklist.notify', {}, { dedupeKey: 'worklist.notify' });
 
     const broken = await prisma.source.count({ where: { sourceStatus: 'BROKEN' } });
     logger.info('maintenance sweep complete', { queued: due.length, brokenSources: broken });
