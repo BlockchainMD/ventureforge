@@ -1,6 +1,7 @@
 import { env } from '@land-alpha/shared/env';
 import type { AnyGeometry, Position } from '@land-alpha/shared';
 import { ArcGisClient } from '../fetch/arcgis';
+import { describeUnavailable } from './unavailable';
 import type { EnrichmentContext, EnrichmentTarget } from './types';
 
 /**
@@ -144,8 +145,38 @@ async function fetchCountyRoads(
 
     return { roads, available: true, source, note: null };
   } catch (error) {
-    return { roads: [], available: false, source, note: `unavailable: ${String(error)}` };
+    return { roads: [], available: false, source, note: describeUnavailable(error, null) };
   }
+}
+
+/**
+ * Road networks, cached by tile for the life of the process.
+ *
+ * The public Overpass endpoint rate-limits hard, and asking it for the roads
+ * around each parcel individually earned an HTTP 503 on every single request:
+ * access came back UNKNOWN for 228 of 304 parcels, each one costing sixteen
+ * seconds of retries to learn nothing. The parcels are not scattered — St.
+ * Louis County's inventory clusters around Duluth and Orange County's are
+ * platted lots in a handful of subdivisions — so one query per two-kilometre
+ * tile answers dozens of them.
+ *
+ * Fewer requests is also simply the right way to treat a free, volunteer-run
+ * service. This is not a way around the rate limit; it is a way to stop
+ * deserving one.
+ */
+const roadTileCache = new Map<string, Promise<RoadObservation>>();
+
+/** Roughly two kilometres at mid latitudes. */
+const TILE_DEGREES = 0.02;
+
+/** Test seam, and a way for a long-lived worker to drop a stale network. */
+export function clearRoadTileCache(): void {
+  roadTileCache.clear();
+}
+
+function tileKeyFor(centroid: Position): string {
+  const [lon, lat] = centroid;
+  return `${Math.floor(lon / TILE_DEGREES)}/${Math.floor(lat / TILE_DEGREES)}`;
 }
 
 async function fetchOsmRoads(
@@ -153,9 +184,35 @@ async function fetchOsmRoads(
   target: EnrichmentTarget,
   radiusMeters: number,
 ): Promise<RoadObservation> {
+  const key = tileKeyFor(target.centroid);
+  const cached = roadTileCache.get(key);
+  if (cached) return cached;
+  const pending = queryOsmTile(ctx, target, radiusMeters);
+  roadTileCache.set(key, pending);
+  return pending;
+}
+
+async function queryOsmTile(
+  ctx: EnrichmentContext,
+  target: EnrichmentTarget,
+  radiusMeters: number,
+): Promise<RoadObservation> {
   const source = 'OpenStreetMap (Overpass)';
   const [lon, lat] = target.centroid;
-  const query = `[out:json][timeout:25];way(around:${Math.round(radiusMeters)},${lat.toFixed(6)},${lon.toFixed(6)})[highway~"^(${VEHICULAR_HIGHWAYS.join('|')})$"];out geom;`;
+  // The tile, not the parcel: one answer has to serve every parcel that falls
+  // inside it, and a radius drawn around this parcel would leave its neighbours
+  // short. The access engine measures frontage against the parcel's own
+  // geometry, so extra roads in the response cost nothing but bytes.
+  const tileLon = Math.floor(lon / TILE_DEGREES) * TILE_DEGREES;
+  const tileLat = Math.floor(lat / TILE_DEGREES) * TILE_DEGREES;
+  const margin = radiusMeters / 111_000;
+  const bbox = [
+    (tileLat - margin).toFixed(6),
+    (tileLon - margin).toFixed(6),
+    (tileLat + TILE_DEGREES + margin).toFixed(6),
+    (tileLon + TILE_DEGREES + margin).toFixed(6),
+  ].join(',');
+  const query = `[out:json][timeout:60];way(${bbox})[highway~"^(${VEHICULAR_HIGHWAYS.join('|')})$"];out geom;`;
 
   try {
     const response = await ctx.http.getJson<{
@@ -195,7 +252,7 @@ async function fetchOsmRoads(
           : 'No mapped road found within the search radius.',
     };
   } catch (error) {
-    return { roads: [], available: false, source, note: `unavailable: ${String(error)}` };
+    return { roads: [], available: false, source, note: describeUnavailable(error, null) };
   }
 }
 

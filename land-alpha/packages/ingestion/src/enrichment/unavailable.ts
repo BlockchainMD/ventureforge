@@ -1,4 +1,4 @@
-import { AccessRestrictedError } from '@land-alpha/shared';
+import { AccessRestrictedError, RateLimitedError } from '@land-alpha/shared';
 
 /**
  * Explains a failed enrichment call in the terms an analyst has to act on.
@@ -14,6 +14,14 @@ export function describeUnavailable(error: unknown, manualUrl: string | null): s
     return manualUrl
       ? `the publisher does not permit automated queries against this service, so it must be checked by hand at ${manualUrl}`
       : 'the publisher does not permit automated queries against this service, so it must be checked by hand';
+  }
+  if (error instanceof RateLimitedError) {
+    // A third category, distinct from both a permanent restriction and a random
+    // outage: the service is willing but we asked too often. The fix is on our
+    // side, and saying so stops it being read as "this parcel has nothing here".
+    return manualUrl
+      ? `the service asked us to slow down and the query was not retried further. It can be checked by hand at ${manualUrl}`
+      : 'the service asked us to slow down and the query was not retried further';
   }
   const detail = error instanceof Error ? error.message : String(error);
   const trimmed = detail.length > 180 ? `${detail.slice(0, 177)}…` : detail;
