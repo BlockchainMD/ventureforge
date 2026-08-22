@@ -31,6 +31,16 @@ export interface AllocationCandidate {
   readonly county: string;
   /** All-in cost to acquire and carry to sale. */
   readonly allInBasisCents: UsdCents;
+  /**
+   * Whether a price for this parcel has actually been published.
+   *
+   * `allInBasisCents` is present either way, because closing and carrying costs
+   * can be modelled without knowing the purchase price — but on an unpriced
+   * parcel that figure is a floor with the largest term missing, and treating
+   * it as the basis turns "we do not know what this costs" into a 4,286%
+   * return. See docs/decisions/0012.
+   */
+  readonly priced: boolean;
   readonly quickSaleValueCents: UsdCents | null;
   readonly expectedHoldDays: number | null;
   readonly alphaScore: number | null;
@@ -109,6 +119,15 @@ export function allocateCapital(
     }
     if (candidate.allInBasisCents <= 0) {
       skip('No acquisition cost is known, so return cannot be computed.');
+      continue;
+    }
+    if (!candidate.priced) {
+      // The basis on an unpriced parcel is closing and carrying costs and
+      // nothing else, so every return computed from it is the return you would
+      // make if the land were free. Allocating against it commits budget to a
+      // number nobody has. The errand is the payoff figure, and that queue is
+      // /blocked.
+      skip('No published acquisition price, so there is no basis to commit money against.');
       continue;
     }
     if ((CONFIDENCE_RANK[candidate.valuationConfidence ?? 'UNKNOWN'] ?? 0) < minRank) {

@@ -16,6 +16,7 @@ that flattered the parcel.
 | `memo.ts` | Empty result → confident absence | "No regulated cleanup site within the search radius", printed for parcels where no search had run |
 | `roads.ts` | Failed query → no roads | 228 of 304 parcels penalised on 20% of their score because Overpass answered 503 to every request |
 | `scoring.ts` | No valuation → neutral 50 | Parcels with no comparable sales and no value outranked every parcel that had been assessed |
+| `allocation.service.ts` | Unpriced parcel → costs-only floor treated as the basis | The capital plan committed $46,000 across twelve parcels whose price nobody had, at a reported 584% a year |
 
 Each one is individually defensible in isolation, which is precisely why they
 accumulated. A `?? 0` looks like defensive programming. An empty array looks
@@ -68,3 +69,28 @@ acquisition price, a flood screen, a wetlands screen — and says so loudly
 rather than inventing them. `/blocked` and the `worklist.notify` digest exist
 because an honest gap that nobody is told about is only marginally better than
 a dishonest fill.
+
+## A sixth, found later, in a place the first fix did not reach
+
+`computeEconomics` was corrected early: an unpriced parcel returns a null
+`basisToQsv`, a null margin and a null return, and the parcel page shows
+`unknown` for each. That fix was right and it held.
+
+The allocator did not read any of those fields. It read `estimatedAllInBasis`,
+which is present on an unpriced parcel because closing and carrying costs can
+be modelled without knowing the purchase price — and then treated it as the
+basis. So the same parcel that correctly reads "ROI at QSV: unknown" on its own
+page appeared in the capital plan at 4,286% a year, and the plan's headline
+said $46,000 was committed when the true figure was unknowable.
+
+The lesson is narrower than the original ADR and worth stating separately: it
+is not enough to null the derived figures. A downstream consumer that
+recomputes from the raw inputs will reintroduce the defect, because the raw
+inputs are still there and still look usable. `AllocationCandidate` now carries
+`priced` explicitly, so the engine refuses rather than relying on every caller
+to remember.
+
+Where the money is: with unpriced parcels excluded, the plan falls from twelve
+parcels to four and from a claimed 584% to 198%, and the page says plainly that
+47% of the budget is unspent because too little inventory qualifies — not
+because the money ran out. That sentence is the product working.

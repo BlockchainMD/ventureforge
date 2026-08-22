@@ -59,11 +59,13 @@ export async function planAllocation(
     apn: row.apn,
     state: row.state,
     county: row.county,
-    // Fall back to the published price when the full basis has not been
-    // modelled: understating cost would overstate return, so prefer the
-    // modelled basis where it exists.
+    // Prefer the modelled basis where it exists: understating cost would
+    // overstate return. But the modelled basis exists on unpriced parcels too,
+    // covering closing and carrying costs alone, so `priced` is what decides
+    // whether it means anything.
     allInBasisCents:
       toCents(row.estimatedAllInBasis) ?? toCents(row.askingPrice) ?? toCents(row.minimumBid) ?? 0,
+    priced: row.askingPrice != null || row.minimumBid != null,
     quickSaleValueCents: toCents(row.quickSaleValue),
     expectedHoldDays: row.expectedHoldDays,
     alphaScore: row.alphaScore,

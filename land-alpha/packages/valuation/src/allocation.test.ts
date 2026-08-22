@@ -12,6 +12,7 @@ const candidate = (overrides: Partial<AllocationCandidate> = {}): AllocationCand
   state: 'FL',
   county: 'Orange',
   allInBasisCents: 500_000, // $5,000
+  priced: true,
   quickSaleValueCents: 1_500_000, // $15,000
   expectedHoldDays: 180,
   alphaScore: 70,
@@ -179,5 +180,22 @@ describe('allocateCapital', () => {
     expect(plan.picks).toHaveLength(1);
     expect(plan.expectedProfitCents).toBe(1_000_000);
     expect(plan.expectedReturnOnDeployed).toBeCloseTo(2, 6);
+  });
+});
+
+describe('allocateCapital and the unpriced parcel', () => {
+  it('will not commit money against a basis with the price missing', () => {
+    // Orange County's tax-deed inventory publishes no payoff figure, so the
+    // modelled basis is closing and carrying costs alone — about $3,000 against
+    // a $49,000 quick-sale value. Allocating on that reported 4,286% a year and
+    // put $46,000 of budget behind twelve parcels whose cost nobody knows.
+    const plan = allocateCapital([candidate({ apn: 'UNPRICED-1', priced: false })], config());
+    expect(plan.picks).toHaveLength(0);
+    expect(plan.skipped[0]!.reason).toContain('No published acquisition price');
+  });
+
+  it('still allocates the same parcel once a price is known', () => {
+    const plan = allocateCapital([candidate({ apn: 'PRICED-1', priced: true })], config());
+    expect(plan.picks).toHaveLength(1);
   });
 });
