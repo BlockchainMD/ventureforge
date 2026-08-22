@@ -7,6 +7,7 @@ import {
   evaluateAlertRules,
   createNote,
   manualSources,
+  notifyNewLead,
   previewImport,
   previewFinancing,
   recordPayment,
@@ -827,5 +828,67 @@ describe('indexing rules', () => {
       expect(disallow, `${path} must stay out of the index`).toContain(path);
     }
     expect(rules.sitemap).toMatch(/\/sitemap\.xml$/);
+  });
+});
+
+/**
+ * A buyer enquiry reaching a person.
+ *
+ * The enquiry form has always saved a Lead and told nobody, which for a
+ * weekend enquiry meant Monday. Response time is the strongest predictor of
+ * conversion in this business, so a lead nobody is told about is close to a
+ * lead that never arrived.
+ */
+describe('lead notifications', () => {
+  spec('notifies everyone who can act, and nobody who cannot', async () => {
+    const parcel = await prisma.parcelOpportunity.findFirst({
+      where: { apn: { not: { startsWith: 'FX-' } } },
+      select: { id: true, county: true, state: true },
+    });
+    expect(parcel).not.toBeNull();
+
+    const lead = await prisma.lead.create({
+      data: {
+        parcelId: parcel!.id,
+        name: 'Integration Buyer',
+        email: 'buyer@example.test',
+        offerAmount: '19500',
+        inquiry: 'Do you offer monthly payments?',
+        source: 'PUBLIC_SITE',
+        status: 'NEW',
+      },
+      select: { id: true },
+    });
+
+    try {
+      const sent = await notifyNewLead(lead.id);
+      const [actors, viewers] = await Promise.all([
+        prisma.user.count({ where: { role: { in: ['ADMIN', 'ANALYST'] }, isActive: true } }),
+        prisma.user.count({ where: { role: 'VIEWER' } }),
+      ]);
+      expect(sent).toBe(actors);
+
+      const notifications = await prisma.notification.findMany({
+        where: { parcelId: parcel!.id, title: { contains: 'Offer' } },
+        include: { user: { select: { role: true } } },
+      });
+      expect(notifications.length).toBe(actors);
+      // Notifying someone who cannot reply is noise, and noise is what makes
+      // an alert queue get ignored.
+      expect(notifications.every((n) => n.user.role !== 'VIEWER')).toBe(true);
+      expect(viewers).toBeGreaterThanOrEqual(0);
+
+      const first = notifications[0]!;
+      // HIGH rather than IMMEDIATE: this parcel has no published listing
+      // price, so whether $19,500 is a strong offer is genuinely unknown, and
+      // claiming otherwise would be the sort of false urgency that trains
+      // people to ignore the queue.
+      expect(first.urgency).toBe('HIGH');
+      expect(first.body).toContain('buyer@example.test');
+      expect(first.linkPath).toBe('/leads');
+    } finally {
+      await prisma.notification.deleteMany({ where: { title: { contains: 'Offer $19,500' } } });
+      await prisma.lead.delete({ where: { id: lead.id } });
+    }
   });
 });

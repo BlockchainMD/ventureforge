@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { prisma, toDecimal } from '@land-alpha/db';
 import { createLogger } from '@land-alpha/shared/logger';
+import { notifyNewLead } from '@land-alpha/core';
 
 const logger = createLogger({ component: 'public-inquiry' });
 
@@ -50,7 +51,7 @@ export async function submitInquiryAction(
   }
 
   const data = parsed.data;
-  await prisma.lead.create({
+  const lead = await prisma.lead.create({
     data: {
       parcelId,
       name: data.name,
@@ -62,7 +63,18 @@ export async function submitInquiryAction(
       source: 'PUBLIC_SITE',
       status: 'NEW',
     },
+    select: { id: true },
   });
+
+  // Response time is the strongest predictor of conversion here, so a lead
+  // reaches someone who can act on it rather than waiting to be discovered.
+  // A failure to notify must not lose the buyer their confirmation — the lead
+  // is already saved either way.
+  try {
+    await notifyNewLead(lead.id);
+  } catch (error) {
+    logger.error('lead saved but notification failed', { leadId: lead.id, error: String(error) });
+  }
 
   logger.info('public enquiry received', { slug, hasOffer: data.offerAmount != null });
   return { ok: true, message: 'Enquiry received.' };
