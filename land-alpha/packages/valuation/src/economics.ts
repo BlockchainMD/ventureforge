@@ -124,8 +124,7 @@ export function computeEconomics(
   //
   // Losses were already scaled rather than compounded. Gains now match, so the
   // number means the same thing in both directions.
-  const annualizedRoiAtQsv =
-    roiAtQsv != null && holdYears > 0 ? roiAtQsv / holdYears : null;
+  const annualizedRoiAtQsv = roiAtQsv != null && holdYears > 0 ? roiAtQsv / holdYears : null;
 
   return {
     acquisitionPrice,

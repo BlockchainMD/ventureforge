@@ -508,7 +508,9 @@ describe('computeEconomics', () => {
     );
     const holdYears = 122 / 365;
     expect(economics.annualizedRoiAtQsv).toBeCloseTo(economics.roiAtQsv! / holdYears, 6);
-    expect(economics.annualizedRoiAtQsv!).toBeLessThan(Math.pow(1 + economics.roiAtQsv!, 1 / holdYears) - 1);
+    expect(economics.annualizedRoiAtQsv!).toBeLessThan(
+      Math.pow(1 + economics.roiAtQsv!, 1 / holdYears) - 1,
+    );
   });
 
   it('ranks by capital efficiency, not by how short the hold is', () => {
