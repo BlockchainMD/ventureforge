@@ -14,3 +14,4 @@ export * from './services/finance.service';
 export * from './services/allocation.service';
 export * from './services/manual-import.service';
 export * from './services/lead.service';
+export * from './services/manual-screen.service';

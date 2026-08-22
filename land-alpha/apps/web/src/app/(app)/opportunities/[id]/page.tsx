@@ -34,6 +34,7 @@ import { MaxBidControl, ParcelActions, RejectionOverride } from './parcel-action
 import { NotesPanel } from './notes-panel';
 import { ListingPanel, MemoPanel } from './memo-panel';
 import { FinancingPanel } from './financing-panel';
+import { EnvironmentalScreenForm } from './environmental-screen';
 
 export const dynamic = 'force-dynamic';
 
@@ -492,6 +493,13 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                 </Metric>
               </MetricGrid>
               <EvidenceList items={[]} unknowns={parcel.environmentalUnknowns} />
+              <EnvironmentalScreenForm
+                parcelId={parcel.id}
+                latitude={parcel.latitude}
+                longitude={parcel.longitude}
+                screened={parcel.environmentalLayersScreened}
+                canAct={canAct}
+              />
               <Disclaimer>{ENVIRONMENTAL_DISCLAIMER}</Disclaimer>
             </PanelBody>
           </Panel>

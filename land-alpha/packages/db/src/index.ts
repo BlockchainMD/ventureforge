@@ -12,6 +12,7 @@ export {
   UNIQUE_VIOLATION,
   NOT_FOUND,
 } from './client';
+export type { EnvironmentalLayer } from '@prisma/client';
 export * from './mappers';
 export * as spatial from './spatial';
 export * from './repositories/parcels';

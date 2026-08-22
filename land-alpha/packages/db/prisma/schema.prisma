@@ -48,6 +48,7 @@ model User {
   savedSearches   SavedSearch[]
   watchlists      Watchlist[]
   notes           ParcelNote[]
+  environmentalScreens ManualEnvironmentalScreen[]
   activities      ActivityLog[]
   alertRules      AlertRule[]
   notifications   Notification[]
@@ -668,6 +669,7 @@ model ParcelOpportunity {
   evidence            Evidence[]
   changes             ParcelChange[]
   notes               ParcelNote[]
+  environmentalScreens ManualEnvironmentalScreen[]
   documents           ParcelDocument[]
   titleInstruments    TitleInstrument[]
   titleResearchTasks  TitleResearchTask[]
@@ -716,6 +718,52 @@ model Evidence {
 
   @@index([parcelId, field])
   @@index([parcelId, createdAt])
+}
+
+/// A layer an analyst screened by hand.
+///
+/// Flood, wetlands and regulated-cleanup-site data are all published behind
+/// robots directives or bot protection that Land Alpha does not work around,
+/// so the only way those layers are ever screened is a person opening the
+/// public map viewer. This records what they saw, so the screening engine can
+/// consume it exactly as it consumes an API response — same confidence rules,
+/// same buildability consequences, same memo text — with the difference that
+/// the observation names the person who made it.
+model ManualEnvironmentalScreen {
+  id        String                @id @default(uuid())
+  parcelId  String
+  layer     EnvironmentalLayer
+  /// Verbatim finding: flood zone codes, NWI classification codes, or the
+  /// distance and name of the nearest regulated site.
+  findings  String[]              @default([])
+  /// Share of the parcel affected, 0-1, where the analyst could judge it.
+  overlapFraction Float?
+  /// Metres to the nearest regulated cleanup site. CONTAMINATION only.
+  nearestSiteMeters Float?
+  /// True when the analyst confirmed the layer maps nothing here. Distinct
+  /// from an empty findings array on an abandoned entry.
+  clear     Boolean               @default(false)
+  /// Where they looked, so a reviewer can repeat it.
+  sourceUrl String?
+  notes     String?
+  screenedById String?
+  screenedByLabel String
+  screenedAt DateTime             @default(now())
+  /// Superseded entries are kept: a screening that later proved wrong is
+  /// evidence about the analyst, not something to erase.
+  supersededAt DateTime?
+
+  parcel     ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  screenedBy User?             @relation(fields: [screenedById], references: [id], onDelete: SetNull)
+
+  @@index([parcelId, layer, supersededAt])
+}
+
+enum EnvironmentalLayer {
+  FLOOD
+  WETLANDS
+  CONTAMINATION
+  SOILS
 }
 
 model ParcelNote {

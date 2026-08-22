@@ -15,6 +15,7 @@ import { registryByKey } from '@land-alpha/source-registry';
 import { assessAccess, type RoadObservation as AccessRoad } from '../access';
 import { assessEnvironment } from '../environmental';
 import { assessBuildability, type UtilityContext, type ZoningContext } from '../buildability';
+import { loadManualScreens } from './manual-screen.service';
 
 /**
  * Enrichment orchestration.
@@ -202,11 +203,12 @@ export async function enrichParcel(
   // ---- Environmental -------------------------------------------------------
   let environmental: EnvironmentalAssessment | null = null;
   if (stages.has('environmental')) {
-    const [flood, wetlands, contamination, terrain] = await Promise.all([
+    const [flood, wetlands, contamination, terrain, manual] = await Promise.all([
       enrichment.fetchFloodHazard(ctx, target),
       enrichment.fetchWetlands(ctx, target),
       enrichment.fetchContamination(ctx, target),
       enrichment.fetchTerrain(ctx, target),
+      loadManualScreens(parcelId),
     ]);
 
     // Overlap is measured in PostGIS against the actual parcel polygon, not
@@ -225,6 +227,10 @@ export async function enrichParcel(
     const wetlandStored = parcel.wetlandTypes.length > 0 || parcel.wetlandOverlapFraction != null;
 
     environmental = assessEnvironment({
+      // A live answer wins; an analyst's screen is the next best thing and is
+      // preferred over a stale reading, because it is the only evidence anyone
+      // actually looked. Its source string names them, so no downstream reader
+      // can mistake it for a federal dataset.
       flood: flood.available
         ? {
             zones: flood.zones,
@@ -232,13 +238,20 @@ export async function enrichParcel(
             available: true,
             source: flood.source,
           }
-        : {
-            zones: parcel.floodZones,
-            overlapFraction: parcel.floodOverlapFraction,
-            available: floodStored,
-            source: 'Previously recorded observation',
-            unavailableReason: flood.note,
-          },
+        : manual.FLOOD
+          ? {
+              zones: manual.FLOOD.findings,
+              overlapFraction: manual.FLOOD.overlapFraction,
+              available: true,
+              source: manual.FLOOD.source,
+            }
+          : {
+              zones: parcel.floodZones,
+              overlapFraction: parcel.floodOverlapFraction,
+              available: floodStored,
+              source: 'Previously recorded observation',
+              unavailableReason: flood.note,
+            },
       wetlands: wetlands.available
         ? {
             types: wetlands.types,
@@ -246,13 +259,20 @@ export async function enrichParcel(
             available: true,
             source: wetlands.source,
           }
-        : {
-            types: parcel.wetlandTypes,
-            overlapFraction: parcel.wetlandOverlapFraction,
-            available: wetlandStored,
-            source: 'Previously recorded observation',
-            unavailableReason: wetlands.note,
-          },
+        : manual.WETLANDS
+          ? {
+              types: manual.WETLANDS.findings,
+              overlapFraction: manual.WETLANDS.overlapFraction,
+              available: true,
+              source: manual.WETLANDS.source,
+            }
+          : {
+              types: parcel.wetlandTypes,
+              overlapFraction: parcel.wetlandOverlapFraction,
+              available: wetlandStored,
+              source: 'Previously recorded observation',
+              unavailableReason: wetlands.note,
+            },
       contamination: contamination.available
         ? {
             sites: contamination.sites,
@@ -260,22 +280,38 @@ export async function enrichParcel(
             available: true,
             source: contamination.source,
           }
-        : {
-            sites:
-              parcel.nearestContaminatedSiteMeters == null
-                ? []
-                : [
-                    {
-                      program: 'OTHER' as const,
-                      name: 'Previously recorded regulated site',
-                      distanceMeters: parcel.nearestContaminatedSiteMeters,
-                    },
-                  ],
-            searchRadiusMeters: contamination.searchRadiusMeters,
-            available: parcel.nearestContaminatedSiteMeters != null,
-            source: 'Previously recorded observation',
-            unavailableReason: contamination.note,
-          },
+        : manual.CONTAMINATION
+          ? {
+              sites:
+                manual.CONTAMINATION.nearestSiteMeters == null
+                  ? []
+                  : [
+                      {
+                        program: 'OTHER' as const,
+                        name: manual.CONTAMINATION.findings[0] ?? 'Regulated site',
+                        distanceMeters: manual.CONTAMINATION.nearestSiteMeters,
+                      },
+                    ],
+              searchRadiusMeters: contamination.searchRadiusMeters,
+              available: true,
+              source: manual.CONTAMINATION.source,
+            }
+          : {
+              sites:
+                parcel.nearestContaminatedSiteMeters == null
+                  ? []
+                  : [
+                      {
+                        program: 'OTHER' as const,
+                        name: 'Previously recorded regulated site',
+                        distanceMeters: parcel.nearestContaminatedSiteMeters,
+                      },
+                    ],
+              searchRadiusMeters: contamination.searchRadiusMeters,
+              available: parcel.nearestContaminatedSiteMeters != null,
+              source: 'Previously recorded observation',
+              unavailableReason: contamination.note,
+            },
       terrain: terrain.available
         ? {
             meanElevationMeters: terrain.meanElevationMeters,

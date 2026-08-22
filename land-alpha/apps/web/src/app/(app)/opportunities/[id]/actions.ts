@@ -318,3 +318,85 @@ export async function setListingPublishedAction(
   revalidatePath('/properties');
   return { ok: true, message: published ? 'Listing published.' : 'Listing unpublished.' };
 }
+
+/**
+ * Record what an analyst saw in a public map viewer.
+ *
+ * FEMA's NFHL, the National Wetlands Inventory and EPA's coordinate-bearing
+ * facility service are all published behind robots directives or bot protection
+ * that this project does not work around, so a person looking at the map is the
+ * only screening those layers will ever get. This puts what they saw into the
+ * same engine an API response would feed, then re-runs enrichment and scoring so
+ * the parcel's rating moves immediately — which is the whole point, since a
+ * parcel with no hazard screening is capped at buildability UNKNOWN.
+ */
+export async function recordEnvironmentalScreenAction(
+  parcelId: string,
+  input: {
+    layer: 'FLOOD' | 'WETLANDS' | 'CONTAMINATION' | 'SOILS';
+    findings: string;
+    overlapPercent: string;
+    nearestSiteMeters: string;
+    clear: boolean;
+    sourceUrl: string;
+    notes: string;
+  },
+): Promise<ActionResult> {
+  const user = await requireRole('ANALYST');
+  const { recordManualScreen } = await import('@land-alpha/core');
+
+  const findings = input.findings
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const overlapPercent = input.overlapPercent.trim() ? Number(input.overlapPercent) : null;
+  if (
+    overlapPercent != null &&
+    (!Number.isFinite(overlapPercent) || overlapPercent < 0 || overlapPercent > 100)
+  ) {
+    return { ok: false, message: 'Overlap must be a percentage between 0 and 100.' };
+  }
+  const nearestSiteMeters = input.nearestSiteMeters.trim() ? Number(input.nearestSiteMeters) : null;
+  if (nearestSiteMeters != null && (!Number.isFinite(nearestSiteMeters) || nearestSiteMeters < 0)) {
+    return {
+      ok: false,
+      message: 'Distance to the nearest site must be a positive number of metres.',
+    };
+  }
+
+  try {
+    await recordManualScreen({
+      parcelId,
+      layer: input.layer,
+      findings,
+      overlapFraction: overlapPercent == null ? null : overlapPercent / 100,
+      nearestSiteMeters,
+      clear: input.clear,
+      sourceUrl: input.sourceUrl.trim() || null,
+      notes: input.notes.trim() || null,
+      screenedById: user.id,
+      screenedByLabel: user.name,
+    });
+  } catch (error) {
+    return { ok: false, message: String(error instanceof Error ? error.message : error) };
+  }
+
+  await recordActivity(user, {
+    action: 'parcel.environmental-screen',
+    entityType: 'ParcelOpportunity',
+    entityId: parcelId,
+    summary: `Recorded a manual ${input.layer.toLowerCase()} screen: ${
+      input.clear ? 'clear' : findings.join(', ') || `${nearestSiteMeters} m to nearest site`
+    }`,
+    metadata: { layer: input.layer, findings, clear: input.clear, sourceUrl: input.sourceUrl },
+  });
+
+  // Re-run the screen so the rating reflects the new evidence without the
+  // analyst having to remember a second button.
+  await enrichParcel(parcelId, { stages: ['environmental', 'buildability'] });
+  await scoreParcelById(parcelId);
+
+  revalidatePath(`/opportunities/${parcelId}`);
+  return { ok: true, message: `Recorded. ${input.layer} is now screened.` };
+}

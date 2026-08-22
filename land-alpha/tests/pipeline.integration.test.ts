@@ -15,6 +15,9 @@ import {
   refreshNoteStanding,
   scoreParcelById,
   valuateParcel,
+  recordManualScreen,
+  loadManualScreens,
+  assessEnvironment,
 } from '@land-alpha/core';
 import { buildAmortizationSchedule, calibrateFromOutcomes } from '@land-alpha/valuation';
 import { normalizeApn } from '@land-alpha/shared/ids';
@@ -840,6 +843,160 @@ describe('indexing rules', () => {
  * conversion in this business, so a lead nobody is told about is close to a
  * lead that never arrived.
  */
+/**
+ * Manual environmental screening.
+ *
+ * Flood, wetlands and cleanup-site data are all published behind access
+ * controls this project does not work around, so an analyst opening the map
+ * viewer is the only screening those layers get. The test that matters is that
+ * their entry has the same effect an API response would: it lifts the parcel
+ * off UNKNOWN, and it is attributed to them rather than to a federal dataset.
+ */
+describe('manual environmental screening', () => {
+  spec('an analyst screen lifts a parcel off UNKNOWN and names who did it', async () => {
+    const template = await prisma.parcelOpportunity.findFirst({
+      where: { apn: { startsWith: 'FX-' } },
+      select: { sourceId: true, jurisdictionId: true },
+    });
+    expect(template, 'a seeded parcel is needed as a template').not.toBeNull();
+
+    const APN = 'SCREEN-TEST-0001';
+    await prisma.parcelOpportunity.deleteMany({ where: { apn: APN } });
+    const parcel = await prisma.parcelOpportunity.create({
+      data: {
+        apn: APN,
+        apnNormalized: normalizeApn(APN),
+        naturalKey: `ZZ/Screen/${normalizeApn(APN)}`,
+        state: 'ZZ',
+        county: 'Screen',
+        sourceId: template!.sourceId,
+        jurisdictionId: template!.jurisdictionId,
+        acreage: 2.5,
+        latitude: 46.7517,
+        longitude: -92.1936,
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+      },
+      select: { id: true },
+    });
+
+    try {
+      // Nothing screened yet: an empty wetlandTypes array must not read as
+      // "no wetlands", and there is no observation to build a rating on.
+      const before = await assessFromScreens(parcel.id);
+      expect(before.layersScreened).toEqual([]);
+      expect(before.confidence).toBe('UNKNOWN');
+
+      await recordManualScreen({
+        parcelId: parcel.id,
+        layer: 'FLOOD',
+        findings: ['X'],
+        overlapFraction: 0,
+        clear: false,
+        sourceUrl: 'https://msc.fema.gov/portal/search',
+        notes: null,
+        screenedById: null,
+        screenedByLabel: 'Dana Okonkwo',
+      });
+
+      const after = await assessFromScreens(parcel.id);
+      expect(after.layersScreened).toContain('FLOOD');
+      expect(after.confidence).not.toBe('UNKNOWN');
+      expect(after.inSpecialFloodHazardArea).toBe(false);
+      // The provenance is the whole point. A reader must be able to tell this
+      // from a FEMA response.
+      expect(after.evidence.join(' ')).toContain('Dana Okonkwo');
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: APN } });
+    }
+  });
+
+  spec('a later screen supersedes the earlier one without erasing it', async () => {
+    const template = await prisma.parcelOpportunity.findFirst({
+      where: { apn: { startsWith: 'FX-' } },
+      select: { sourceId: true, jurisdictionId: true },
+    });
+    const APN = 'SCREEN-TEST-0002';
+    await prisma.parcelOpportunity.deleteMany({ where: { apn: APN } });
+    const parcel = await prisma.parcelOpportunity.create({
+      data: {
+        apn: APN,
+        apnNormalized: normalizeApn(APN),
+        naturalKey: `ZZ/Screen/${normalizeApn(APN)}`,
+        state: 'ZZ',
+        county: 'Screen',
+        sourceId: template!.sourceId,
+        jurisdictionId: template!.jurisdictionId,
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+      },
+      select: { id: true },
+    });
+
+    try {
+      for (const zone of ['X', 'AE']) {
+        await recordManualScreen({
+          parcelId: parcel.id,
+          layer: 'FLOOD',
+          findings: [zone],
+          clear: false,
+          screenedById: null,
+          screenedByLabel: 'Dana Okonkwo',
+        });
+      }
+
+      const current = await loadManualScreens(parcel.id);
+      expect(current.FLOOD?.findings).toEqual(['AE']);
+
+      // A screening that later proved wrong is evidence about how the
+      // screening was done. It is superseded, never deleted.
+      const all = await prisma.manualEnvironmentalScreen.findMany({
+        where: { parcelId: parcel.id },
+      });
+      expect(all.length).toBe(2);
+      expect(all.filter((row) => row.supersededAt != null).length).toBe(1);
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: APN } });
+    }
+  });
+
+  spec('refuses an entry that records neither a finding nor an all-clear', async () => {
+    await expect(
+      recordManualScreen({
+        parcelId: 'does-not-matter',
+        layer: 'WETLANDS',
+        findings: [],
+        clear: false,
+        screenedById: null,
+        screenedByLabel: 'Dana Okonkwo',
+      }),
+    ).rejects.toThrow(/finding or an explicit confirmation/);
+  });
+});
+
+/** Runs the screening engine over whatever manual screens a parcel has. */
+async function assessFromScreens(parcelId: string) {
+  const manual = await loadManualScreens(parcelId);
+  return assessEnvironment({
+    flood: manual.FLOOD
+      ? {
+          zones: manual.FLOOD.findings,
+          overlapFraction: manual.FLOOD.overlapFraction,
+          available: true,
+          source: manual.FLOOD.source,
+        }
+      : { zones: [], overlapFraction: null, available: false, source: 'FEMA NFHL' },
+    wetlands: manual.WETLANDS
+      ? {
+          types: manual.WETLANDS.findings,
+          overlapFraction: manual.WETLANDS.overlapFraction,
+          available: true,
+          source: manual.WETLANDS.source,
+        }
+      : { types: [], overlapFraction: null, available: false, source: 'USFWS NWI' },
+  });
+}
+
 describe('lead notifications', () => {
   spec('notifies everyone who can act, and nobody who cannot', async () => {
     // Creates its own parcel rather than borrowing one. A seeded database
