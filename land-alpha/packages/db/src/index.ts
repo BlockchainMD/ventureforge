@@ -18,5 +18,6 @@ export * as spatial from './spatial';
 export * from './repositories/parcels';
 export * from './repositories/sources';
 export * from './repositories/evidence';
+export * from './repositories/comparables';
 export * from './repositories/scoring-config';
 export { getQueue, setQueue, PostgresJobQueue } from './queue/index';

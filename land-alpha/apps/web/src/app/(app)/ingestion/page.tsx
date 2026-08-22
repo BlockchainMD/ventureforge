@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { prisma } from '@land-alpha/db';
+import { actionableCoverage, comparableCoverage, prisma } from '@land-alpha/db';
 import { formatDateTime, formatNumber, humanizeEnum } from '@land-alpha/shared';
 import { PageHeader } from '@/components/layout/shell';
 import { Panel, PanelHeader, PanelBody } from '@/components/ui/panel';
@@ -20,7 +20,7 @@ export const dynamic = 'force-dynamic';
 export default async function IngestionPage() {
   const since = new Date(Date.now() - 7 * 86_400_000);
 
-  const [runs, jobs, failing, totals] = await Promise.all([
+  const [runs, jobs, failing, totals, compsCoverage] = await Promise.all([
     prisma.ingestionRun.findMany({
       orderBy: { startedAt: 'desc' },
       take: 40,
@@ -44,7 +44,10 @@ export default async function IngestionPage() {
       },
       _count: { _all: true },
     }),
+    comparableCoverage(),
   ]);
+
+  const compsNeedingWork = actionableCoverage(compsCoverage);
 
   return (
     <>
@@ -106,6 +109,88 @@ export default async function IngestionPage() {
             </PanelBody>
           </Panel>
         ) : null}
+
+        <Panel className={compsNeedingWork.length > 0 ? 'border-warn/40' : undefined}>
+          <PanelHeader
+            title="Comparable-sales coverage"
+            subtitle="A sale that cannot be placed on a map cannot be checked for proximity, so a county with no located sales caps every valuation there at LOW. The confidence level is the only other symptom."
+          />
+          {compsCoverage.length === 0 ? (
+            <PanelBody>
+              <p className="text-xs text-ink-dim">
+                No comparable sales have been imported. Nothing can be valued by comparison until at
+                least one county is loaded.
+              </p>
+            </PanelBody>
+          ) : (
+            <>
+              <DataTable>
+                <Thead>
+                  <tr>
+                    <Th>County</Th>
+                    <Th align="right">Sales</Th>
+                    <Th align="right">Located</Th>
+                    <Th align="right">Neighbourhood</Th>
+                    <Th>Sales span</Th>
+                    <Th>Status</Th>
+                  </tr>
+                </Thead>
+                <tbody>
+                  {compsCoverage.map((row) => (
+                    <Tr key={`${row.state}-${row.county}`}>
+                      <Td>
+                        {row.county}, {row.state}
+                      </Td>
+                      <Td align="right">
+                        <Value>{formatNumber(row.total)}</Value>
+                      </Td>
+                      <Td align="right">
+                        <Value className={row.geocodedShare >= 0.8 ? undefined : 'text-warn'}>
+                          {Math.round(row.geocodedShare * 100)}%
+                        </Value>
+                      </Td>
+                      <Td align="right">
+                        {/* Not a defect when absent: only Florida publishes an
+                            assessor neighbourhood code, and comparability falls
+                            back to radius elsewhere. */}
+                        <Value className={row.neighborhoodShare > 0 ? undefined : 'text-ink-dim'}>
+                          {Math.round(row.neighborhoodShare * 100)}%
+                        </Value>
+                      </Td>
+                      <Td>
+                        {row.earliestSale && row.latestSale
+                          ? `${row.earliestSale.getFullYear()}–${row.latestSale.getFullYear()}`
+                          : '—'}
+                      </Td>
+                      <Td>
+                        <Badge
+                          tone={
+                            row.status === 'READY'
+                              ? 'good'
+                              : row.status === 'PARTIAL'
+                                ? 'warn'
+                                : 'bad'
+                          }
+                        >
+                          {row.status}
+                        </Badge>
+                      </Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </DataTable>
+              {compsNeedingWork.length > 0 ? (
+                <PanelBody className="space-y-1.5 border-t border-line">
+                  {compsNeedingWork.map((row) => (
+                    <p key={`${row.state}-${row.county}-fix`} className="text-xs text-warn">
+                      {row.diagnosis}
+                    </p>
+                  ))}
+                </PanelBody>
+              ) : null}
+            </>
+          )}
+        </Panel>
 
         <Panel>
           <PanelHeader title="Recent runs" />

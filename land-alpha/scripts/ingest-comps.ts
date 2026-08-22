@@ -1,13 +1,13 @@
 /**
  * Ingest comparable sales.
  *
- *   pnpm comps                        list registered sources and coverage
+ *   pnpm comps                        list sources, and what is in the database
  *   pnpm comps mn-grant-sales         ingest one source
  *   pnpm comps --all                  ingest every enabled source
  *   pnpm comps --enrich-fl Orange     fill parcel facts from the Florida roll
  *   pnpm comps --geocode-fl Marion    put the county's comparables on the map
  */
-import { prisma } from '@land-alpha/db';
+import { actionableCoverage, comparableCoverage, prisma } from '@land-alpha/db';
 import { comps, IngestHttpClient } from '@land-alpha/ingestion';
 
 async function main(): Promise<void> {
@@ -55,8 +55,52 @@ async function main(): Promise<void> {
         console.log(`     ${source.notes.slice(0, 150)}…`);
       }
     }
-    console.log(`\n  Real sales data: ${coverage.active.join(', ') || 'none'}`);
-    console.log(`  Requires import: ${coverage.needsImport.join(', ') || 'none'}\n`);
+    // The registry says which counties have an *automated* sales source. The
+    // database says which counties actually have sales. They disagree, and
+    // printing both claims side by side without reconciling them produced the
+    // same contradiction the source panel used to have: "Requires import:
+    // St. Louis, MN" directly above 880 St. Louis sales. Sales reach a county
+    // by more than one route, so absence from the registry is not absence of
+    // data.
+    const inDatabase = await comparableCoverage();
+    const present = new Set(inDatabase.map((row) => `${row.county}, ${row.state}`));
+    const missing = coverage.needsImport.filter((name) => !present.has(name));
+    const viaOtherRoute = coverage.needsImport.filter((name) => present.has(name));
+
+    console.log(`\n  Automated source:    ${coverage.active.join(', ') || 'none'}`);
+    console.log(`  No source, no data:  ${missing.join(', ') || 'none'}`);
+    if (viaOtherRoute.length > 0) {
+      console.log(`  No source, has data: ${viaOtherRoute.join(', ')} (imported another way)`);
+    }
+
+    console.log('\nIn the database:\n');
+    if (inDatabase.length === 0) {
+      console.log('  none — run an import above\n');
+      return;
+    }
+    console.log(
+      `  ${'COUNTY'.padEnd(20)} ${'SALES'.padStart(7)} ${'LOCATED'.padStart(8)} ${'NBHD'.padStart(6)}  ${'YEARS'.padEnd(11)} STATUS`,
+    );
+    for (const row of inDatabase) {
+      const years =
+        row.earliestSale && row.latestSale
+          ? `${row.earliestSale.getFullYear()}–${row.latestSale.getFullYear()}`
+          : '—';
+      console.log(
+        `  ${`${row.county}, ${row.state}`.padEnd(20)} ` +
+          `${row.total.toLocaleString().padStart(7)} ` +
+          `${`${(row.geocodedShare * 100).toFixed(0)}%`.padStart(8)} ` +
+          `${`${(row.neighborhoodShare * 100).toFixed(0)}%`.padStart(6)}  ` +
+          `${years.padEnd(11)} ${row.status}`,
+      );
+    }
+
+    const actionable = actionableCoverage(inDatabase);
+    if (actionable.length > 0) {
+      console.log('');
+      for (const row of actionable) console.log(`  ! ${row.diagnosis}`);
+    }
+    console.log('');
     return;
   }
 
