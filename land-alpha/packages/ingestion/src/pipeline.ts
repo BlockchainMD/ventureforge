@@ -253,7 +253,7 @@ export async function runSource(
   }
 }
 
-interface UpsertResult {
+export interface UpsertResult {
   readonly parcelId: string;
   readonly naturalKey: string;
   readonly outcome: 'created' | 'changed' | 'unchanged';
@@ -261,7 +261,7 @@ interface UpsertResult {
   readonly needsRescore: boolean;
 }
 
-async function upsertParcel(
+export async function upsertParcel(
   item: ParcelOpportunityInput,
   registryEntry: RegistryEntry,
   runId: string,

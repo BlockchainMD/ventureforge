@@ -3,8 +3,11 @@ import { prisma, getActiveScoringConfig, spatial, toCents } from '@land-alpha/db
 import { FIXTURE_PARCELS } from '@land-alpha/db/seed/fixture-parcels';
 import {
   collectRealisedOutcomes,
+  commitImport,
   evaluateAlertRules,
   createNote,
+  manualSources,
+  previewImport,
   previewFinancing,
   recordPayment,
   refreshNoteStanding,
@@ -613,6 +616,108 @@ describe('speed alerts', () => {
     } finally {
       await prisma.notification.deleteMany({ where: { alertRuleId: rule.id } });
       await prisma.alertRule.delete({ where: { id: rule.id } });
+    }
+  });
+});
+
+/**
+ * The analyst import path.
+ *
+ * Five registry sources are MANUAL_ONLY because Land Alpha declined to work
+ * around a CAPTCHA, a 403 or a token. The parsing engine for them was written
+ * and tested long before anything called it, which meant those sources were not
+ * really registered as manual — they were registered as unreachable.
+ */
+describe('analyst import', () => {
+  const SAMPLE = [
+    'Parcel Number,Legal Description,Opening Bid,Acres,Certificate,Sale Date',
+    '"IMP-TEST-0001","LOT 39 BLK 6 MARION OAKS UNIT 6","$1,842.10",0.23,"2021-1234","10/15/2026"',
+    '"IMP-TEST-0002","LOT 14 BLK 2 SILVER SPRINGS SHORES","$2,105.55",0.25,"2021-1301","10/15/2026"',
+  ].join('\n');
+
+  spec('reads a county export the way a county writes one', async () => {
+    const preview = await previewImport('lands-available.csv', Buffer.from(SAMPLE));
+    expect(preview.rowCount).toBe(2);
+    expect(preview.suggestedMapping['Parcel Number']).toBe('apn');
+    expect(preview.suggestedMapping['Opening Bid']).toBe('minimumBid');
+    expect(preview.suggestedMapping['Acres']).toBe('acreage');
+    expect(preview.suggestedMapping['Sale Date']).toBe('auctionDate');
+    // Nothing maps to a certificate number, and inventing a target for it
+    // would be worse than leaving it out.
+    expect(preview.suggestedMapping['Certificate']).toBeUndefined();
+  });
+
+  spec('imports parcels that are indistinguishable from fetched ones', async () => {
+    const source = await prisma.source.findFirst({
+      where: { registryKey: { not: undefined } },
+      select: { registryKey: true },
+    });
+    expect(source, 'a synced source is needed').not.toBeNull();
+
+    await prisma.parcelOpportunity.deleteMany({ where: { apn: { startsWith: 'IMP-TEST-' } } });
+    try {
+      const outcome = await commitImport({
+        filename: 'lands-available.csv',
+        body: Buffer.from(SAMPLE),
+        sourceKey: source!.registryKey,
+        mapping: {
+          'Parcel Number': 'apn',
+          'Opening Bid': 'minimumBid',
+          Acres: 'acreage',
+          'Legal Description': 'legalDescription',
+          'Sale Date': 'auctionDate',
+        },
+        importedById: 'test@landalpha.local',
+      });
+
+      expect(outcome.created).toBe(2);
+      expect(outcome.discovered).toBe(2);
+
+      const imported = await prisma.parcelOpportunity.findMany({
+        where: { apn: { startsWith: 'IMP-TEST-' } },
+        orderBy: { apn: 'asc' },
+      });
+      expect(imported).toHaveLength(2);
+      // Money survives the round trip: "$1,842.10" is 1842.10, not 184210.
+      expect(Number(imported[0]!.minimumBid)).toBeCloseTo(1842.1, 2);
+      expect(imported[0]!.acreage).toBeCloseTo(0.23, 4);
+      expect(imported[0]!.legalDescription).toContain('MARION OAKS');
+      expect(imported[0]!.auctionDate?.getUTCFullYear()).toBe(2026);
+      // A natural key, so a re-import updates rather than duplicating.
+      expect(imported[0]!.naturalKey).toBeTruthy();
+
+      // The run is auditable like any other.
+      const run = await prisma.ingestionRun.findUnique({
+        where: { id: outcome.runId },
+        select: { triggeredBy: true, recordsCreated: true, notes: true, status: true },
+      });
+      expect(run!.triggeredBy).toBe('test@landalpha.local');
+      expect(run!.recordsCreated).toBe(2);
+      expect(run!.notes).toContain('lands-available.csv');
+
+      // Re-importing the same file updates rather than duplicating.
+      const again = await commitImport({
+        filename: 'lands-available.csv',
+        body: Buffer.from(SAMPLE),
+        sourceKey: source!.registryKey,
+        mapping: { 'Parcel Number': 'apn', 'Opening Bid': 'minimumBid', Acres: 'acreage' },
+      });
+      expect(again.created).toBe(0);
+      expect(again.updated).toBe(2);
+      expect(
+        await prisma.parcelOpportunity.count({ where: { apn: { startsWith: 'IMP-TEST-' } } }),
+      ).toBe(2);
+    } finally {
+      await prisma.parcelOpportunity.deleteMany({ where: { apn: { startsWith: 'IMP-TEST-' } } });
+    }
+  });
+
+  spec('lists the manual sources with the reason each is manual', async () => {
+    const sources = manualSources();
+    expect(sources.length).toBeGreaterThan(0);
+    for (const source of sources) {
+      expect(source.key).toBeTruthy();
+      expect(source.reason.length).toBeGreaterThan(30);
     }
   });
 });

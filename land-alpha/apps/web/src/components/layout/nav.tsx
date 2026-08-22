@@ -14,6 +14,7 @@ import {
   type LucideIcon,
   Map,
   Settings,
+  Upload,
   SlidersHorizontal,
   Target,
   Users,
@@ -53,6 +54,7 @@ const SECTIONS: { heading: string; items: NavItem[] }[] = [
     items: [
       { href: '/sources', label: 'Sources', icon: Database },
       { href: '/ingestion', label: 'Ingestion', icon: Activity },
+      { href: '/ingestion/import', label: 'Import', icon: Upload, minRole: 'ANALYST' },
     ],
   },
   {
