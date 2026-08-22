@@ -67,6 +67,9 @@ export function DecisionCard({
   };
   actions?: React.ReactNode;
 }) {
+  const weakValuation =
+    parcel.valuationConfidence === 'LOW' || parcel.valuationConfidence === 'UNKNOWN';
+
   return (
     <section className="panel rounded-sm">
       <header className="flex items-start justify-between gap-4 border-b border-line px-4 py-3">
@@ -254,15 +257,30 @@ export function DecisionCard({
             tone={confidenceTone(parcel.valuationConfidence)}
           />
           <div className="mt-2 border-t border-line pt-2">
+            {/*
+              The bid is solved from the quick-sale value and inherits whatever
+              that value is worth. Printing it to the dollar in the card's
+              brightest colour, directly beneath a valuation the engine has
+              marked LOW, reads as more of a recommendation than the arithmetic
+              can support — so the emphasis follows the confidence.
+            */}
             <Row
               label="Recommended maximum bid"
               value={formatCents(parcel.recommendedMaxBidCents)}
-              tone="text-alpha"
-              emphasis
+              tone={weakValuation ? undefined : 'text-alpha'}
+              emphasis={!weakValuation}
             />
             <p className="mt-1 text-[10px] leading-relaxed text-ink-faint">
               The bid at which the all-in basis still lands inside the target basis/QSV ratio. Not
               an instruction to bid.
+              {weakValuation ? (
+                <>
+                  {' '}
+                  It is solved from a quick-sale value carrying {parcel.valuationConfidence}{' '}
+                  confidence, so it is no firmer than that value — read the valuation warnings
+                  before treating this figure as a boundary.
+                </>
+              ) : null}
             </p>
           </div>
         </div>
