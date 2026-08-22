@@ -147,11 +147,7 @@ export function parseLandsAvailablePdfText(text: string): {
 }
 
 /** Absolute URLs on the index page whose file name matches the pattern. */
-export function findDocumentUrl(
-  html: string,
-  pattern: RegExp,
-  baseUrl: string,
-): string | null {
+export function findDocumentUrl(html: string, pattern: RegExp, baseUrl: string): string | null {
   const hrefs = [...html.matchAll(/href\s*=\s*["']([^"']+\.pdf)["']/gi)].map((m) => m[1]!);
   const match = hrefs.find((href) => pattern.test(href));
   return match ? new URL(match, baseUrl).toString() : null;
@@ -214,10 +210,14 @@ export const flLandsAvailablePdfAdapter: SourceAdapter = {
 
   async fetchAndParse(ctx: AdapterContext, artifact: DiscoveredArtifact): Promise<ParsedBatch> {
     const response = await ctx.http.get(artifact.url);
-    const artifactKey = await ctx.persistArtifact('lands-available-purchase-amounts.pdf', response.body, {
-      url: artifact.url,
-      contentType: response.contentType,
-    });
+    const artifactKey = await ctx.persistArtifact(
+      'lands-available-purchase-amounts.pdf',
+      response.body,
+      {
+        url: artifact.url,
+        contentType: response.contentType,
+      },
+    );
 
     const { extractText, getDocumentProxy } = await import('unpdf');
     const pdf = await getDocumentProxy(new Uint8Array(response.body));

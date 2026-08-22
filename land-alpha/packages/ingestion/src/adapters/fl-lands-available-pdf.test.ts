@@ -92,7 +92,11 @@ describe('findDocumentUrl', () => {
   it('finds this month’s price sheet among the other documents', () => {
     // The clerk renames the file every month, so it is discovered rather than
     // pinned — and the inventory list sits next to it under a similar name.
-    const url = findDocumentUrl(html, /LAT[-_ ]?Purchase[-_ ]?Amounts/i, 'https://example.gov/lat/');
+    const url = findDocumentUrl(
+      html,
+      /LAT[-_ ]?Purchase[-_ ]?Amounts/i,
+      'https://example.gov/lat/',
+    );
     expect(url).toBe('https://example.gov/uploads/2026/08/2026-August-LAT-Purchase-Amounts-1.pdf');
   });
 

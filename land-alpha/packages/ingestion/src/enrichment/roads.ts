@@ -330,9 +330,7 @@ function inferPublicMaintenance(attributes: Record<string, unknown>): boolean | 
 }
 
 function inferPaved(attributes: Record<string, unknown>): boolean | null {
-  const candidates = Object.entries(attributes).filter(([key]) =>
-    /SURF|PAVE|MATERIAL/i.test(key),
-  );
+  const candidates = Object.entries(attributes).filter(([key]) => /SURF|PAVE|MATERIAL/i.test(key));
 
   // Some counties answer the question with a flag rather than a surface.
   // Marion's road inventory carries `Paved` as 1 or 0, which stringifies to
