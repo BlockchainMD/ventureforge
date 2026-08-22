@@ -1,0 +1,9 @@
+# Install layout for the container image only — not used by local development.
+#
+# Next's standalone output traces the files the server needs and copies them.
+# Under pnpm's default symlinked store that trace misses hoisted transitive
+# dependencies (@swc/helpers is the one that bites first), and the built server
+# dies at startup on MODULE_NOT_FOUND. A flat node_modules is what the tracer
+# expects, so the image installs hoisted and local development keeps the strict
+# layout that catches undeclared dependencies.
+node-linker=hoisted

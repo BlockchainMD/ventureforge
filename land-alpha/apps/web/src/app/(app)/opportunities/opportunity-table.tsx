@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Eye } from 'lucide-react';
 import {
+  deadlineStatus,
   formatAcres,
   formatCents,
   formatDate,
@@ -8,6 +9,7 @@ import {
   humanizeEnum,
   type OpportunitySummary,
 } from '@land-alpha/shared';
+import { isFixtureApn } from '@land-alpha/shared/ids';
 import { DataTable, EmptyRow, Td, Th, Thead, Tr } from '@/components/ui/table';
 import { Badge, statusTone } from '@/components/ui/badge';
 import { Value } from '@/components/ui/value';
@@ -54,6 +56,12 @@ export function OpportunityTable({
           <Th align="right">Basis</Th>
           <Th align="right">QSV</Th>
           <Th align="right">Basis/QSV</Th>
+          <Th align="right" title="Return per year of capital tied up">
+            Ann. ROI
+          </Th>
+          <Th align="right" title="Estimated months to sell">
+            Hold
+          </Th>
           <Th align="center">Access</Th>
           <Th align="center">Build</Th>
           <Th align="right">Title</Th>
@@ -68,6 +76,10 @@ export function OpportunityTable({
         ) : (
           rows.map((row) => {
             const deadline = row.offerDeadline ?? row.auctionDate;
+            // A date on its own asks the reader to know today's date and do
+            // the subtraction. For a passed auction that arithmetic is the
+            // difference between a parcel you can bid on and one that is gone.
+            const deadlineState = deadlineStatus(deadline);
             return (
               <Tr key={row.id}>
                 <Td align="right">
@@ -94,6 +106,17 @@ export function OpportunityTable({
                   <span className="num text-[11px] text-ink-muted">
                     <Value>{row.apn}</Value>
                   </span>
+                  {/* Fixtures are built to be indistinguishable from real
+                      records to the engines. To a person deciding where to
+                      send money they must not be. */}
+                  {isFixtureApn(row.apn) ? (
+                    <span
+                      className="ml-1 rounded border border-ink-faint/40 px-1 text-[9px] uppercase tracking-wide text-ink-faint"
+                      title="Synthetic development fixture, not a parcel any county has published."
+                    >
+                      fixture
+                    </span>
+                  ) : null}
                 </Td>
                 <Td align="right">
                   <Value>{row.acreage == null ? null : formatAcres(row.acreage)}</Value>
@@ -125,6 +148,30 @@ export function OpportunityTable({
                     </Value>
                   </span>
                 </Td>
+                <Td align="right">
+                  <span
+                    className={`num ${
+                      row.annualizedRoiAtQsv != null && row.annualizedRoiAtQsv > 0
+                        ? 'text-good'
+                        : 'text-ink-muted'
+                    }`}
+                  >
+                    <Value>
+                      {row.annualizedRoiAtQsv == null
+                        ? null
+                        : formatPercent(row.annualizedRoiAtQsv, 0)}
+                    </Value>
+                  </span>
+                </Td>
+                <Td align="right">
+                  <span className="num text-ink-muted">
+                    <Value>
+                      {row.expectedHoldDays == null
+                        ? null
+                        : `${(row.expectedHoldDays / 30.4).toFixed(0)}mo`}
+                    </Value>
+                  </span>
+                </Td>
                 <Td align="center">
                   <span className={`num font-semibold ${accessTone(row.accessClass)}`}>
                     {row.accessClass ?? '—'}
@@ -150,9 +197,31 @@ export function OpportunityTable({
                   </span>
                 </Td>
                 <Td>
-                  <span className="num text-[11px] text-ink-muted">
-                    <Value>{deadline == null ? null : formatDate(deadline)}</Value>
-                  </span>
+                  {deadline == null ? (
+                    <span className="num text-[11px] text-ink-muted">
+                      <Value>{null}</Value>
+                    </span>
+                  ) : (
+                    <span
+                      className={`num text-[11px] ${
+                        deadlineState.state === 'PASSED'
+                          ? 'text-bad'
+                          : deadlineState.state === 'IMMINENT'
+                            ? 'text-warn'
+                            : 'text-ink-muted'
+                      }`}
+                      title={
+                        deadlineState.state === 'PASSED'
+                          ? 'The sale date has gone by. Whether this parcel sold, was withdrawn or went unsold is not known until the source is checked again.'
+                          : undefined
+                      }
+                    >
+                      {formatDate(deadline)}
+                      {deadlineState.state === 'PASSED' ? (
+                        <span className="ml-1 uppercase">· {deadlineState.label}</span>
+                      ) : null}
+                    </span>
+                  )}
                 </Td>
                 <Td>
                   <Badge tone={statusTone(row.status)}>{humanizeEnum(row.status)}</Badge>

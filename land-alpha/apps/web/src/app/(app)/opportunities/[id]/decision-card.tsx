@@ -50,6 +50,9 @@ export function DecisionCard({
     basisToQsv: number | null;
     grossProfitCents: number | null;
     roiAtQsv: number | null;
+    annualizedRoiAtQsv: number | null;
+    expectedHoldDays: number | null;
+    liquidityConfidence: string | null;
     accessClass: AccessClass;
     buildability: BuildabilityRating;
     titleRiskScore: number | null;
@@ -64,6 +67,9 @@ export function DecisionCard({
   };
   actions?: React.ReactNode;
 }) {
+  const weakValuation =
+    parcel.valuationConfidence === 'LOW' || parcel.valuationConfidence === 'UNKNOWN';
+
   return (
     <section className="panel rounded-sm">
       <header className="flex items-start justify-between gap-4 border-b border-line px-4 py-3">
@@ -152,6 +158,29 @@ export function DecisionCard({
             value={parcel.roiAtQsv == null ? null : formatPercent(parcel.roiAtQsv, 0)}
             tone={parcel.roiAtQsv != null && parcel.roiAtQsv > 0 ? 'text-good' : 'text-bad'}
           />
+          <Row
+            label="Expected hold"
+            value={
+              parcel.expectedHoldDays == null
+                ? null
+                : `${(parcel.expectedHoldDays / 30.4).toFixed(1)} mo`
+            }
+            tone="text-ink-muted"
+          />
+          {/* The comparison that matters: return per year of capital tied up,
+              not return per deal. A 50% gain over three years is a worse
+              business than 20% over six months. */}
+          <Row
+            label="Annualised ROI"
+            value={
+              parcel.annualizedRoiAtQsv == null ? null : formatPercent(parcel.annualizedRoiAtQsv, 0)
+            }
+            tone={
+              parcel.annualizedRoiAtQsv != null && parcel.annualizedRoiAtQsv > 0
+                ? 'text-good'
+                : 'text-bad'
+            }
+          />
           <div className="mt-2 flex items-center justify-between border-t border-line pt-2">
             <span className="rule-label">Recommendation</span>
             <span className={`num text-xs font-semibold ${tierTone(parcel.economicsTier)}`}>
@@ -228,15 +257,30 @@ export function DecisionCard({
             tone={confidenceTone(parcel.valuationConfidence)}
           />
           <div className="mt-2 border-t border-line pt-2">
+            {/*
+              The bid is solved from the quick-sale value and inherits whatever
+              that value is worth. Printing it to the dollar in the card's
+              brightest colour, directly beneath a valuation the engine has
+              marked LOW, reads as more of a recommendation than the arithmetic
+              can support — so the emphasis follows the confidence.
+            */}
             <Row
               label="Recommended maximum bid"
               value={formatCents(parcel.recommendedMaxBidCents)}
-              tone="text-alpha"
-              emphasis
+              tone={weakValuation ? undefined : 'text-alpha'}
+              emphasis={!weakValuation}
             />
             <p className="mt-1 text-[10px] leading-relaxed text-ink-faint">
               The bid at which the all-in basis still lands inside the target basis/QSV ratio. Not
               an instruction to bid.
+              {weakValuation ? (
+                <>
+                  {' '}
+                  It is solved from a quick-sale value carrying {parcel.valuationConfidence}{' '}
+                  confidence, so it is no firmer than that value — read the valuation warnings
+                  before treating this figure as a boundary.
+                </>
+              ) : null}
             </p>
           </div>
         </div>

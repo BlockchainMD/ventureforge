@@ -14,6 +14,7 @@ import {
   type ValuationResult,
 } from '@land-alpha/shared';
 import type { RejectionRuleConfig, ScoringConfigValue } from '@land-alpha/shared';
+import type { LiquidityEstimate } from '@land-alpha/valuation';
 
 /**
  * The Alpha Score.
@@ -48,6 +49,16 @@ export interface ScoringInputs {
   readonly isStandingInventory: boolean;
   readonly daysOnSource: number | null;
   readonly hasDuplicate: boolean;
+  /**
+   * Whether the parcel is bare land, per the assessing authority — not per the
+   * list that offered it for sale. `null` means nobody has said.
+   */
+  readonly isVacant: boolean | null;
+  /**
+   * How long this is expected to take to sell, from the liquidity engine.
+   * Return is annualised, so this is not a detail — it is half the answer.
+   */
+  readonly liquidity: LiquidityEstimate | null;
   readonly analystOverride?: { readonly rule: string; readonly by: string } | null;
 }
 
@@ -184,8 +195,15 @@ export function scoreParcel(inputs: ScoringInputs, config: ScoringConfigValue): 
 
   const rejected = effectiveRejections.length > 0;
 
+  // A parcel with no value estimate is not a mediocre opportunity; it is an
+  // unmeasured one. Every component that depends on value scores neutral, the
+  // weighted mean lands near 50, and it outranks a parcel that has actually
+  // been assessed and found ordinary. Unranked is the honest answer, and it
+  // keeps the buy list made of parcels somebody could act on.
+  const valuable = inputs.valuation?.quickSale != null || inputs.valuation?.retail != null;
+
   return {
-    alphaScore: rejected ? 0 : Math.round(rawAlpha),
+    alphaScore: rejected ? 0 : valuable ? Math.round(rawAlpha) : null,
     rejected,
     rejectionReasons: effectiveRejections,
     breakdown,
@@ -224,9 +242,20 @@ interface ComponentScore {
 function scoreDiscountToQsv(inputs: ScoringInputs, config: ScoringConfigValue): ComponentScore {
   const economics = inputs.economics;
   if (!economics || economics.basisToQsv == null) {
+    // Two different gaps produce the same null, and an analyst can act on one
+    // of them in an afternoon: a missing price is a phone call to the
+    // Comptroller, a missing quick-sale value needs comparable sales that may
+    // not exist. Saying which is missing is the difference between a queue
+    // someone works and a queue someone ignores.
+    const missing =
+      economics == null
+        ? 'Neither an acquisition price nor a quick-sale value has been established'
+        : !economics.priced && inputs.valuation?.quickSale != null
+          ? 'No acquisition price has been obtained for this parcel, so the discount cannot be computed'
+          : 'No quick-sale value could be established, so the discount is unknown';
     return {
       score: NEUTRAL,
-      rationale: 'No quick-sale value could be established, so the discount is unknown.',
+      rationale: `${missing}.`,
       confidence: 'UNKNOWN',
     };
   }
@@ -328,60 +357,45 @@ function scoreTitleSimplicity(title: TitlePreScreen | null): ComponentScore {
  * Liquidity: how readily this can be resold. Driven by size (small rural
  * parcels have the deepest buyer pool), access, comp density and price point.
  */
+/**
+ * Liquidity, scored from the hold estimate rather than re-derived here.
+ *
+ * This component used to approximate time-to-sell from comp counts, acreage and
+ * access — the same signals the liquidity engine now weighs properly. Two
+ * estimates of the same thing drift apart, and the one an analyst reads on the
+ * parcel page should be the one the score is built from, so this reads that
+ * estimate and nothing else.
+ *
+ * The scale is anchored on the baseline hold: a parcel expected to sell in the
+ * baseline period scores neutral, faster scores above, slower below.
+ */
 function scoreLiquidity(inputs: ScoringInputs): ComponentScore {
-  const notes: string[] = [];
-  let score = NEUTRAL;
-  let confidence: ConfidenceLevel = 'MEDIUM';
-
-  const compCount = inputs.valuation?.compCount ?? 0;
-  if (compCount >= 8) {
-    score += 18;
-    notes.push(`${compCount} recent comparable sales indicate an active local market`);
-  } else if (compCount >= 4) {
-    score += 8;
-    notes.push(`${compCount} comparable sales`);
-  } else if (compCount === 0) {
-    score -= 18;
-    notes.push('no comparable sales found, indicating a thin or unrecorded market');
-    confidence = 'LOW';
-  } else {
-    score -= 6;
-    notes.push(`only ${compCount} comparable sales`);
+  const estimate = inputs.liquidity;
+  if (!estimate) {
+    return {
+      score: NEUTRAL,
+      rationale: 'Time to sell has not been estimated.',
+      confidence: 'UNKNOWN',
+    };
   }
 
-  const acreage = inputs.acreage;
-  if (acreage != null) {
-    // 1-20 acres is the sweet spot for retail land buyers.
-    if (acreage >= 1 && acreage <= 20) {
-      score += 12;
-      notes.push('size sits in the most liquid band for retail land buyers');
-    } else if (acreage > 80) {
-      score -= 10;
-      notes.push('large acreage narrows the buyer pool');
-    } else if (acreage < 0.25) {
-      score -= 12;
-      notes.push('very small parcels appeal mainly to adjoining owners');
-    }
-  } else {
-    confidence = 'LOW';
-  }
+  const { holdDays, baselineDays } = estimate;
+  // A parcel twice as slow as baseline scores 0; one half as slow scores 100.
+  const ratio = baselineDays > 0 ? holdDays / baselineDays : 1;
+  const score = clamp(NEUTRAL + (1 - ratio) * 100);
 
-  if (inputs.access?.accessClass === 'D') {
-    score -= 25;
-    notes.push('apparent lack of access severely limits resale');
-  }
+  const drivers = [...estimate.factors]
+    .filter((factor) => Math.abs(factor.multiplier - 1) > 0.01)
+    .sort((a, b) => Math.abs(b.multiplier - 1) - Math.abs(a.multiplier - 1))
+    .slice(0, 2)
+    .map((factor) => factor.rationale.replace(/\.$/, ''));
 
-  const qsv = inputs.valuation?.quickSale?.mid ?? null;
-  if (qsv != null && qsv < 300_000) {
-    score += 6;
-    notes.push('low absolute price point widens the pool of cash buyers');
-  }
+  const months = (holdDays / 30.4).toFixed(1);
+  const rationale = drivers.length
+    ? `Expected to sell in about ${months} months. ${capitalize(drivers.join('; '))}.`
+    : `Expected to sell in about ${months} months.`;
 
-  return {
-    score,
-    rationale: notes.length ? capitalize(notes.join('; ')) + '.' : 'Insufficient data.',
-    confidence,
-  };
+  return { score, rationale, confidence: estimate.confidence };
 }
 
 function scoreCarryingCost(economics: OpportunityEconomics | null): ComponentScore {
@@ -501,27 +515,55 @@ export function evaluateRejectionRules(
   if (accessRule && inputs.access?.accessClass === 'D') {
     const threshold = Number(accessRule.params?.maxBasisToQsv ?? 0.08);
     const ratio = inputs.economics?.basisToQsv;
+    const floor = inputs.economics?.basisFloorToQsv ?? null;
+
     // A landlocked parcel is only worth a look at a genuinely exceptional
     // discount, because the exit is to an adjoining owner and nobody else.
-    if (ratio == null || ratio > threshold) {
+    //
+    // Rejecting on a null ratio looks conservative and is a trap. Every parcel
+    // whose price nobody has obtained has a null ratio; the worklist that
+    // exists to obtain prices skips rejected parcels; so the rejection removes
+    // the parcel from the only queue that could ever lift it. The gap causes
+    // the verdict and the verdict prevents closing the gap.
+    //
+    // The floor breaks the circle, and it is a stronger test than it looks.
+    // It is the basis before a cent is paid for the land, so if it already
+    // exceeds the threshold no purchase price on earth clears it and the
+    // rejection is certain. If it does not, a low enough price still might,
+    // and the honest thing is to leave the parcel in the queue and go and ask.
+    const decidable = ratio ?? floor;
+    if (decidable != null && decidable > threshold) {
       reasons.push({
         rule: 'NO_ACCESS_WITHOUT_EXCEPTIONAL_DISCOUNT',
         explanation:
-          ratio == null
-            ? 'Parcel appears landlocked and no valuation exists to justify the risk.'
-            : `Parcel appears landlocked and the discount (basis at ${(ratio * 100).toFixed(0)}% of QSV) does not clear the ${(threshold * 100).toFixed(0)}% threshold required for a landlocked parcel.`,
+          ratio != null
+            ? `Parcel appears landlocked and the discount (basis at ${(ratio * 100).toFixed(0)}% of QSV) does not clear the ${(threshold * 100).toFixed(0)}% threshold required for a landlocked parcel.`
+            : `Parcel appears landlocked and, before any acquisition price, its costs alone are already ${(decidable * 100).toFixed(0)}% of quick-sale value — past the ${(threshold * 100).toFixed(0)}% a landlocked parcel has to clear. No purchase price reaches it.`,
         overridable: accessRule.overridable,
       });
     }
   }
 
   const basisRule = enabled('BASIS_EXCEEDS_QSV');
-  if (basisRule && inputs.economics?.basisToQsv != null && inputs.economics.basisToQsv >= 1) {
-    reasons.push({
-      rule: 'BASIS_EXCEEDS_QSV',
-      explanation: `All-in basis (${(inputs.economics.basisToQsv * 100).toFixed(0)}% of quick-sale value) meets or exceeds what the parcel is worth.`,
-      overridable: basisRule.overridable,
-    });
+  if (basisRule && inputs.economics != null) {
+    // With a price, this is the real ratio. Without one, the floor — closing
+    // and carrying costs alone — is enough to decide: if owning the parcel
+    // already costs more than it is worth before paying for the land, no
+    // acquisition price makes it work, so the rule fires on the floor too.
+    const { basisToQsv, basisFloorToQsv } = inputs.economics;
+    if (basisToQsv != null && basisToQsv >= 1) {
+      reasons.push({
+        rule: 'BASIS_EXCEEDS_QSV',
+        explanation: `All-in basis (${(basisToQsv * 100).toFixed(0)}% of quick-sale value) meets or exceeds what the parcel is worth.`,
+        overridable: basisRule.overridable,
+      });
+    } else if (basisToQsv == null && basisFloorToQsv != null && basisFloorToQsv >= 1) {
+      reasons.push({
+        rule: 'BASIS_EXCEEDS_QSV',
+        explanation: `Before any acquisition price, the cost of closing and holding this parcel is already ${(basisFloorToQsv * 100).toFixed(0)}% of its quick-sale value. No purchase price makes it profitable.`,
+        overridable: basisRule.overridable,
+      });
+    }
   }
 
   const titleRule = enabled('SEVERE_TITLE_RISK');
@@ -558,6 +600,21 @@ export function evaluateRejectionRules(
         overridable: sizeRule.overridable,
       });
     }
+  }
+
+  const improvementRule = enabled('IMPROVEMENTS_PRESENT');
+  if (improvementRule && inputs.isVacant === false) {
+    reasons.push({
+      rule: 'IMPROVEMENTS_PRESENT',
+      // A structure on a tax-forfeited parcel is a liability, not a bonus. It
+      // carries demolition cost, code enforcement exposure and often an
+      // occupant, and none of that is priced by a vacant-land comparable. The
+      // county's list says what is being sold; the assessment roll says what is
+      // on it, and where they disagree the roll is the one that inspected it.
+      explanation:
+        'The assessment roll records a building on this parcel, so it is not the vacant land the sale list describes.',
+      overridable: improvementRule.overridable,
+    });
   }
 
   const duplicateRule = enabled('DUPLICATE_PARCEL');

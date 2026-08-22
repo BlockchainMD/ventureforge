@@ -20,6 +20,8 @@ export async function getActiveScoringConfig(): Promise<ScoringConfigValue> {
     thresholds: row.thresholds as unknown as ScoringThresholds,
     costModel: row.costModel as unknown as CostModel,
     rejectionRules: row.rejectionRules as unknown as RejectionRuleConfig[],
+    holdCalibration: (row.holdCalibration ?? {}) as unknown as Record<string, number>,
+    valueCalibration: (row.valueCalibration ?? {}) as unknown as Record<string, number>,
   };
 }
 
@@ -39,6 +41,8 @@ export async function saveScoringConfig(
         thresholds: value.thresholds as unknown as Prisma.InputJsonValue,
         costModel: value.costModel as unknown as Prisma.InputJsonValue,
         rejectionRules: value.rejectionRules as unknown as Prisma.InputJsonValue,
+        holdCalibration: (value.holdCalibration ?? {}) as unknown as Prisma.InputJsonValue,
+        valueCalibration: (value.valueCalibration ?? {}) as unknown as Prisma.InputJsonValue,
         description: options.description ?? null,
         createdById: options.createdById ?? null,
       },

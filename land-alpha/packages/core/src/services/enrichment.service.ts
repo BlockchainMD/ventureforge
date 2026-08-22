@@ -15,6 +15,7 @@ import { registryByKey } from '@land-alpha/source-registry';
 import { assessAccess, type RoadObservation as AccessRoad } from '../access';
 import { assessEnvironment } from '../environmental';
 import { assessBuildability, type UtilityContext, type ZoningContext } from '../buildability';
+import { loadManualScreens } from './manual-screen.service';
 
 /**
  * Enrichment orchestration.
@@ -202,11 +203,28 @@ export async function enrichParcel(
   // ---- Environmental -------------------------------------------------------
   let environmental: EnvironmentalAssessment | null = null;
   if (stages.has('environmental')) {
-    const [flood, wetlands, contamination, terrain] = await Promise.all([
-      enrichment.fetchFloodHazard(ctx, target),
+    const sourceConfig = registryByKey(parcel.source.registryKey)?.config as
+      | {
+          floodLayerUrl?: string;
+          parcelFloodLayer?: enrichment.ParcelFloodLayerConfig;
+        }
+      | undefined;
+
+    // A parcel-keyed table is preferred over any spatial query: the county
+    // measured the overlap against the authoritative parcel boundary, which is
+    // a better number than one derived by intersecting a zone polygon here.
+    const floodLookup = sourceConfig?.parcelFloodLayer
+      ? enrichment.fetchParcelFlood(ctx, parcel.apn ?? '', sourceConfig.parcelFloodLayer)
+      : enrichment.fetchFloodHazard(ctx, target, {
+          countyFloodLayerUrl: sourceConfig?.floodLayerUrl ?? null,
+        });
+
+    const [flood, wetlands, contamination, terrain, manual] = await Promise.all([
+      floodLookup,
       enrichment.fetchWetlands(ctx, target),
       enrichment.fetchContamination(ctx, target),
       enrichment.fetchTerrain(ctx, target),
+      loadManualScreens(parcelId),
     ]);
 
     // Overlap is measured in PostGIS against the actual parcel polygon, not
@@ -225,19 +243,33 @@ export async function enrichParcel(
     const wetlandStored = parcel.wetlandTypes.length > 0 || parcel.wetlandOverlapFraction != null;
 
     environmental = assessEnvironment({
+      // A live answer wins; an analyst's screen is the next best thing and is
+      // preferred over a stale reading, because it is the only evidence anyone
+      // actually looked. Its source string names them, so no downstream reader
+      // can mistake it for a federal dataset.
       flood: flood.available
         ? {
             zones: flood.zones,
-            overlapFraction: floodOverlap,
+            // The publisher's own measurement wins where it gave one.
+            overlapFraction: flood.overlapFraction ?? floodOverlap,
+            inSpecialFloodHazardArea: flood.inSpecialFloodHazardArea,
             available: true,
             source: flood.source,
           }
-        : {
-            zones: parcel.floodZones,
-            overlapFraction: parcel.floodOverlapFraction,
-            available: floodStored,
-            source: 'Previously recorded observation',
-          },
+        : manual.FLOOD
+          ? {
+              zones: manual.FLOOD.findings,
+              overlapFraction: manual.FLOOD.overlapFraction,
+              available: true,
+              source: manual.FLOOD.source,
+            }
+          : {
+              zones: parcel.floodZones,
+              overlapFraction: parcel.floodOverlapFraction,
+              available: floodStored,
+              source: 'Previously recorded observation',
+              unavailableReason: flood.note,
+            },
       wetlands: wetlands.available
         ? {
             types: wetlands.types,
@@ -245,12 +277,20 @@ export async function enrichParcel(
             available: true,
             source: wetlands.source,
           }
-        : {
-            types: parcel.wetlandTypes,
-            overlapFraction: parcel.wetlandOverlapFraction,
-            available: wetlandStored,
-            source: 'Previously recorded observation',
-          },
+        : manual.WETLANDS
+          ? {
+              types: manual.WETLANDS.findings,
+              overlapFraction: manual.WETLANDS.overlapFraction,
+              available: true,
+              source: manual.WETLANDS.source,
+            }
+          : {
+              types: parcel.wetlandTypes,
+              overlapFraction: parcel.wetlandOverlapFraction,
+              available: wetlandStored,
+              source: 'Previously recorded observation',
+              unavailableReason: wetlands.note,
+            },
       contamination: contamination.available
         ? {
             sites: contamination.sites,
@@ -258,21 +298,38 @@ export async function enrichParcel(
             available: true,
             source: contamination.source,
           }
-        : {
-            sites:
-              parcel.nearestContaminatedSiteMeters == null
-                ? []
-                : [
-                    {
-                      program: 'OTHER' as const,
-                      name: 'Previously recorded regulated site',
-                      distanceMeters: parcel.nearestContaminatedSiteMeters,
-                    },
-                  ],
-            searchRadiusMeters: contamination.searchRadiusMeters,
-            available: parcel.nearestContaminatedSiteMeters != null,
-            source: 'Previously recorded observation',
-          },
+        : manual.CONTAMINATION
+          ? {
+              sites:
+                manual.CONTAMINATION.nearestSiteMeters == null
+                  ? []
+                  : [
+                      {
+                        program: 'OTHER' as const,
+                        name: manual.CONTAMINATION.findings[0] ?? 'Regulated site',
+                        distanceMeters: manual.CONTAMINATION.nearestSiteMeters,
+                      },
+                    ],
+              searchRadiusMeters: contamination.searchRadiusMeters,
+              available: true,
+              source: manual.CONTAMINATION.source,
+            }
+          : {
+              sites:
+                parcel.nearestContaminatedSiteMeters == null
+                  ? []
+                  : [
+                      {
+                        program: 'OTHER' as const,
+                        name: 'Previously recorded regulated site',
+                        distanceMeters: parcel.nearestContaminatedSiteMeters,
+                      },
+                    ],
+              searchRadiusMeters: contamination.searchRadiusMeters,
+              available: parcel.nearestContaminatedSiteMeters != null,
+              source: 'Previously recorded observation',
+              unavailableReason: contamination.note,
+            },
       terrain: terrain.available
         ? {
             meanElevationMeters: terrain.meanElevationMeters,
@@ -289,6 +346,7 @@ export async function enrichParcel(
             meanSlopePercent: parcel.meanSlopePercent,
             available: parcel.meanSlopePercent != null,
             source: 'Previously recorded observation',
+            unavailableReason: terrain.note,
           },
     });
 
@@ -311,6 +369,8 @@ export async function enrichParcel(
         meanSlopePercent: environmental.meanSlopePercent,
         environmentalRiskScore: environmental.environmentalRiskScore,
         environmentalConfidence: environmental.confidence,
+        environmentalUnknowns: [...environmental.unknowns],
+        environmentalLayersScreened: [...environmental.layersScreened],
       },
     });
 
@@ -321,6 +381,42 @@ export async function enrichParcel(
       });
     }
     stagesRun.push('environmental');
+  }
+
+  // ---- Zoning --------------------------------------------------------------
+  //
+  // Read before buildability, which is the only thing that uses it. The
+  // registry has carried a zoning layer URL for St. Louis County since the
+  // county was added — and a note claiming the buildability engine used it —
+  // while nothing read it, so every live parcel came through with no zoning at
+  // all and buildability judged them without knowing what they may be used for.
+  if (stages.has('buildability')) {
+    const zoningLayerUrl =
+      (registryByKey(parcel.source.registryKey)?.config as { zoningLayerUrl?: string } | undefined)
+        ?.zoningLayerUrl ?? null;
+    const zoning = await enrichment.fetchZoning(ctx, target, { zoningLayerUrl });
+    if (zoning.available && (zoning.code || zoning.description)) {
+      await prisma.parcelOpportunity.update({
+        where: { id: parcelId },
+        data: {
+          zoning: zoning.code ?? parcel.zoning,
+          zoningSource: zoning.source,
+          // The county's own map of its own districts is as direct as this
+          // gets, but it is a screening read of a polygon and not a zoning
+          // letter from the planning department.
+          zoningConfidence: zoning.code ? 'HIGH' : 'LOW',
+        },
+      });
+      evidence.addDerived('zoning', zoning.code ?? zoning.description ?? '', {
+        engine: 'County zoning layer',
+        confidence: zoning.code ? 'HIGH' : 'LOW',
+        notes: zoning.description ?? undefined,
+      });
+      parcel.zoning = zoning.code ?? parcel.zoning;
+    } else if (zoning.note) {
+      warnings.push(`Zoning: ${zoning.note}`);
+    }
+    stagesRun.push('zoning');
   }
 
   // ---- Buildability --------------------------------------------------------

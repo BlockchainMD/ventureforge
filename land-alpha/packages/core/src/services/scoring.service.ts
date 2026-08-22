@@ -11,6 +11,7 @@ import {
 } from '@land-alpha/shared';
 import { createLogger } from '@land-alpha/shared/logger';
 import { getActiveScoringConfig, prisma, spatial, toCents, Prisma } from '@land-alpha/db';
+import { DEFAULT_LIQUIDITY_CONFIG, type LiquidityEstimate } from '@land-alpha/valuation';
 import { scoreParcel } from '../scoring';
 
 /**
@@ -94,8 +95,9 @@ export async function scoreParcelById(parcelId: string): Promise<AlphaScoreResul
           maxElevationMeters: parcel.maxElevationMeters,
           meanSlopePercent: parcel.meanSlopePercent,
           environmentalRiskScore: parcel.environmentalRiskScore ?? 0,
+          layersScreened: parcel.environmentalLayersScreened,
           evidence: [],
-          unknowns: [],
+          unknowns: parcel.environmentalUnknowns,
           confidence: parcel.environmentalConfidence,
         };
 
@@ -156,6 +158,7 @@ export async function scoreParcelById(parcelId: string): Promise<AlphaScoreResul
       ? null
       : {
           acquisitionPrice: toCents(parcel.estimatedAcquisitionCost) ?? 0,
+          priced: parcel.estimatedAcquisitionCost != null,
           governmentFees: toCents(parcel.fees) ?? 0,
           recordingCost: toCents(parcel.estimatedRecordingCost) ?? 0,
           titleCost: toCents(parcel.estimatedTitleCost) ?? 0,
@@ -165,6 +168,14 @@ export async function scoreParcelById(parcelId: string): Promise<AlphaScoreResul
           allInBasis: toCents(parcel.estimatedAllInBasis) ?? 0,
           basisToQsv: parcel.basisToQsv,
           basisToRetail: parcel.basisToRetail,
+          // Recomputed rather than stored: both terms are already persisted,
+          // and a derived column that can drift from its inputs is worse than
+          // one line of arithmetic.
+          basisFloorToQsv: (() => {
+            const basis = toCents(parcel.estimatedAllInBasis);
+            const qsv = toCents(parcel.quickSaleValue);
+            return basis == null || qsv == null || qsv <= 0 ? null : basis / qsv;
+          })(),
           grossProfitAtQsv: toCents(parcel.expectedGrossMargin),
           roiAtQsv: parcel.roiAtQsv,
           annualizedRoiAtQsv: parcel.annualizedRoiAtQsv,
@@ -223,6 +234,19 @@ export async function scoreParcelById(parcelId: string): Promise<AlphaScoreResul
         STANDING_INVENTORY_SOURCE_TYPES.includes(parcel.source.sourceType),
       daysOnSource,
       hasDuplicate: duplicates.length > 0,
+      isVacant: parcel.isVacant,
+      // Re-read the estimate the valuation stage stored rather than recomputing
+      // it, so the number on the parcel page is the number in the score.
+      liquidity:
+        parcel.expectedHoldDays == null
+          ? null
+          : {
+              holdDays: parcel.expectedHoldDays,
+              baselineDays: DEFAULT_LIQUIDITY_CONFIG.baselineDays,
+              factors: (parcel.liquidityFactors ?? []) as unknown as LiquidityEstimate['factors'],
+              confidence: parcel.liquidityConfidence,
+              warnings: [],
+            },
       analystOverride: parcel.rejectionOverriddenBy
         ? { rule: parcel.rejectionOverrideNote ?? '', by: parcel.rejectionOverriddenBy }
         : null,

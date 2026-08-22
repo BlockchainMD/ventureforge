@@ -61,6 +61,18 @@ export interface ScoringConfigValue {
   thresholds: ScoringThresholds;
   costModel: CostModel;
   rejectionRules: RejectionRuleConfig[];
+  /**
+   * Per-market hold-time corrections learned from parcels actually sold, keyed
+   * `STATE/County`. Empty until the calibration loop has closed deals to learn
+   * from; written by it, never by hand.
+   */
+  holdCalibration?: Record<string, number>;
+  /**
+   * Per-market valuation corrections, same provenance. A market where parcels
+   * consistently fetch less than predicted needs its estimates lowered, not a
+   * new comp set.
+   */
+  valueCalibration?: Record<string, number>;
 }
 
 /** The starting weights specified in the product brief. */
@@ -114,6 +126,9 @@ export const DEFAULT_REJECTION_RULES: RejectionRuleConfig[] = [
   { key: 'CONTAMINATED_SITE', enabled: true, overridable: true, params: { distanceMeters: 150 } },
   { key: 'PARCEL_TOO_SMALL', enabled: true, overridable: true, params: { minAcreage: 0.08 } },
   { key: 'DUPLICATE_PARCEL', enabled: true, overridable: false },
+  // Overridable because a demolition play is a real strategy — but it must be
+  // a decision an analyst makes, not one the pipeline makes silently.
+  { key: 'IMPROVEMENTS_PRESENT', enabled: true, overridable: true },
   {
     key: 'SUBMERGED_OR_FULL_WETLAND',
     enabled: true,
@@ -128,4 +143,6 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfigValue = {
   thresholds: DEFAULT_THRESHOLDS,
   costModel: DEFAULT_COST_MODEL,
   rejectionRules: DEFAULT_REJECTION_RULES,
+  holdCalibration: {},
+  valueCalibration: {},
 };

@@ -68,6 +68,8 @@ export interface ParcelOpportunityInput {
   readonly isVacant?: boolean | null;
   readonly currentUse?: string | null;
   readonly zoning?: string | null;
+  /** The assessor's neighbourhood code, where the county publishes one. */
+  readonly neighborhood?: string | null;
   readonly zoningSource?: string | null;
   readonly annualTaxEstimate?: UsdCents | null;
 
@@ -146,6 +148,12 @@ export interface EnvironmentalAssessment {
   readonly maxElevationMeters: number | null;
   readonly meanSlopePercent: number | null;
   readonly environmentalRiskScore: number;
+  /**
+   * Layers that actually returned data — FLOOD, WETLANDS, SOILS, CONTAMINATION,
+   * TERRAIN. Absent from this list means unscreened, which is not the same as
+   * clear and must never be rendered as clear.
+   */
+  readonly layersScreened: readonly string[];
   readonly evidence: readonly string[];
   readonly unknowns: readonly string[];
   readonly confidence: ConfidenceLevel;
@@ -227,6 +235,12 @@ export interface ComparableSummary {
 
 export interface OpportunityEconomics {
   readonly acquisitionPrice: UsdCents;
+  /**
+   * Whether `acquisitionPrice` is a published figure or a placeholder zero.
+   * When false the basis is a floor covering closing and carrying costs only,
+   * every ratio below is null, and the tier is UNKNOWN.
+   */
+  readonly priced: boolean;
   readonly governmentFees: UsdCents;
   readonly recordingCost: UsdCents;
   readonly titleCost: UsdCents;
@@ -236,6 +250,13 @@ export interface OpportunityEconomics {
   readonly allInBasis: UsdCents;
   readonly basisToQsv: number | null;
   readonly basisToRetail: number | null;
+  /**
+   * The floor basis as a share of quick-sale value — always computed, because
+   * it needs no acquisition price. When it already meets or exceeds 1, the
+   * parcel is unbuyable at any price: the costs of owning it exceed what it is
+   * worth before a cent has been paid for the land.
+   */
+  readonly basisFloorToQsv: number | null;
   readonly grossProfitAtQsv: UsdCents | null;
   readonly roiAtQsv: number | null;
   readonly annualizedRoiAtQsv: number | null;
@@ -260,7 +281,15 @@ export interface RejectionReason {
 }
 
 export interface AlphaScoreResult {
-  readonly alphaScore: number;
+  /**
+   * Null when the parcel cannot be valued.
+   *
+   * The score is an estimate of return. Without a value estimate there is no
+   * return to estimate, and a weighted mean over unknowns lands near the
+   * neutral 50 — which is how a parcel nobody knows anything about outranks
+   * one that has been assessed and found merely decent.
+   */
+  readonly alphaScore: number | null;
   readonly rejected: boolean;
   readonly rejectionReasons: readonly RejectionReason[];
   readonly breakdown: readonly ScoreBreakdownEntry[];
@@ -295,6 +324,8 @@ export interface OpportunitySummary {
   readonly quickSaleValue: UsdCents | null;
   readonly retailValue: UsdCents | null;
   readonly basisToQsv: number | null;
+  readonly annualizedRoiAtQsv: number | null;
+  readonly expectedHoldDays: number | null;
   readonly alphaScore: number | null;
   readonly accessClass: AccessClass | null;
   readonly buildability: BuildabilityRating | null;

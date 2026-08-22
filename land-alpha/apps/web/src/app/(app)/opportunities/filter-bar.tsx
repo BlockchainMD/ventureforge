@@ -218,7 +218,7 @@ export function FilterBar({ counties }: { counties: { state: string; county: str
           </label>
 
           <NumberFilter
-            label="Flood ≤ (%)"
+            label={environmentalLabel('Flood', filter.includeUnscreened)}
             value={
               filter.maxFloodOverlap == null ? undefined : Math.round(filter.maxFloodOverlap * 100)
             }
@@ -227,7 +227,7 @@ export function FilterBar({ counties }: { counties: { state: string; county: str
             width="w-20"
           />
           <NumberFilter
-            label="Wetland ≤ (%)"
+            label={environmentalLabel('Wetland', filter.includeUnscreened)}
             value={
               filter.maxWetlandOverlap == null
                 ? undefined
@@ -248,6 +248,20 @@ export function FilterBar({ counties }: { counties: { state: string; county: str
           />
 
           <div className="flex items-center gap-2 pb-0.5">
+            <Toggle
+              label="Offered for sale"
+              active={filter.offeredOnly === true}
+              onToggle={() => update('offeredOnly', filter.offeredOnly ? null : 'true')}
+            />
+            {filter.maxFloodOverlap != null || filter.maxWetlandOverlap != null ? (
+              <Toggle
+                label="Include unscreened"
+                active={filter.includeUnscreened === true}
+                onToggle={() =>
+                  update('includeUnscreened', filter.includeUnscreened ? null : 'true')
+                }
+              />
+            ) : null}
             <Toggle
               label="OTC only"
               active={filter.otcOnly === true}
@@ -339,4 +353,16 @@ function Toggle({
       {label}
     </button>
   );
+}
+
+/**
+ * Say which population the threshold is being applied to.
+ *
+ * FEMA and the USGS wetlands service both refuse us (ADR 0011), so almost
+ * nothing carries a measurement. A bare "Flood ≤ (%)" reads as a satisfied
+ * constraint over the whole list; it is a constraint over the ~1% that has been
+ * screened, unless the operator has deliberately asked for the rest.
+ */
+function environmentalLabel(layer: 'Flood' | 'Wetland', includeUnscreened?: boolean): string {
+  return includeUnscreened ? `${layer} ≤ (%) or unscreened` : `${layer} ≤ (%), screened`;
 }

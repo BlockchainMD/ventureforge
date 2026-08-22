@@ -4,11 +4,28 @@ dist/
 out/
 coverage/
 *.tsbuildinfo
+# Every .env variant except the committed template. `.env.cloud` in
+# particular is written by infra/gcp/connect.sh and holds a live database
+# password, so an exact-name rule is not enough here.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+
+# Downloaded tooling (the Cloud SQL Auth Proxy binary).
+.cache/
 .DS_Store
 data/raw/
 data/storage/
 .turbo/
 .vercel/
+
+# Scratch probe scripts written into the repo root by audit agents. Real
+# tooling lives in scripts/ and is committed there deliberately.
+/*.mjs
+/*.js
+/*.cjs
+!/*.config.mjs
+# Screenshots and page dumps land in the repo root when a capture is run
+# without OUT set. Same class of stray as the scripts above.
+/*.png
+/*.txt

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { estimateHoldDays } from '@land-alpha/valuation';
 import { assessAccess, type RoadObservation } from './access';
 import {
   assessEnvironment,
@@ -65,6 +66,7 @@ function cleanEnvironment(
     floodZones: ['X'],
     floodOverlapFraction: 0,
     inSpecialFloodHazardArea: false,
+    layersScreened: ['FLOOD', 'WETLANDS', 'SOILS', 'CONTAMINATION', 'TERRAIN'],
     wetlandTypes: [],
     wetlandOverlapFraction: 0,
     soilSeries: ['Cloquet sandy loam'],
@@ -246,6 +248,59 @@ describe('assessEnvironment', () => {
       wetlands: { types: [], overlapFraction: 0, available: true, source: 'USFWS NWI' },
     });
     expect(result.unknowns.some((u) => u.includes('does not prove absence'))).toBe(true);
+  });
+
+  it('refuses to call terrain alone a screening', () => {
+    // Elevation is the layer that is easiest to obtain and least able to
+    // decide anything. A parcel we know only the slope of has not been
+    // screened, and calling that LOW confidence would let buildability rate it.
+    const result = assessEnvironment({
+      terrain: {
+        meanElevationMeters: 402,
+        minElevationMeters: 399,
+        maxElevationMeters: 405,
+        meanSlopePercent: 3.1,
+        available: true,
+        source: 'USGS EPQS',
+      },
+    });
+    expect(result.layersScreened).toEqual(['TERRAIN']);
+    expect(result.confidence).toBe('UNKNOWN');
+  });
+
+  it('keeps LOW confidence once a hazard layer has actually answered', () => {
+    const result = assessEnvironment({
+      flood: { zones: ['X'], overlapFraction: 0, available: true, source: 'FEMA NFHL' },
+      terrain: {
+        meanElevationMeters: 402,
+        minElevationMeters: 399,
+        maxElevationMeters: 405,
+        meanSlopePercent: 3.1,
+        available: true,
+        source: 'USGS EPQS',
+      },
+    });
+    expect(result.layersScreened).toEqual(['FLOOD', 'TERRAIN']);
+    expect(result.confidence).toBe('LOW');
+  });
+
+  it('carries the reason a layer was skipped into the unknowns', () => {
+    // "Not available" invites a retry tonight. "The publisher forbids automated
+    // queries" tells an analyst to open the map viewer, which is the only thing
+    // that will ever close this gap.
+    const result = assessEnvironment({
+      flood: {
+        zones: [],
+        overlapFraction: null,
+        available: false,
+        source: 'FEMA NFHL',
+        unavailableReason:
+          'the publisher does not permit automated queries against this service, so it must be checked by hand at https://msc.fema.gov/portal/search',
+      },
+    });
+    const line = result.unknowns.find((u) => u.startsWith('FEMA flood hazard mapping'));
+    expect(line).toContain('msc.fema.gov');
+    expect(result.layersScreened).not.toContain('FLOOD');
   });
 });
 
@@ -449,6 +504,7 @@ describe('assessBuildability', () => {
 function economics(overrides: Partial<OpportunityEconomics> = {}): OpportunityEconomics {
   return {
     acquisitionPrice: 314_000,
+    priced: true,
     governmentFees: 0,
     recordingCost: 6_000,
     titleCost: 45_000,
@@ -458,6 +514,7 @@ function economics(overrides: Partial<OpportunityEconomics> = {}): OpportunityEc
     allInBasis: 533_000,
     basisToQsv: 0.205,
     basisToRetail: 0.157,
+    basisFloorToQsv: 0.205,
     grossProfitAtQsv: 2_067_000,
     roiAtQsv: 3.88,
     annualizedRoiAtQsv: 22.8,
@@ -535,9 +592,39 @@ function scoringInputs(overrides: Partial<ScoringInputs> = {}): ScoringInputs {
     isStandingInventory: true,
     daysOnSource: 400,
     hasDuplicate: false,
+    isVacant: true,
+    liquidity: estimateHoldDays({
+      acreage: 5.23,
+      quickSaleValueCents: 2_000_000,
+      accessClass: 'A',
+      buildability: 'GREEN',
+      hasUtilities: null,
+      comparableCount: 9,
+    }),
     ...overrides,
   };
 }
+
+describe('scoreParcel — improvements on the roll', () => {
+  it('rejects a parcel the assessing authority records as improved', () => {
+    const result = scoreParcel(scoringInputs({ isVacant: false }), DEFAULT_SCORING_CONFIG);
+    expect(result.rejected).toBe(true);
+    expect(result.rejectionReasons.map((reason) => reason.rule)).toContain('IMPROVEMENTS_PRESENT');
+  });
+
+  it('does not reject when nobody has said either way', () => {
+    const result = scoreParcel(scoringInputs({ isVacant: null }), DEFAULT_SCORING_CONFIG);
+    expect(result.rejectionReasons.map((reason) => reason.rule)).not.toContain(
+      'IMPROVEMENTS_PRESENT',
+    );
+  });
+
+  it('leaves the rule overridable, because demolition is a real strategy', () => {
+    const result = scoreParcel(scoringInputs({ isVacant: false }), DEFAULT_SCORING_CONFIG);
+    const reason = result.rejectionReasons.find((r) => r.rule === 'IMPROVEMENTS_PRESENT');
+    expect(reason?.overridable).toBe(true);
+  });
+});
 
 describe('scoreParcel', () => {
   it('scores an excellent parcel highly and explains why', () => {
@@ -594,7 +681,7 @@ describe('scoreParcel', () => {
       scoringInputs({ economics: economics({ basisToQsv: 0.05 }) }),
       DEFAULT_SCORING_CONFIG,
     );
-    expect(exceptionalDiscount.alphaScore).toBeLessThan(withAccess.alphaScore - 10);
+    expect(exceptionalDiscount.alphaScore!).toBeLessThan(withAccess.alphaScore! - 10);
   });
 
   it('rejects when basis meets or exceeds quick-sale value', () => {
@@ -603,6 +690,119 @@ describe('scoreParcel', () => {
       DEFAULT_SCORING_CONFIG,
     );
     expect(result.rejectionReasons.map((r) => r.rule)).toContain('BASIS_EXCEEDS_QSV');
+  });
+
+  it('does not reject a landlocked parcel merely because nobody has priced it', () => {
+    // The trap this replaces: every unpriced parcel has a null ratio, the
+    // worklist that exists to obtain prices skips rejected parcels, so the
+    // rejection removed the parcel from the only queue that could lift it.
+    const result = scoreParcel(
+      scoringInputs({
+        access: { ...GOOD_ACCESS, accessClass: 'D' as const, potentiallyLandlocked: true },
+        economics: economics({
+          priced: false,
+          basisToQsv: null,
+          basisFloorToQsv: 0.05, // under the 8% a landlocked parcel must clear
+          roiAtQsv: null,
+          tier: 'UNKNOWN',
+        }),
+      }),
+      DEFAULT_SCORING_CONFIG,
+    );
+    expect(result.rejectionReasons.map((r) => r.rule)).not.toContain(
+      'NO_ACCESS_WITHOUT_EXCEPTIONAL_DISCOUNT',
+    );
+  });
+
+  it('rejects a landlocked parcel no price could rescue', () => {
+    // The floor is the basis before a cent is paid for the land. Past the
+    // threshold there, no purchase price on earth reaches it.
+    const result = scoreParcel(
+      scoringInputs({
+        access: { ...GOOD_ACCESS, accessClass: 'D' as const, potentiallyLandlocked: true },
+        economics: economics({
+          priced: false,
+          basisToQsv: null,
+          basisFloorToQsv: 0.31,
+          roiAtQsv: null,
+          tier: 'UNKNOWN',
+        }),
+      }),
+      DEFAULT_SCORING_CONFIG,
+    );
+    const rejection = result.rejectionReasons.find(
+      (r) => r.rule === 'NO_ACCESS_WITHOUT_EXCEPTIONAL_DISCOUNT',
+    );
+    expect(rejection).toBeDefined();
+    expect(rejection!.explanation).toContain('No purchase price reaches it');
+  });
+
+  it('still rejects a landlocked parcel on a real ratio that misses', () => {
+    const result = scoreParcel(
+      scoringInputs({
+        access: { ...GOOD_ACCESS, accessClass: 'D' as const, potentiallyLandlocked: true },
+        economics: economics({ basisToQsv: 0.4, basisFloorToQsv: 0.4 }),
+      }),
+      DEFAULT_SCORING_CONFIG,
+    );
+    expect(result.rejectionReasons.map((r) => r.rule)).toContain(
+      'NO_ACCESS_WITHOUT_EXCEPTIONAL_DISCOUNT',
+    );
+  });
+
+  it('rejects on the cost floor alone when no price has been obtained', () => {
+    // Making the acquisition price nullable correctly suppressed basisToQsv,
+    // and silently disabled this rejection for every unpriced parcel — which
+    // is currently all of them. The floor is enough to decide: a parcel whose
+    // closing and holding costs already exceed its value cannot be rescued by
+    // any purchase figure.
+    const result = scoreParcel(
+      scoringInputs({
+        economics: economics({
+          priced: false,
+          basisToQsv: null,
+          basisToRetail: null,
+          basisFloorToQsv: 1.56,
+          roiAtQsv: null,
+          tier: 'UNKNOWN',
+        }),
+      }),
+      DEFAULT_SCORING_CONFIG,
+    );
+    const rejection = result.rejectionReasons.find((r) => r.rule === 'BASIS_EXCEEDS_QSV');
+    expect(rejection).toBeDefined();
+    expect(rejection!.explanation).toContain('No purchase price makes it profitable');
+  });
+
+  it('does not reject an unpriced parcel whose floor leaves room', () => {
+    const result = scoreParcel(
+      scoringInputs({
+        economics: economics({
+          priced: false,
+          basisToQsv: null,
+          basisToRetail: null,
+          basisFloorToQsv: 0.07,
+          roiAtQsv: null,
+          tier: 'UNKNOWN',
+        }),
+      }),
+      DEFAULT_SCORING_CONFIG,
+    );
+    expect(result.rejectionReasons.map((r) => r.rule)).not.toContain('BASIS_EXCEEDS_QSV');
+  });
+
+  it('leaves a parcel it cannot value unranked rather than average', () => {
+    // Every component that depends on value scores neutral, so the weighted
+    // mean lands near 50 — which is how ten Ottawa parcels with no comparable
+    // sales and no valuation came to sit at the top of the buy list, above
+    // parcels that had been assessed and found ordinary.
+    const unvalued = scoreParcel(
+      { ...scoringInputs({ economics: null }), valuation: null },
+      DEFAULT_SCORING_CONFIG,
+    );
+    expect(unvalued.alphaScore).toBeNull();
+    // Not rejected: nothing is wrong with the parcel, we simply cannot say.
+    expect(unvalued.rejected).toBe(false);
   });
 
   it('honours an analyst override on an overridable rule', () => {
@@ -653,6 +853,9 @@ describe('scoreParcel', () => {
     ];
     for (const variant of variants) {
       const result = scoreParcel(scoringInputs(variant), DEFAULT_SCORING_CONFIG);
+      // Null is a legitimate outcome — a parcel with no valuation is unranked,
+      // not zero and not average — but a number must always be in range.
+      if (result.alphaScore === null) continue;
       expect(result.alphaScore).toBeGreaterThanOrEqual(0);
       expect(result.alphaScore).toBeLessThanOrEqual(100);
       expect(Number.isFinite(result.alphaScore)).toBe(true);
@@ -668,7 +871,7 @@ describe('scoreParcel', () => {
       scoringInputs({ economics: economics({ basisToQsv: 0.45, tier: 'WEAK' }) }),
       DEFAULT_SCORING_CONFIG,
     );
-    expect(cheap.alphaScore).toBeGreaterThan(dear.alphaScore);
+    expect(cheap.alphaScore!).toBeGreaterThan(dear.alphaScore!);
   });
 });
 

@@ -56,6 +56,12 @@ export interface ComparableSaleInput {
   readonly longitude: number | null;
   readonly zoning: string | null;
   readonly landUse: string | null;
+  /**
+   * The assessor's neighbourhood code. Comparable selection prefers sales
+   * inside the same one: it is the boundary the county drew around land it
+   * considers to trade alike, which is a sharper test than any radius.
+   */
+  readonly neighborhood?: string | null;
   readonly hasUtilities: boolean | null;
   /** Both must be true for the sale to inform a valuation. */
   readonly isVacantLand: boolean;
@@ -122,13 +128,29 @@ export function validateComparables(
     // A price per acre outside these bounds is a data error, not a market
     // signal — usually a price that includes buildings, or an acreage that is
     // the whole section rather than the parcel.
+    //
+    // The ceiling is deliberately far above rural land. Price per acre is a
+    // ratio, so a small parcel reaches an enormous one honestly: a $250,000
+    // eighth-of-an-acre infill lot in Orlando is $2m per acre and a perfectly
+    // real sale. Orange County's 2026 roll puts the ninetieth percentile of
+    // qualified vacant sales at $1.6m per acre. A tighter bound would not catch
+    // errors, it would discard the urban market — and bias every valuation
+    // there downwards. Size comparability is enforced by the acreage band and
+    // the acreage curve, which is the right place for it; this is only a check
+    // for figures no land sale can produce.
     const pricePerAcre = row.salePriceCents / row.acreage;
     if (pricePerAcre < 10_000) {
       reject('price per acre implausibly low (<$100/ac)');
       continue;
     }
-    if (pricePerAcre > 500_000_00) {
-      reject('price per acre implausibly high (>$500k/ac)');
+    if (pricePerAcre > 20_000_000_00) {
+      reject('price per acre implausibly high (>$20m/ac)');
+      continue;
+    }
+    if (row.salePriceCents > 25_000_000_00) {
+      // Not an error necessarily, but not a comparable for government surplus
+      // land either; a $25m transaction is a different market.
+      reject('sale price beyond the comparable range (>$25m)');
       continue;
     }
 

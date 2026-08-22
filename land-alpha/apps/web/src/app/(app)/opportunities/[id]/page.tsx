@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
 import { getParcelDetail, spatial, toCents, getActiveScoringConfig } from '@land-alpha/db';
 import {
+  deadlineStatus,
   ACCESS_CLASS_LABELS,
   centsToDollars,
   formatAcres,
@@ -19,6 +20,7 @@ import {
   ACCESS_DISCLAIMER,
   BUILDABILITY_DISCLAIMER,
   ENVIRONMENTAL_DISCLAIMER,
+  previewFinancing,
 } from '@land-alpha/core';
 import { TITLE_DISCLAIMER } from '@land-alpha/title-research';
 import { PageHeader } from '@/components/layout/shell';
@@ -32,16 +34,26 @@ import { DecisionCard } from './decision-card';
 import { MaxBidControl, ParcelActions, RejectionOverride } from './parcel-actions';
 import { NotesPanel } from './notes-panel';
 import { ListingPanel, MemoPanel } from './memo-panel';
+import { FinancingPanel } from './financing-panel';
+import { EnvironmentalScreenForm } from './environmental-screen';
+import { AcquisitionPriceControl } from './acquisition-price';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * What an unscreened layer says. A blank cell reads as "nothing there", which
+ * is the one thing it must never mean here.
+ */
+const NOT_SCREENED = 'not screened';
+
 export default async function ParcelPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [parcel, geometry, user, config] = await Promise.all([
+  const [parcel, geometry, user, config, financing] = await Promise.all([
     getParcelDetail(id),
     spatial.readParcelGeometry(id),
     getSessionUser(),
     getActiveScoringConfig(),
+    previewFinancing(id),
   ]);
 
   if (!parcel) notFound();
@@ -116,6 +128,9 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
               basisToQsv: parcel.basisToQsv,
               grossProfitCents: toCents(parcel.expectedGrossMargin),
               roiAtQsv: parcel.roiAtQsv,
+              annualizedRoiAtQsv: parcel.annualizedRoiAtQsv,
+              expectedHoldDays: parcel.expectedHoldDays,
+              liquidityConfidence: parcel.liquidityConfidence,
               accessClass: parcel.accessClass,
               buildability: parcel.buildability,
               titleRiskScore: parcel.titleRiskScore,
@@ -401,11 +416,24 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
 
           {/* --- Environmental --------------------------------------------- */}
           <Panel>
-            <PanelHeader title="Environmental" subtitle="Public screening layers" />
+            <PanelHeader
+              title="Environmental"
+              subtitle={
+                parcel.environmentalLayersScreened.length === 0
+                  ? 'Not screened — no public layer returned data'
+                  : `Screened: ${parcel.environmentalLayersScreened
+                      .map((layer) => layer.toLowerCase())
+                      .join(', ')}`
+              }
+            />
             <PanelBody>
               <MetricGrid columns={4}>
                 <Metric label="Flood zones">
-                  <Value>{parcel.floodZones.join(', ') || null}</Value>
+                  <Value mono={parcel.environmentalLayersScreened.includes('FLOOD')}>
+                    {parcel.environmentalLayersScreened.includes('FLOOD')
+                      ? parcel.floodZones.join(', ') || 'None mapped'
+                      : NOT_SCREENED}
+                  </Value>
                 </Metric>
                 <Metric
                   label="Flood overlap"
@@ -418,7 +446,11 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                   </Value>
                 </Metric>
                 <Metric label="Wetland types">
-                  <Value>{parcel.wetlandTypes.join(', ') || null}</Value>
+                  <Value mono={parcel.environmentalLayersScreened.includes('WETLANDS')}>
+                    {parcel.environmentalLayersScreened.includes('WETLANDS')
+                      ? parcel.wetlandTypes.join(', ') || 'None mapped'
+                      : NOT_SCREENED}
+                  </Value>
                 </Metric>
                 <Metric label="Wetland overlap">
                   <Value>
@@ -453,13 +485,23 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                       : undefined
                   }
                 >
-                  <Value>
-                    {parcel.nearestContaminatedSiteMeters == null
-                      ? null
-                      : `${formatNumber(Math.round(parcel.nearestContaminatedSiteMeters))} m`}
+                  <Value mono={parcel.environmentalLayersScreened.includes('CONTAMINATION')}>
+                    {!parcel.environmentalLayersScreened.includes('CONTAMINATION')
+                      ? NOT_SCREENED
+                      : parcel.nearestContaminatedSiteMeters == null
+                        ? 'None within radius'
+                        : `${formatNumber(Math.round(parcel.nearestContaminatedSiteMeters))} m`}
                   </Value>
                 </Metric>
               </MetricGrid>
+              <EvidenceList items={[]} unknowns={parcel.environmentalUnknowns} />
+              <EnvironmentalScreenForm
+                parcelId={parcel.id}
+                latitude={parcel.latitude}
+                longitude={parcel.longitude}
+                screened={parcel.environmentalLayersScreened}
+                canAct={canAct}
+              />
               <Disclaimer>{ENVIRONMENTAL_DISCLAIMER}</Disclaimer>
             </PanelBody>
           </Panel>
@@ -529,6 +571,14 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
             </PanelBody>
           </Panel>
 
+          {financing ? (
+            <FinancingPanel
+              terms={financing.terms}
+              schedule={financing.schedule}
+              comparison={financing.comparison}
+            />
+          ) : null}
+
           <MemoPanel
             parcelId={parcel.id}
             canAct={canAct}
@@ -573,8 +623,24 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
               <KeyValue label="Asking price" value={formatCents(toCents(parcel.askingPrice))} />
               <KeyValue label="Taxes due" value={formatCents(toCents(parcel.taxesDue))} />
               <KeyValue label="Fees" value={formatCents(toCents(parcel.fees))} />
-              <KeyValue label="Auction date" value={formatDate(parcel.auctionDate)} />
-              <KeyValue label="Offer deadline" value={formatDate(parcel.offerDeadline)} />
+              <KeyValue
+                label="Auction date"
+                value={formatDate(parcel.auctionDate)}
+                note={
+                  deadlineStatus(parcel.auctionDate).state === 'PASSED'
+                    ? 'This date has gone by.'
+                    : undefined
+                }
+              />
+              <KeyValue
+                label="Offer deadline"
+                value={formatDate(parcel.offerDeadline)}
+                note={
+                  deadlineStatus(parcel.offerDeadline).state === 'PASSED'
+                    ? 'This date has gone by.'
+                    : undefined
+                }
+              />
               <KeyValue label="Failed sales" value={String(parcel.failedSaleCount)} />
               <KeyValue
                 label="OTC eligible"
@@ -603,6 +669,25 @@ export default async function ParcelPage({ params }: { params: Promise<{ id: str
                   {parcel.acquisitionInstructions}
                 </p>
               ) : null}
+            </PanelBody>
+          </Panel>
+
+          <Panel>
+            <PanelHeader
+              title="Acquisition price"
+              subtitle={acquisitionPriceCents == null ? 'Not obtained' : 'Recorded'}
+            />
+            <PanelBody>
+              <AcquisitionPriceControl
+                parcelId={parcel.id}
+                currentDollars={
+                  acquisitionPriceCents == null
+                    ? null
+                    : Math.round(centsToDollars(acquisitionPriceCents))
+                }
+                acquisitionUrl={parcel.source?.acquisitionMethod ?? null}
+                canAct={canAct}
+              />
             </PanelBody>
           </Panel>
 
@@ -767,18 +852,24 @@ function KeyValue({
   label,
   value,
   emphasis,
+  note,
 }: {
   label: string;
   value: React.ReactNode;
   emphasis?: boolean;
+  /** Qualifies the value in place. Used where a date has gone by. */
+  note?: string;
 }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
       <span className="rule-label">{label}</span>
-      <span
-        className={`num ${emphasis ? 'text-sm font-semibold text-ink' : 'text-xs text-ink-muted'}`}
-      >
-        <Value>{value}</Value>
+      <span className="flex items-baseline gap-1.5">
+        {note ? <span className="text-[10px] uppercase text-bad">{note}</span> : null}
+        <span
+          className={`num ${emphasis ? 'text-sm font-semibold text-ink' : 'text-xs text-ink-muted'}`}
+        >
+          <Value>{value}</Value>
+        </span>
       </span>
     </div>
   );

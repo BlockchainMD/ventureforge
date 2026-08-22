@@ -1,4 +1,5 @@
 import {
+  isSpecialFloodHazardZone,
   minConfidence,
   type ConfidenceLevel,
   type ContaminatedSiteHit,
@@ -24,14 +25,31 @@ export interface EnvironmentalObservations {
     readonly zones: readonly string[];
     /** Fraction of parcel area inside mapped flood hazard polygons, 0-1. */
     readonly overlapFraction: number | null;
+    /**
+     * Set where the publisher determines it rather than leaving it to a zone
+     * letter. Believed in preference to inference.
+     */
+    readonly inSpecialFloodHazardArea?: boolean | null;
     readonly available: boolean;
     readonly source: string;
+    /**
+     * Why the layer produced nothing. A layer we were not permitted to query
+     * and a layer that says the parcel is clear are opposite facts, and the
+     * difference has to survive all the way to the analyst.
+     */
+    readonly unavailableReason?: string | null;
   };
   readonly wetlands?: {
     readonly types: readonly string[];
     readonly overlapFraction: number | null;
     readonly available: boolean;
     readonly source: string;
+    /**
+     * Why the layer produced nothing. A layer we were not permitted to query
+     * and a layer that says the parcel is clear are opposite facts, and the
+     * difference has to survive all the way to the analyst.
+     */
+    readonly unavailableReason?: string | null;
   };
   readonly soils?: {
     readonly series: readonly string[];
@@ -40,12 +58,24 @@ export interface EnvironmentalObservations {
     readonly hydricFraction: number | null;
     readonly available: boolean;
     readonly source: string;
+    /**
+     * Why the layer produced nothing. A layer we were not permitted to query
+     * and a layer that says the parcel is clear are opposite facts, and the
+     * difference has to survive all the way to the analyst.
+     */
+    readonly unavailableReason?: string | null;
   };
   readonly contamination?: {
     readonly sites: readonly ContaminatedSiteHit[];
     readonly searchRadiusMeters: number;
     readonly available: boolean;
     readonly source: string;
+    /**
+     * Why the layer produced nothing. A layer we were not permitted to query
+     * and a layer that says the parcel is clear are opposite facts, and the
+     * difference has to survive all the way to the analyst.
+     */
+    readonly unavailableReason?: string | null;
   };
   readonly terrain?: {
     readonly meanElevationMeters: number | null;
@@ -54,21 +84,28 @@ export interface EnvironmentalObservations {
     readonly meanSlopePercent: number | null;
     readonly available: boolean;
     readonly source: string;
+    /**
+     * Why the layer produced nothing. A layer we were not permitted to query
+     * and a layer that says the parcel is clear are opposite facts, and the
+     * difference has to survive all the way to the analyst.
+     */
+    readonly unavailableReason?: string | null;
   };
 }
 
 /**
- * FEMA zone codes that denote a Special Flood Hazard Area (the 1%-annual-chance
- * floodplain). Zones X, B and C are outside it; V zones are coastal high hazard.
+ * Phrases a missing layer so the reason survives.
+ *
+ * "FEMA flood hazard data was not available" reads like a transient outage. If
+ * the truth is that the publisher's robots.txt forbids automated queries, that
+ * is a permanent condition an analyst has to work around by hand, and saying so
+ * is the difference between a gap someone closes and a gap someone ignores.
  */
-const SFHA_ZONE_PREFIXES = ['A', 'V'];
-const NON_SFHA_ZONES = new Set(['X', 'B', 'C', 'D', 'AREA NOT INCLUDED', 'OPEN WATER']);
-
-export function isSpecialFloodHazardZone(zone: string): boolean {
-  const normalized = zone.trim().toUpperCase();
-  if (NON_SFHA_ZONES.has(normalized)) return false;
-  if (normalized.startsWith('X')) return false;
-  return SFHA_ZONE_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+function unavailable(layer: string, observation?: { unavailableReason?: string | null }): string {
+  const reason = observation?.unavailableReason?.trim();
+  return reason
+    ? `${layer} was not checked: ${reason}`
+    : `${layer} was not available for this location.`;
 }
 
 export function assessEnvironment(
@@ -84,12 +121,18 @@ export function assessEnvironment(
     ? (observations.flood.overlapFraction ?? null)
     : null;
   const sfhaZones = floodZones.filter(isSpecialFloodHazardZone);
-  const inSpecialFloodHazardArea = observations.flood?.available ? sfhaZones.length > 0 : null;
+  // A publisher that states the determination outright is believed over one
+  // inferred from a zone letter. A parcel-keyed county table names the
+  // 100-year floodplain directly and supplies no FEMA zone code, so inferring
+  // from letters would mean inventing the letters first.
+  const inSpecialFloodHazardArea = !observations.flood?.available
+    ? null
+    : (observations.flood.inSpecialFloodHazardArea ?? sfhaZones.length > 0);
 
   if (observations.flood?.available) {
-    if (sfhaZones.length > 0) {
+    if (inSpecialFloodHazardArea === true) {
       evidence.push(
-        `Parcel intersects FEMA flood zone${sfhaZones.length > 1 ? 's' : ''} ${sfhaZones.join(', ')}${
+        `Parcel intersects FEMA flood zone${(sfhaZones.length > 0 ? sfhaZones : floodZones).length > 1 ? 's' : ''} ${(sfhaZones.length > 0 ? sfhaZones : floodZones).join(', ')}${
           floodOverlapFraction != null ? ` across ~${pct(floodOverlapFraction)} of its area` : ''
         } (${observations.flood.source}).`,
       );
@@ -98,12 +141,12 @@ export function assessEnvironment(
         `No Special Flood Hazard Area intersects the parcel${floodZones.length ? ` (mapped zone${floodZones.length > 1 ? 's' : ''}: ${floodZones.join(', ')})` : ''} (${observations.flood.source}).`,
       );
     }
-    if (floodOverlapFraction == null && sfhaZones.length > 0) {
+    if (floodOverlapFraction == null && inSpecialFloodHazardArea === true) {
       unknowns.push('The share of the parcel inside the flood hazard area could not be measured.');
       confidence = minConfidence(confidence, 'MEDIUM');
     }
   } else {
-    unknowns.push('FEMA flood hazard data was not available for this location.');
+    unknowns.push(unavailable('FEMA flood hazard mapping', observations.flood));
     confidence = minConfidence(confidence, 'MEDIUM');
   }
 
@@ -134,7 +177,7 @@ export function assessEnvironment(
       );
     }
   } else {
-    unknowns.push('National Wetlands Inventory data was not available for this location.');
+    unknowns.push(unavailable('National Wetlands Inventory mapping', observations.wetlands));
     confidence = minConfidence(confidence, 'MEDIUM');
   }
 
@@ -159,7 +202,7 @@ export function assessEnvironment(
       'Soil survey data does not establish septic suitability. On-site percolation testing and county health-department approval are required.',
     );
   } else {
-    unknowns.push('NRCS soil survey data was not available for this location.');
+    unknowns.push(unavailable('NRCS soil survey data', observations.soils));
   }
 
   // ---- Contamination -------------------------------------------------------
@@ -182,7 +225,7 @@ export function assessEnvironment(
       );
     }
   } else {
-    unknowns.push('EPA contaminated-site data was not available for this location.');
+    unknowns.push(unavailable('EPA regulated-cleanup-site screening', observations.contamination));
     confidence = minConfidence(confidence, 'MEDIUM');
   }
 
@@ -197,7 +240,7 @@ export function assessEnvironment(
       } (${terrain.source}).`,
     );
   } else {
-    unknowns.push('Elevation and slope data was not available for this location.');
+    unknowns.push(unavailable('Elevation and slope data', observations.terrain));
   }
 
   const environmentalRiskScore = computeEnvironmentalRisk({
@@ -210,6 +253,20 @@ export function assessEnvironment(
     meanSlopePercent: terrain?.meanSlopePercent ?? null,
   });
 
+  /**
+   * Which layers actually answered. Downstream text is written from this, not
+   * from an empty array: "the inventory maps no wetlands here" and "we never
+   * asked the inventory" both produce an empty list of wetland types, and only
+   * one of them is a fact about the land.
+   */
+  const layersScreened = [
+    observations.flood?.available ? 'FLOOD' : null,
+    observations.wetlands?.available ? 'WETLANDS' : null,
+    observations.soils?.available ? 'SOILS' : null,
+    observations.contamination?.available ? 'CONTAMINATION' : null,
+    observations.terrain?.available ? 'TERRAIN' : null,
+  ].filter((layer): layer is string => layer !== null);
+
   const availableLayers = [
     observations.flood?.available,
     observations.wetlands?.available,
@@ -218,7 +275,20 @@ export function assessEnvironment(
     observations.terrain?.available,
   ].filter(Boolean).length;
 
-  if (availableLayers === 0) confidence = 'UNKNOWN';
+  // Terrain is the easy layer to get and the least decisive one. Slope alone
+  // tells you a parcel is flat; it does not tell you the flat thing is a marsh
+  // inside a floodway next to a Superfund site. If none of the three hazard
+  // layers answered, we have not screened this parcel — and the honest word for
+  // that is UNKNOWN, not LOW. Buildability collapses to UNKNOWN in turn, which
+  // is the point: the pipeline must not be able to call a parcel buildable on
+  // the strength of an elevation query.
+  const hazardLayers = [
+    observations.flood?.available,
+    observations.wetlands?.available,
+    observations.contamination?.available,
+  ].filter(Boolean).length;
+
+  if (availableLayers === 0 || hazardLayers === 0) confidence = 'UNKNOWN';
   else if (availableLayers <= 2) confidence = minConfidence(confidence, 'LOW');
 
   return {
@@ -237,6 +307,7 @@ export function assessEnvironment(
     maxElevationMeters: terrain?.maxElevationMeters ?? null,
     meanSlopePercent: terrain?.meanSlopePercent ?? null,
     environmentalRiskScore,
+    layersScreened,
     evidence,
     unknowns,
     confidence,
@@ -300,3 +371,7 @@ function pct(fraction: number): string {
 function fmt(value: number | null): string {
   return value == null ? '?' : value.toFixed(0);
 }
+
+// Re-exported so existing consumers keep one import site; the definition
+// lives in shared because the connector needs the same answer.
+export { isSpecialFloodHazardZone };

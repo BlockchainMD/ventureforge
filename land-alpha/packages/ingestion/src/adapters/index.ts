@@ -1,6 +1,7 @@
 import { registerAdapter } from '../adapter';
 import { arcgisParcelInventoryAdapter } from './arcgis-parcel-inventory';
 import { arcgisTaxSalePointsAdapter } from './arcgis-tax-sale-points';
+import { flLandsAvailablePdfAdapter } from './fl-lands-available-pdf';
 import { manualImportAdapter } from './manual-import';
 
 /**
@@ -12,6 +13,12 @@ import { manualImportAdapter } from './manual-import';
  */
 registerAdapter(arcgisParcelInventoryAdapter);
 registerAdapter(arcgisTaxSalePointsAdapter);
+registerAdapter(flLandsAvailablePdfAdapter);
 registerAdapter(manualImportAdapter);
 
-export { arcgisParcelInventoryAdapter, arcgisTaxSalePointsAdapter, manualImportAdapter };
+export {
+  arcgisParcelInventoryAdapter,
+  arcgisTaxSalePointsAdapter,
+  flLandsAvailablePdfAdapter,
+  manualImportAdapter,
+};

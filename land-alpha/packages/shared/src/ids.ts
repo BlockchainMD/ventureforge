@@ -105,3 +105,23 @@ export function isValidCountyFips(value: string): boolean {
 export function stateFipsFromCountyFips(countyFips: string): string | null {
   return isValidCountyFips(countyFips) ? countyFips.slice(0, 2) : null;
 }
+
+/**
+ * The prefix every synthetic development parcel carries.
+ *
+ * Defined here rather than only in the seed package because consumers outside
+ * ingestion need it: a page that produces a list of parcel references to send
+ * to a county office must not include parcels that do not exist.
+ */
+export const FIXTURE_APN_PREFIX = 'FX-';
+
+/**
+ * True for a development fixture rather than a parcel a county published.
+ *
+ * Fixtures are meant to be indistinguishable from real records to the engines
+ * — that is what makes them useful for testing the pipeline. They must not be
+ * indistinguishable to a person about to act on them.
+ */
+export function isFixtureApn(apn: string | null | undefined): boolean {
+  return typeof apn === 'string' && apn.startsWith(FIXTURE_APN_PREFIX);
+}

@@ -22,6 +22,8 @@ export interface CompCandidate {
   readonly acreage: number;
   readonly distanceMeters: number | null;
   readonly zoning: string | null;
+  /** The assessor's neighbourhood code, where the county publishes one. */
+  readonly neighborhood?: string | null;
   readonly accessClass: string | null;
   readonly hasUtilities: boolean | null;
   readonly source: string;
@@ -35,6 +37,8 @@ export interface CompCandidate {
 
 export interface SubjectProfile {
   readonly acreage: number;
+  /** The assessor's neighbourhood code for the subject, where one exists. */
+  readonly neighborhood?: string | null;
   readonly zoning: string | null;
   readonly accessClass: string | null;
   readonly hasUtilities: boolean | null;
@@ -46,6 +50,13 @@ export interface CompsConfig {
   readonly maxAgeDays: number;
   /** Comps beyond this are dropped entirely. */
   readonly maxDistanceMeters: number;
+  /**
+   * Radii tried in order, closest first. The first that holds at least
+   * `preferredComps` sales wins; if none does, the widest is used.
+   */
+  readonly radiusTiers?: readonly number[];
+  /** Enough comparables that widening the search would cost more than it adds. */
+  readonly preferredComps?: number;
   /** Annual land-price drift applied to age-adjust older sales. */
   readonly annualAppreciation: number;
   readonly minComps: number;
@@ -56,6 +67,9 @@ export const DEFAULT_COMPS_CONFIG: CompsConfig = {
   curve: DEFAULT_ACREAGE_CURVE,
   maxAgeDays: 365 * 3,
   maxDistanceMeters: 40_000,
+  // 3km is a neighbourhood, 10km a town and its edge, 40km a metropolitan area.
+  radiusTiers: [3_000, 10_000, 40_000],
+  preferredComps: 8,
   annualAppreciation: 0.03,
   minComps: 3,
   targetComps: 12,
@@ -70,6 +84,114 @@ export interface CompsResult {
   readonly confidence: ConfidenceLevel;
   readonly warnings: string[];
   readonly rejectedCount: number;
+}
+
+/**
+ * Comparables inside the subject's own assessor neighbourhood.
+ *
+ * A radius is a poor proxy for comparability in a metropolitan county. Orange
+ * County's vacant-land sales span $166k to $6.3M per acre inside ten
+ * kilometres, so widening a circle until eight sales fall in it reliably
+ * collects land that has nothing to do with the subject — which is how a
+ * half-acre parcel assessed at $65,000 came to be valued at $821,404.
+ *
+ * The assessor already drew the right boundary. Neighbourhood codes exist to
+ * group land that trades alike, and they follow subdivisions and corridors
+ * rather than distance. Where both the subject and enough sales carry one,
+ * that beats any circle.
+ *
+ * Returns null when the neighbourhood cannot decide it — no code on the
+ * subject, or too few sales sharing it — and the caller falls back to radius.
+ * A subject that has a code but finds no sales in it is worth noticing: it
+ * usually means the two sides were coded by different offices.
+ */
+export function selectByNeighborhood(
+  candidates: readonly CompCandidate[],
+  subjectNeighborhood: string | null | undefined,
+  config: CompsConfig,
+): { pool: readonly CompCandidate[]; matched: number } | null {
+  const code = subjectNeighborhood?.trim();
+  if (!code) return null;
+  const pool = candidates.filter((candidate) => candidate.neighborhood?.trim() === code);
+  // A higher bar than minComps, deliberately.
+  //
+  // Overriding distance is a strong claim and needs a solid sample behind it.
+  // Measured on Orange County: 655 sales spread across 184 neighbourhoods, so
+  // most neighbourhoods are thin, and letting three sales decide produced
+  // valuations wilder than the radius set they replaced — one parcel went from
+  // nine times the county's assessment to seventy-two. A thin neighbourhood is
+  // noisier than a broader ring, not tighter.
+  const required = config.preferredComps ?? config.minComps;
+  if (pool.length < required) return { pool: [], matched: pool.length };
+  return { pool, matched: pool.length };
+}
+
+/**
+ * Rings are measured with located sales only.
+ *
+ * A sale with no coordinates used to satisfy every radius, on the reasoning
+ * that dropping it would discard an entire ungeocoded source the moment one
+ * located sale existed. The reasoning held when little was geocoded. It stopped
+ * holding at 97% coverage in Florida, and by then it was doing real damage:
+ * because an unlocated sale counted as inside the 3km ring, the tightest ring
+ * always looked full, so the search never widened, never warned, and reported a
+ * 3km radius while valuing off sales from anywhere in the county.
+ *
+ * It bit hardest exactly where the money is. Large rural parcels have few
+ * neighbours, so their rings could only fill through the escape hatch: the two
+ * highest-value parcels in Orange County drew nine of their twelve comparables
+ * from sales whose location nobody knows.
+ *
+ * So located sales build the rings. Unlocated ones are admitted only when even
+ * the widest ring cannot be filled without them — the case the original
+ * reasoning was about — and the caller is told, so the valuation can be marked
+ * down for it instead of quietly inheriting a radius it never satisfied.
+ */
+export function selectByRadius(
+  candidates: readonly CompCandidate[],
+  config: CompsConfig,
+): {
+  pool: readonly CompCandidate[];
+  radiusMeters: number;
+  widened: number | null;
+  unlocatedUsed: number;
+} {
+  const tiers = config.radiusTiers ?? [config.maxDistanceMeters];
+  const preferred = config.preferredComps ?? config.minComps;
+  const widest = tiers[tiers.length - 1] ?? config.maxDistanceMeters;
+
+  const located = candidates.filter((candidate) => candidate.distanceMeters != null);
+  const unlocated = candidates.filter((candidate) => candidate.distanceMeters == null);
+  const within = (radius: number): CompCandidate[] =>
+    located.filter((candidate) => candidate.distanceMeters! <= radius);
+
+  let tightestCount: number | null = null;
+  for (const [index, radius] of tiers.entries()) {
+    const pool = within(radius);
+    if (index === 0) tightestCount = pool.length;
+    if (pool.length >= preferred) {
+      return {
+        pool,
+        radiusMeters: radius,
+        widened: index === 0 ? null : tightestCount,
+        unlocatedUsed: 0,
+      };
+    }
+  }
+
+  // Even the widest ring is short. Unlocated sales are better than nothing, but
+  // only just, and only because the alternative is refusing to value a parcel
+  // in a county that has not finished geocoding its roll.
+  const widestPool = within(widest);
+  if (widestPool.length >= preferred || unlocated.length === 0) {
+    return { pool: widestPool, radiusMeters: widest, widened: tightestCount, unlocatedUsed: 0 };
+  }
+  return {
+    pool: [...widestPool, ...unlocated],
+    radiusMeters: widest,
+    widened: tightestCount,
+    unlocatedUsed: unlocated.length,
+  };
 }
 
 /**
@@ -89,7 +211,57 @@ export function analyzeComps(
   const summaries: ComparableSummary[] = [];
   let rejectedCount = 0;
 
-  for (const candidate of candidates) {
+  // Prefer the tightest ring of comparables that still has enough sales in it.
+  //
+  // A single wide radius was the only option while comparables had no
+  // coordinates. Now that they do, taking every sale within forty kilometres is
+  // actively harmful in a metropolitan county: forty kilometres spans the whole
+  // of greater Orlando, so a downtown infill lot and a rural parcel east of the
+  // Econlockhatchee end up in the same comp set, and the resulting spread makes
+  // an honest valuation impossible. Appraisal practice is to start close and
+  // widen only when forced to, which is what this does.
+  // The assessor's neighbourhood beats any circle where it can decide, because
+  // it is a boundary drawn around land that trades alike rather than land that
+  // happens to be nearby.
+  const byNeighborhood = selectByNeighborhood(candidates, subject.neighborhood, config);
+  let pool: readonly CompCandidate[];
+  // Null when the neighbourhood decided the set: distance is then not the
+  // criterion, and a sale two towns over inside the same coded neighbourhood
+  // is a better comparable than one across the street outside it.
+  let selectionRadius: number | null = null;
+  if (byNeighborhood && byNeighborhood.pool.length > 0) {
+    pool = byNeighborhood.pool;
+    warnings.push(
+      `Comparables restricted to assessor neighbourhood ${subject.neighborhood}: ${byNeighborhood.pool.length} sales. This is a tighter test of comparability than distance.`,
+    );
+  } else {
+    if (byNeighborhood) {
+      // The subject has a code and no sale shares it. Usually that means the
+      // two sides were coded by different offices, which is worth saying out
+      // loud rather than silently falling back and looking like it worked.
+      warnings.push(
+        `Too few comparable sales share the subject's assessor neighbourhood (${subject.neighborhood}) to value on them alone, so selection fell back to distance.`,
+      );
+    }
+    const byRadius = selectByRadius(candidates, config);
+    pool = byRadius.pool;
+    selectionRadius = byRadius.radiusMeters;
+    if (byRadius.widened != null) {
+      warnings.push(
+        `Only ${byRadius.widened} comparable sales within ${(config.radiusTiers?.[0] ?? 0) / 1000}km, so the search was widened to ${Math.round(byRadius.radiusMeters / 1000)}km. Sales further away are less like the subject.`,
+      );
+    }
+    if (byRadius.unlocatedUsed > 0) {
+      warnings.push(
+        `Too few located sales within ${Math.round(byRadius.radiusMeters / 1000)}km, so ${byRadius.unlocatedUsed} sales with no recorded coordinates were included. They could be anywhere in the county, and in a county spanning a city and its farmland that is the difference between land worth $166,000 an acre and land worth $6.3m.`,
+      );
+    }
+  }
+  // Sales outside the chosen set were still considered and dropped, and the
+  // count of what was dropped is part of what makes a valuation auditable.
+  rejectedCount += candidates.length - pool.length;
+
+  for (const candidate of pool) {
     if (candidate.acreage <= 0 || candidate.salePriceCents <= 0) {
       rejectedCount += 1;
       continue;
@@ -100,7 +272,11 @@ export function analyzeComps(
       rejectedCount += 1;
       continue;
     }
-    if (candidate.distanceMeters != null && candidate.distanceMeters > config.maxDistanceMeters) {
+    if (
+      selectionRadius != null &&
+      candidate.distanceMeters != null &&
+      candidate.distanceMeters > selectionRadius
+    ) {
       rejectedCount += 1;
       continue;
     }
@@ -338,6 +514,11 @@ function compsConfidence(
   if (comps.length >= 8 && closeCount >= 5 && tight) return 'HIGH';
   if (comps.length >= 5 && geolocated >= 3 && (tight || dispersion == null)) return 'MEDIUM';
   if (dispersion != null && dispersion > 1.2) return 'LOW';
+  // Comps that cannot be placed cannot be checked for proximity, and in a
+  // county spanning a city and its farmland that is the difference between a
+  // $2m-per-acre infill lot and a $20k-per-acre field. Plenty of agreeing
+  // sales is not the same as plenty of nearby ones.
+  if (geolocated === 0) return 'LOW';
   return 'MEDIUM';
 }
 

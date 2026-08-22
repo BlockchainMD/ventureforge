@@ -1,6 +1,7 @@
 import { env } from '@land-alpha/shared/env';
 import type { AnyGeometry, Position } from '@land-alpha/shared';
 import { ArcGisClient } from '../fetch/arcgis';
+import { describeUnavailable } from './unavailable';
 import type { EnrichmentContext, EnrichmentTarget } from './types';
 
 /**
@@ -119,19 +120,32 @@ async function fetchCountyRoads(
       const attributes = feature.attributes ?? {};
       roads.push({
         name: pickString(attributes, [
+          // Every county names this column differently, and a road with no
+          // name is a road the memo cannot describe.
+          'COMPLETE_STREETNAME',
+          'ST_CONCAT',
           'STREETNAME',
+          'StreetName',
           'ROADNAME',
+          'RoadName',
           'NAME',
+          'Name',
           'FULLNAME',
+          'FULL_NAME',
           'LABEL',
           'STREET',
+          'Street',
+          'ST_NAME',
         ]),
         isPublic: inferPublicMaintenance(attributes),
         isPaved: inferPaved(attributes),
         classification: pickString(attributes, [
+          'STREET_CLASSIFICATION',
           'ROADCLASS',
+          'RoadClass',
           'CLASS',
           'FUNCTIONAL_CLASS',
+          'FunctionalClassification',
           'ROUTE_TYPE',
         ]),
         geometry:
@@ -144,8 +158,38 @@ async function fetchCountyRoads(
 
     return { roads, available: true, source, note: null };
   } catch (error) {
-    return { roads: [], available: false, source, note: `unavailable: ${String(error)}` };
+    return { roads: [], available: false, source, note: describeUnavailable(error, null) };
   }
+}
+
+/**
+ * Road networks, cached by tile for the life of the process.
+ *
+ * The public Overpass endpoint rate-limits hard, and asking it for the roads
+ * around each parcel individually earned an HTTP 503 on every single request:
+ * access came back UNKNOWN for 228 of 304 parcels, each one costing sixteen
+ * seconds of retries to learn nothing. The parcels are not scattered — St.
+ * Louis County's inventory clusters around Duluth and Orange County's are
+ * platted lots in a handful of subdivisions — so one query per two-kilometre
+ * tile answers dozens of them.
+ *
+ * Fewer requests is also simply the right way to treat a free, volunteer-run
+ * service. This is not a way around the rate limit; it is a way to stop
+ * deserving one.
+ */
+const roadTileCache = new Map<string, Promise<RoadObservation>>();
+
+/** Roughly two kilometres at mid latitudes. */
+const TILE_DEGREES = 0.02;
+
+/** Test seam, and a way for a long-lived worker to drop a stale network. */
+export function clearRoadTileCache(): void {
+  roadTileCache.clear();
+}
+
+function tileKeyFor(centroid: Position): string {
+  const [lon, lat] = centroid;
+  return `${Math.floor(lon / TILE_DEGREES)}/${Math.floor(lat / TILE_DEGREES)}`;
 }
 
 async function fetchOsmRoads(
@@ -153,9 +197,35 @@ async function fetchOsmRoads(
   target: EnrichmentTarget,
   radiusMeters: number,
 ): Promise<RoadObservation> {
+  const key = tileKeyFor(target.centroid);
+  const cached = roadTileCache.get(key);
+  if (cached) return cached;
+  const pending = queryOsmTile(ctx, target, radiusMeters);
+  roadTileCache.set(key, pending);
+  return pending;
+}
+
+async function queryOsmTile(
+  ctx: EnrichmentContext,
+  target: EnrichmentTarget,
+  radiusMeters: number,
+): Promise<RoadObservation> {
   const source = 'OpenStreetMap (Overpass)';
   const [lon, lat] = target.centroid;
-  const query = `[out:json][timeout:25];way(around:${Math.round(radiusMeters)},${lat.toFixed(6)},${lon.toFixed(6)})[highway~"^(${VEHICULAR_HIGHWAYS.join('|')})$"];out geom;`;
+  // The tile, not the parcel: one answer has to serve every parcel that falls
+  // inside it, and a radius drawn around this parcel would leave its neighbours
+  // short. The access engine measures frontage against the parcel's own
+  // geometry, so extra roads in the response cost nothing but bytes.
+  const tileLon = Math.floor(lon / TILE_DEGREES) * TILE_DEGREES;
+  const tileLat = Math.floor(lat / TILE_DEGREES) * TILE_DEGREES;
+  const margin = radiusMeters / 111_000;
+  const bbox = [
+    (tileLat - margin).toFixed(6),
+    (tileLon - margin).toFixed(6),
+    (tileLat + TILE_DEGREES + margin).toFixed(6),
+    (tileLon + TILE_DEGREES + margin).toFixed(6),
+  ].join(',');
+  const query = `[out:json][timeout:60];way(${bbox})[highway~"^(${VEHICULAR_HIGHWAYS.join('|')})$"];out geom;`;
 
   try {
     const response = await ctx.http.getJson<{
@@ -195,7 +265,7 @@ async function fetchOsmRoads(
           : 'No mapped road found within the search radius.',
     };
   } catch (error) {
-    return { roads: [], available: false, source, note: `unavailable: ${String(error)}` };
+    return { roads: [], available: false, source, note: describeUnavailable(error, null) };
   }
 }
 
@@ -222,21 +292,76 @@ function pickString(attributes: Record<string, unknown>, keys: string[]): string
   return null;
 }
 
-function inferPublicMaintenance(attributes: Record<string, unknown>): boolean | null {
+/**
+ * Whether a county's own layer states that somebody public maintains the road.
+ *
+ * This is the field that separates access class A from B, and county layers
+ * are the only source that carries it — OpenStreetMap will tell you a line
+ * exists, not who is responsible for it.
+ *
+ * Note carefully what this is not. Public maintenance is a fact about the
+ * road; it says nothing about whether this parcel has a legal right to reach
+ * it. Legal access stays UNKNOWN until a recorded instrument is read, on every
+ * parcel, regardless of what this returns.
+ */
+export function inferPublicMaintenance(attributes: Record<string, unknown>): boolean | null {
   const text = Object.entries(attributes)
-    .filter(([key]) => /JURIS|MAINT|OWNER|AUTHORITY|SYSTEM/i.test(key))
+    // CLASS and DESIGNATION join the list because several counties state the
+    // maintaining body there and nowhere else: Ottawa's RoadClass reads
+    // "County Primary", and its Act 51 designation is a bare integer.
+    .filter(([key]) => /JURIS|MAINT|OWNER|AUTHORITY|SYSTEM|CLASS|DESIGNATION/i.test(key))
     .map(([, value]) => String(value ?? ''))
     .join(' ')
     .toUpperCase();
   if (!text.trim()) return null;
   if (/PRIVATE/.test(text)) return false;
-  if (/COUNTY|CITY|STATE|TOWNSHIP|MUNICIPAL|TWP|MNDOT|PUBLIC|FEDERAL/.test(text)) return true;
+  // MSTU is a Municipal Service Taxing Unit: the mechanism by which a Florida
+  // county funds maintenance of roads in an unincorporated subdivision. It
+  // names the county as maintainer as surely as the county's own name does.
+  //
+  // UNINCORPORATED used to be on this list, on the reasoning that it was how
+  // Orange County recorded a road it maintained itself. It is not. Orange's
+  // MAINTENANCE column holds the single value "Unincorporated" for all ~31,000
+  // segments — it is a partition label for the layer (OCSHARE_Roads_Uninc,
+  // roads in unincorporated Orange County), not a statement about maintenance.
+  // Querying the layer for distinct values returns exactly one row.
+  //
+  // The cost was total: every Orange road matched, so touchesPublicRoad was
+  // true for every Orange parcel with any frontage. That switch upgrades a
+  // parcel from access class B to A, adds 15 points to the physical access
+  // score, and deletes the one warning the operator gets — that the adjoining
+  // strip may be a private road or an unopened right-of-way. An unopened
+  // right-of-way is exactly what makes a cheap lot unsellable: no driveway
+  // permit, and the resale comparables do not apply.
+  //
+  // Orange does publish the maintainer, in S_OWNER: "COUNTY" or "None". That
+  // field is picked up by the OWNER key filter above and answers honestly.
+  // DESIGNATION is deliberately not interpreted — the county publishes no
+  // dictionary for its codes, and FM appears on both county-owned and
+  // unowned segments, so reading it would be guessing.
+  if (/COUNTY|CITY|STATE|TOWNSHIP|MUNICIPAL|TWP|MNDOT|PUBLIC|FEDERAL|MSTU/.test(text)) {
+    return true;
+  }
   return null;
 }
 
 function inferPaved(attributes: Record<string, unknown>): boolean | null {
-  const text = Object.entries(attributes)
-    .filter(([key]) => /SURF|PAVE|MATERIAL/i.test(key))
+  const candidates = Object.entries(attributes).filter(([key]) => /SURF|PAVE|MATERIAL/i.test(key));
+
+  // Some counties answer the question with a flag rather than a surface.
+  // Marion's road inventory carries `Paved` as 1 or 0, which stringifies to
+  // something no surface-material pattern matches — so the parcel came back
+  // unpaved-unknown next to a road the county has explicitly marked paved.
+  for (const [key, value] of candidates) {
+    if (!/^(IS_?)?PAVED$/i.test(key)) continue;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1 ? true : value === 0 ? false : null;
+    if (typeof value === 'string' && /^(0|1|Y|N|YES|NO|TRUE|FALSE)$/i.test(value.trim())) {
+      return /^(1|Y|YES|TRUE)$/i.test(value.trim());
+    }
+  }
+
+  const text = candidates
     .map(([, value]) => String(value ?? ''))
     .join(' ')
     .toUpperCase();

@@ -3,6 +3,7 @@ import { env } from '@land-alpha/shared/env';
 import type { AnyGeometry } from '@land-alpha/shared';
 import { envelopeParam } from './fema';
 import type { EnrichmentContext, EnrichmentTarget } from './types';
+import { describeUnavailable } from './unavailable';
 
 /**
  * USFWS National Wetlands Inventory.
@@ -40,7 +41,11 @@ export async function fetchWetlands(
     inSR: '4326',
     outSR: '4326',
     spatialRel: 'esriSpatialRelIntersects',
-    outFields: 'WETLAND_TYPE,ATTRIBUTE',
+    // The service is now hosted by USGS and returns its fields qualified by
+    // the source table — `Wetlands.WETLAND_TYPE` rather than `WETLAND_TYPE`.
+    // Asking for the unqualified names makes the whole query fail with a bare
+    // 400, which reads exactly like "no wetlands here".
+    outFields: 'Wetlands.WETLAND_TYPE,Wetlands.ATTRIBUTE',
     returnGeometry: 'true',
     f: 'json',
   });
@@ -64,7 +69,14 @@ export async function fetchWetlands(
     const types = new Set<string>();
     const polygons: AnyGeometry[] = [];
     for (const feature of response.features) {
-      const type = feature.attributes?.WETLAND_TYPE ?? feature.attributes?.ATTRIBUTE;
+      // Accept either spelling: the qualified names the current service
+      // returns, and the bare ones an older or mirrored deployment might.
+      const attributes = feature.attributes ?? {};
+      const type =
+        attributes['Wetlands.WETLAND_TYPE'] ??
+        attributes.WETLAND_TYPE ??
+        attributes['Wetlands.ATTRIBUTE'] ??
+        attributes.ATTRIBUTE;
       if (typeof type === 'string' && type.trim()) types.add(type.trim());
       if (feature.geometry?.rings) {
         const converted = esriPolygonToGeoJson(feature.geometry);
@@ -79,7 +91,10 @@ export async function fetchWetlands(
       polygons: [],
       available: false,
       source,
-      note: `unavailable: ${String(error)}`,
+      note: describeUnavailable(
+        error,
+        'https://www.fws.gov/program/national-wetlands-inventory/wetlands-mapper',
+      ),
     };
   }
 }

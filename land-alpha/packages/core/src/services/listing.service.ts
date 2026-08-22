@@ -2,6 +2,7 @@ import { prisma, toCents, toDecimal, Prisma } from '@land-alpha/db';
 import { listingSlug } from '@land-alpha/shared/ids';
 import { generateListing, type ListingFacts } from '@land-alpha/listing-engine';
 import { createLogger } from '@land-alpha/shared/logger';
+import { buildAmortizationSchedule, suggestTerms } from '@land-alpha/valuation';
 
 /**
  * The Listing Factory service.
@@ -12,6 +13,48 @@ import { createLogger } from '@land-alpha/shared/logger';
  */
 
 const logger = createLogger({ component: 'listing-service' });
+
+/**
+ * Financing terms to publish alongside the price.
+ *
+ * A monthly figure changes who the buyer is. Cash buyers for rural land are a
+ * thin, price-sensitive pool; buyers who can pay $300 a month are a much larger
+ * one, and they are not comparing against the same alternatives. The terms are
+ * written onto the listing rather than derived when the page renders, so that
+ * what a buyer was shown remains what was offered even after the pricing model
+ * changes underneath it.
+ */
+function financeOfferFor(askingPriceCents: number | null): {
+  financeOffered: boolean;
+  financeDownPayment: ReturnType<typeof toDecimal>;
+  financeMonthlyPayment: ReturnType<typeof toDecimal>;
+  financeTermMonths: number | null;
+  financeAnnualRate: number | null;
+  financeDocumentFee: ReturnType<typeof toDecimal>;
+} {
+  // Below about $3,000 a note is not worth servicing: the paperwork, the
+  // collection risk and the bookkeeping cost more than the interest earns.
+  if (askingPriceCents == null || askingPriceCents < 300_000) {
+    return {
+      financeOffered: false,
+      financeDownPayment: null,
+      financeMonthlyPayment: null,
+      financeTermMonths: null,
+      financeAnnualRate: null,
+      financeDocumentFee: null,
+    };
+  }
+  const terms = suggestTerms(askingPriceCents);
+  const schedule = buildAmortizationSchedule(terms, new Date());
+  return {
+    financeOffered: true,
+    financeDownPayment: toDecimal(terms.downPaymentCents),
+    financeMonthlyPayment: toDecimal(schedule.monthlyPaymentCents),
+    financeTermMonths: terms.termMonths,
+    financeAnnualRate: terms.annualRate,
+    financeDocumentFee: toDecimal(terms.documentFeeCents ?? 0),
+  };
+}
 
 export async function generateListingForParcel(
   parcelId: string,
@@ -88,6 +131,7 @@ export async function generateListingForParcel(
         metaDescription: listing.metaDescription,
         socialCopy: listing.socialCopy,
         askingPrice: toDecimal(facts.askingPriceCents),
+        ...financeOfferFor(facts.askingPriceCents),
         generatedBy: listing.deterministic ? 'listing-engine' : 'listing-engine+ai',
       },
       update: {
@@ -104,6 +148,7 @@ export async function generateListingForParcel(
         metaDescription: listing.metaDescription,
         socialCopy: listing.socialCopy,
         askingPrice: toDecimal(facts.askingPriceCents),
+        ...financeOfferFor(facts.askingPriceCents),
       },
       select: { id: true },
     });

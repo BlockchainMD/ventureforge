@@ -2,18 +2,24 @@ import { env } from '@land-alpha/shared/env';
 import { distanceMeters } from '@land-alpha/gis';
 import type { Position } from '@land-alpha/shared';
 import type { EnrichmentContext, EnrichmentTarget } from './types';
+import { describeUnavailable } from './unavailable';
 
 /**
- * Terrain from the USGS 3DEP elevation point query service.
+ * Terrain from USGS 3DEP.
  *
- * The service returns a single elevation per request, so slope is estimated by
- * sampling a small cross around the parcel centroid rather than by processing a
- * DEM raster. That is a deliberate trade: it is one order of magnitude cheaper,
- * needs no raster toolchain, and is entirely adequate for a screen whose only
- * question is "is this parcel flat, rolling, or steep?".
+ * Slope is estimated by sampling a small cross around the parcel centroid
+ * rather than by processing a DEM raster. That is a deliberate trade: it is an
+ * order of magnitude cheaper, needs no raster toolchain, and is entirely
+ * adequate for a screen whose only question is "is this parcel flat, rolling,
+ * or steep?".
  *
- * A real DEM pass belongs in a later raster service; the output contract here
- * will not change when it arrives.
+ * Two services answer, and which one is used dominates the cost of an
+ * enrichment run. The 3DEP ImageServer's `getSamples` takes every point in one
+ * request; the Elevation Point Query Service takes one point per request, and
+ * with the politeness delay between calls to the same host that turned five
+ * samples into roughly forty seconds — per parcel. The batch service is tried
+ * first and the point service is the fallback, so a parcel outside 3DEP
+ * coverage or a batch outage still produces an answer.
  */
 
 export interface TerrainObservation {
@@ -31,7 +37,7 @@ export async function fetchTerrain(
   ctx: EnrichmentContext,
   target: EnrichmentTarget,
 ): Promise<TerrainObservation> {
-  const source = 'USGS 3DEP Elevation Point Query Service';
+  const source = 'USGS 3DEP elevation';
   const empty: TerrainObservation = {
     meanElevationMeters: null,
     minElevationMeters: null,
@@ -45,25 +51,30 @@ export async function fetchTerrain(
   if (ctx.mode === 'fixture') return { ...empty, note: 'fixture mode' };
 
   const samples = samplePositions(target);
-  const elevations: { position: Position; elevation: number }[] = [];
 
-  for (const position of samples) {
-    if (ctx.signal?.aborted) break;
-    const url = `${env().USGS_EPQS_URL}?x=${position[0].toFixed(6)}&y=${position[1].toFixed(6)}&units=Meters&wkid=4326&includeDate=false`;
-    try {
-      const response = await ctx.http.getJson<{ value?: number | string; error?: unknown }>(url);
-      const value = Number(response.value);
-      // The service returns a large negative sentinel for "no data".
-      if (Number.isFinite(value) && value > -1000) {
-        elevations.push({ position, elevation: value });
-      }
-    } catch {
-      // A missing sample is tolerable; a missing service is reported below.
-    }
+  // Kept so that a run where *every* sample failed can say why. One dropped
+  // sample is noise; all of them dropped is a fact about the service, and
+  // "no elevation samples returned" hides which.
+  let lastError: unknown = null;
+
+  let elevations = await sampleInOneRequest(ctx, samples).catch((error: unknown) => {
+    lastError = error;
+    return [] as { position: Position; elevation: number }[];
+  });
+
+  if (elevations.length === 0) {
+    const fallback = await samplePointByPoint(ctx, samples);
+    elevations = fallback.elevations;
+    lastError = fallback.lastError ?? lastError;
   }
 
   if (elevations.length === 0) {
-    return { ...empty, note: 'no elevation samples returned' };
+    return {
+      ...empty,
+      note: lastError
+        ? describeUnavailable(lastError, null)
+        : 'the elevation service returned no samples for this location',
+    };
   }
 
   const values = elevations.map((sample) => sample.elevation);
@@ -94,6 +105,80 @@ export async function fetchTerrain(
         ? `${elevations.length} of ${samples.length} elevation samples returned data.`
         : null,
   };
+}
+
+/**
+ * Every sample in one request, via the 3DEP ImageServer.
+ *
+ * `getSamples` is the documented multipoint operation on an ArcGIS image
+ * service. `locationId` maps each returned sample back to its input index, and
+ * points outside coverage simply do not come back — so the caller gets fewer
+ * samples rather than wrong ones.
+ */
+async function sampleInOneRequest(
+  ctx: EnrichmentContext,
+  samples: Position[],
+): Promise<{ position: Position; elevation: number }[]> {
+  const params = new URLSearchParams({
+    geometry: JSON.stringify({
+      points: samples.map((position) => [position[0], position[1]]),
+      spatialReference: { wkid: 4326 },
+    }),
+    geometryType: 'esriGeometryMultipoint',
+    returnFirstValueOnly: 'true',
+    f: 'json',
+  });
+
+  const response = await ctx.http.getJson<{
+    samples?: { locationId?: number; value?: string | number }[];
+    error?: unknown;
+  }>(`${env().USGS_3DEP_IMAGE_URL}/getSamples?${params.toString()}`);
+
+  if (response.error || !response.samples) return [];
+
+  const located: { index: number; position: Position; elevation: number }[] = [];
+  for (const sample of response.samples) {
+    const index = sample.locationId;
+    if (typeof index !== 'number') continue;
+    const position = samples[index];
+    if (!position) continue;
+    const value = Number(sample.value);
+    // A large negative sentinel means "no data", not "below sea level".
+    if (!Number.isFinite(value) || value <= -1000) continue;
+    located.push({ index, position, elevation: value });
+  }
+  // Slope is measured from the centre outwards, so the centre sample has to
+  // come first whatever order the service returned things in. Sorting on the
+  // service's own locationId rather than on the position keeps that true even
+  // if two sample points coincide.
+  return located
+    .sort((a, b) => a.index - b.index)
+    .map(({ position, elevation }) => ({ position, elevation }));
+}
+
+/** One request per point. Correct, and slow enough to matter at scale. */
+async function samplePointByPoint(
+  ctx: EnrichmentContext,
+  samples: Position[],
+): Promise<{ elevations: { position: Position; elevation: number }[]; lastError: unknown }> {
+  const elevations: { position: Position; elevation: number }[] = [];
+  let lastError: unknown = null;
+
+  for (const position of samples) {
+    if (ctx.signal?.aborted) break;
+    const url = `${env().USGS_EPQS_URL}?x=${position[0].toFixed(6)}&y=${position[1].toFixed(6)}&units=Meters&wkid=4326&includeDate=false`;
+    try {
+      const response = await ctx.http.getJson<{ value?: number | string; error?: unknown }>(url);
+      const value = Number(response.value);
+      if (Number.isFinite(value) && value > -1000) {
+        elevations.push({ position, elevation: value });
+      }
+    } catch (error) {
+      // A missing sample is tolerable; a missing service is reported by caller.
+      lastError = error;
+    }
+  }
+  return { elevations, lastError };
 }
 
 /** Centre plus four points at roughly the parcel's own radius. */

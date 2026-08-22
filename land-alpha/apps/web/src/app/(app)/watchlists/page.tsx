@@ -21,10 +21,23 @@ export default async function WatchlistsPage() {
     prisma.alertRule.findMany({ where: { userId: user.id }, orderBy: { name: 'asc' } }),
     prisma.notification.findMany({
       where: { userId: user.id },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
+      // Unread first, then by urgency, then newest. A sale in three days
+      // outranks a better parcel selling in three months.
+      orderBy: [{ readAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }],
+      take: 30,
     }),
   ]);
+
+  // Urgency cannot be ordered in SQL here: it is stored as text, and
+  // alphabetically HIGH sorts before IMMEDIATE. Rank it explicitly.
+  const URGENCY_ORDER: Record<string, number> = { IMMEDIATE: 0, HIGH: 1, NORMAL: 2 };
+  const queue = [...notifications].sort((a, b) => {
+    const unread = Number(a.readAt != null) - Number(b.readAt != null);
+    if (unread !== 0) return unread;
+    const urgency = (URGENCY_ORDER[a.urgency] ?? 2) - (URGENCY_ORDER[b.urgency] ?? 2);
+    if (urgency !== 0) return urgency;
+    return b.createdAt.getTime() - a.createdAt.getTime();
+  });
 
   return (
     <>
@@ -120,16 +133,24 @@ export default async function WatchlistsPage() {
         <Panel>
           <PanelHeader title="Notifications" />
           <PanelBody className="space-y-1.5">
-            {notifications.length === 0 ? (
+            {queue.length === 0 ? (
               <p className="py-4 text-center text-xs text-ink-faint">
-                Nothing yet. Alerts fire when new inventory matches one of your rules.
+                Nothing yet. Alerts fire on new inventory, price cuts, parcels returning to a list,
+                and sale dates moving closer.
               </p>
             ) : (
-              notifications.map((notification) => (
+              queue.map((notification) => (
                 <div key={notification.id} className="border-b border-line/60 pb-1.5 last:border-0">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-xs text-ink">{notification.title}</span>
-                    {notification.readAt == null ? <Badge tone="alpha">new</Badge> : null}
+                    <span className="flex shrink-0 items-center gap-1">
+                      {notification.urgency === 'IMMEDIATE' ? (
+                        <Badge tone="bad">act now</Badge>
+                      ) : notification.urgency === 'HIGH' ? (
+                        <Badge tone="warn">soon</Badge>
+                      ) : null}
+                      {notification.readAt == null ? <Badge tone="alpha">new</Badge> : null}
+                    </span>
                   </div>
                   <p className="text-[11px] text-ink-muted">{notification.body}</p>
                   {notification.linkPath ? (

@@ -6,7 +6,10 @@ import {
   type SaleStatus,
   type SaleType,
 } from '@land-alpha/shared';
-import { ArcGisClient, arcgisLiteral } from '../fetch/arcgis';
+import { normalizeParcelGeometry, centroidOf } from '@land-alpha/gis';
+import { ArcGisClient } from '../fetch/arcgis';
+import { batchLookupParcels } from './parcel-lookup';
+export { chunkByLength } from './parcel-lookup';
 import {
   validateNormalized,
   type AdapterContext,
@@ -107,12 +110,9 @@ export const arcgisTaxSalePointsAdapter: SourceAdapter = {
         for (const candidate of candidates) allCandidates.add(candidate);
       }
 
-      const resolved = await batchLookupParcels(
-        client,
-        config.parcelLayerUrl,
-        [...allCandidates],
-        ctx.signal,
-      );
+      const resolved = await batchLookupParcels(client, config.parcelLayerUrl, [...allCandidates], {
+        signal: ctx.signal,
+      });
 
       let enriched = 0;
       for (const [record, candidates] of candidatesByRecord) {
@@ -199,6 +199,15 @@ export const arcgisTaxSalePointsAdapter: SourceAdapter = {
       const point = record.__point as [number, number] | null;
       const acreage = parcel ? num(parcel[map.acreage ?? 'ACREAGE']) : null;
 
+      const rawGeometry = parcel?.__geometry;
+      const { geometry, reason } = rawGeometry
+        ? normalizeParcelGeometry(rawGeometry)
+        : { geometry: null, reason: null };
+      if (reason) warnings.push(`${apn ?? 'unknown parcel'}: ${reason}`);
+      // The dot the tax-sale layer publishes is a label position, not a
+      // centroid. Where a boundary exists it decides where the parcel is.
+      const centroid = geometry ? centroidOf(geometry) : point;
+
       items.push({
         sourceId: ctx.sourceId,
         sourceRecordId: str(record[map.sourceRecordId]),
@@ -218,8 +227,9 @@ export const arcgisTaxSalePointsAdapter: SourceAdapter = {
         priorAuctionStatus: isLandsAvailable ? 'No bid received; placed on Lands Available' : null,
         acquisitionInstructions: config.acquisitionInstructions ?? null,
 
-        latitude: point ? point[1] : null,
-        longitude: point ? point[0] : null,
+        latitude: centroid ? centroid[1] : null,
+        longitude: centroid ? centroid[0] : null,
+        geometry,
         acreage,
         legalDescription: parcel ? str(parcel[map.legalDescription ?? 'LEGAL']) : null,
         situsAddress: parcel ? str(parcel.SITUS) : null,
@@ -229,6 +239,10 @@ export const arcgisTaxSalePointsAdapter: SourceAdapter = {
         assessedValue: parcel ? centsFrom(parcel.TOTAL_MKT) : null,
         annualTaxEstimate: parcel ? centsFrom(parcel.TAXES) : null,
         zoning: parcel ? str(parcel.ZONING_CODE) : null,
+        // The assessor's own neighbourhood. Comparable selection prefers sales
+        // inside it, because it is the boundary the county drew around land it
+        // considers to trade alike.
+        neighborhood: parcel ? str(parcel.NBHD_CODE) : null,
         zoningSource: parcel ? 'County property appraiser parcel layer' : null,
 
         ownerType: 'COUNTY',
@@ -261,78 +275,24 @@ export function parcelIdCandidates(apn: string): string[] {
     candidates.push([parts[2], parts[1], parts[0], ...tail].join(''));
     // section-township-range -> township-range-section
     candidates.push([parts[1], parts[2], parts[0], ...tail].join(''));
+  } else if (/^\d{15}$/.test(bare)) {
+    // The same reorderings, for an ID that arrives without punctuation.
+    //
+    // Florida's tax roll publishes parcel IDs as a bare fifteen digits and the
+    // county parcel layer stores the first three pairs in the opposite order.
+    // Only the hyphenated form was ever reversed, so 655 Orange comparables
+    // silently matched nothing: 032229262817070 is 292203262817070 in the
+    // layer, and without this branch the two never meet.
+    const sec = bare.slice(0, 2);
+    const twp = bare.slice(2, 4);
+    const rng = bare.slice(4, 6);
+    const tail = bare.slice(6);
+    candidates.push(`${rng}${twp}${sec}${tail}`);
+    candidates.push(`${twp}${rng}${sec}${tail}`);
   }
   return [
     ...new Set(candidates.map((value) => value.replace(/[^A-Za-z0-9]/g, '')).filter(Boolean)),
   ];
-}
-
-/**
- * Resolve many parcel IDs in as few requests as possible.
- *
- * Only unambiguous single matches are kept: if one candidate ID resolves to
- * more than one parcel, none of them is used.
- */
-async function batchLookupParcels(
-  client: ArcGisClient,
-  parcelLayerUrl: string,
-  candidates: string[],
-  signal?: AbortSignal,
-): Promise<Map<string, Record<string, unknown>>> {
-  const resolved = new Map<string, Record<string, unknown>>();
-  const ambiguous = new Set<string>();
-
-  // Chunk by URL length, not by record count. ArcGIS queries are sent as GET,
-  // and servers reject an over-long query string with a bare 404 that looks
-  // exactly like a missing layer — so the budget is enforced here rather than
-  // discovered in production.
-  const WHERE_BUDGET_CHARS = 1400;
-
-  for (const chunk of chunkByLength(candidates, WHERE_BUDGET_CHARS)) {
-    if (signal?.aborted) break;
-    const literals = chunk.map((value) => arcgisLiteral(value)).join(', ');
-    try {
-      const features = await client.queryAll(parcelLayerUrl, {
-        where: `PARCEL IN (${literals})`,
-        returnGeometry: false,
-        maxFeatures: chunk.length * 3,
-      });
-      for (const feature of features) {
-        const key = str(feature.attributes.PARCEL);
-        if (!key) continue;
-        if (resolved.has(key)) {
-          ambiguous.add(key);
-          continue;
-        }
-        resolved.set(key, feature.attributes);
-      }
-    } catch {
-      // Enrichment is best-effort: a failure here must never fail the run.
-      break;
-    }
-  }
-
-  for (const key of ambiguous) resolved.delete(key);
-  return resolved;
-}
-
-/** Group values so each group's quoted, comma-joined form stays under `budget`. */
-export function chunkByLength(values: readonly string[], budget: number): string[][] {
-  const chunks: string[][] = [];
-  let current: string[] = [];
-  let length = 0;
-  for (const value of values) {
-    const cost = value.length + 4; // quotes, comma, space
-    if (current.length > 0 && length + cost > budget) {
-      chunks.push(current);
-      current = [];
-      length = 0;
-    }
-    current.push(value);
-    length += cost;
-  }
-  if (current.length > 0) chunks.push(current);
-  return chunks;
 }
 
 // --- helpers ---------------------------------------------------------------

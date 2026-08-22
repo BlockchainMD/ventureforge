@@ -25,7 +25,18 @@ export function buildWhere(filter: OpportunityFilter): Prisma.ParcelOpportunityW
   // Inventory that has vanished from its source is never a live opportunity.
   and.push({ removedFromSourceAt: null });
 
-  if (!filter.includeRejected) and.push({ rejected: false });
+  // Neither is inventory you already own. `rejected` is the engine's verdict
+  // and `status` is where the parcel has got to, and only the first was being
+  // checked — so a parcel already bought went on being counted as something to
+  // buy, in the headline figure and in the ranked list. It belongs in the
+  // portfolio, not the buy list.
+  and.push({ status: { notIn: ['ACQUIRED', 'SOLD'] } });
+
+  if (!filter.includeRejected) {
+    and.push({ rejected: false });
+    // The analyst's own disposition, as distinct from the engine's.
+    and.push({ status: { not: 'REJECTED' } });
+  }
 
   if (filter.q?.trim()) {
     const q = filter.q.trim();
@@ -79,29 +90,72 @@ export function buildWhere(filter: OpportunityFilter): Prisma.ParcelOpportunityW
   if (filter.buildability?.length) and.push({ buildability: { in: filter.buildability } });
   if (filter.maxTitleRisk != null) and.push({ titleRiskScore: { lte: filter.maxTitleRisk } });
 
-  // Environmental overlap filters treat "unknown" as passing: excluding parcels
-  // we simply have not measured yet would hide new inventory, which is the
-  // opposite of what an analyst screening for fresh opportunities wants.
+  // These used to treat "unknown" as passing, on the reasoning that excluding
+  // parcels we had not measured yet would hide new inventory. That reasoning
+  // assumed a backlog. There is none: ADR 0011 records that FEMA's NFHL
+  // disallows us in robots.txt and the USGS wetlands service answers our
+  // User-Agent with a WAF block, so both layers are MANUAL_SOURCE and stay
+  // null for almost everything. 113 of 14,331 live parcels have a flood
+  // measurement; 20 have a wetland one.
+  //
+  // So `FLOOD ≤ 0%` returned 99.5% of the inventory while presenting itself as
+  // a satisfied constraint, and an analyst reading that list believed every row
+  // had been screened and found dry. Buying a parcel that is wholly inside a
+  // special flood hazard area, priced as buildable upland, is a total loss.
+  //
+  // An unknown must not resolve favourably (ADR 0013). `maxTitleRisk` above
+  // already excludes its nulls; these now agree with it. `includeUnscreened`
+  // brings the old behaviour back deliberately, for the discovery case the
+  // original comment was reaching for.
   if (filter.maxFloodOverlap != null) {
-    and.push({
-      OR: [
-        { floodOverlapFraction: { lte: filter.maxFloodOverlap } },
-        { floodOverlapFraction: null },
-      ],
-    });
+    and.push(
+      filter.includeUnscreened
+        ? {
+            OR: [
+              { floodOverlapFraction: { lte: filter.maxFloodOverlap } },
+              { floodOverlapFraction: null },
+            ],
+          }
+        : { floodOverlapFraction: { lte: filter.maxFloodOverlap, not: null } },
+    );
   }
   if (filter.maxWetlandOverlap != null) {
-    and.push({
-      OR: [
-        { wetlandOverlapFraction: { lte: filter.maxWetlandOverlap } },
-        { wetlandOverlapFraction: null },
-      ],
-    });
+    and.push(
+      filter.includeUnscreened
+        ? {
+            OR: [
+              { wetlandOverlapFraction: { lte: filter.maxWetlandOverlap } },
+              { wetlandOverlapFraction: null },
+            ],
+          }
+        : { wetlandOverlapFraction: { lte: filter.maxWetlandOverlap, not: null } },
+    );
   }
 
   if (filter.auctionBefore) and.push({ auctionDate: { lte: new Date(filter.auctionBefore) } });
   if (filter.auctionAfter) and.push({ auctionDate: { gte: new Date(filter.auctionAfter) } });
   if (filter.firstSeenAfter) and.push({ firstSeenAt: { gte: new Date(filter.firstSeenAfter) } });
+
+  if (filter.offeredOnly) {
+    // What a county has actually put up, as opposed to what it merely holds.
+    // Everything else is inventory we found in a government record with no
+    // offering attached to it.
+    and.push({ saleStatus: { in: ['AVAILABLE', 'SCHEDULED'] } });
+  }
+
+  if (filter.deadlinePassed) {
+    // Must stay identical to the `deadlinePassed` count in dashboardStats, or
+    // the metric and the list it links to describe different sets — which is
+    // the contradiction the source panel used to have.
+    const now = new Date();
+    and.push({ saleStatus: { notIn: ['SOLD', 'WITHDRAWN', 'EXPIRED'] } });
+    and.push({
+      OR: [
+        { auctionDate: { lt: now } },
+        { AND: [{ auctionDate: null }, { offerDeadline: { lt: now } }] },
+      ],
+    });
+  }
 
   if (filter.otcOnly) {
     and.push({
@@ -148,6 +202,10 @@ function buildOrderBy(
       return [{ titleRiskScore: { sort: direction, nulls } }];
     case 'confidenceScore':
       return [{ confidenceScore: { sort: direction, nulls } }];
+    case 'annualizedRoiAtQsv':
+      return [{ annualizedRoiAtQsv: { sort: direction, nulls } }, { alphaScore: 'desc' }];
+    case 'expectedHoldDays':
+      return [{ expectedHoldDays: { sort: direction, nulls } }, { alphaScore: 'desc' }];
     case 'alphaScore':
     default:
       return [{ alphaScore: { sort: direction, nulls } }, { firstSeenAt: 'desc' }];
@@ -166,6 +224,8 @@ const SUMMARY_SELECT = {
   quickSaleValue: true,
   retailValue: true,
   basisToQsv: true,
+  annualizedRoiAtQsv: true,
+  expectedHoldDays: true,
   alphaScore: true,
   accessClass: true,
   buildability: true,
@@ -195,6 +255,8 @@ export function toSummary(row: SummaryRow): OpportunitySummary {
     quickSaleValue: toCents(row.quickSaleValue),
     retailValue: toCents(row.retailValue),
     basisToQsv: row.basisToQsv,
+    annualizedRoiAtQsv: row.annualizedRoiAtQsv,
+    expectedHoldDays: row.expectedHoldDays,
     alphaScore: row.alphaScore,
     accessClass: row.accessClass,
     buildability: row.buildability,
@@ -282,6 +344,15 @@ export async function getParcelBySlug(slug: string) {
 
 export interface DashboardStats {
   readonly activeOpportunities: number;
+  /**
+   * Of the active opportunities, those a county has actually offered.
+   *
+   * The gap between this and `activeOpportunities` is the important number on
+   * the dashboard: most sources publish a government-held inventory rather than
+   * an offer list, so the headline count is dominated by parcels nobody can
+   * buy today.
+   */
+  readonly offeredForSale: number;
   readonly newToday: number;
   readonly newThisWeek: number;
   readonly totalAskingCents: number;
@@ -298,12 +369,34 @@ export interface DashboardStats {
   readonly exceptionalCount: number;
   readonly distressedInventoryCount: number;
   readonly auctionsNext14Days: number;
+  /**
+   * Parcels still presented as buyable after their sale date has gone by.
+   *
+   * Not a count of parcels that are gone — a passed auction does not say what
+   * happened at it, and in Florida an unsold parcel moving to a lands-available
+   * list is precisely how the best inventory appears. It is a count of rows
+   * nobody has been back to the source about, which is a worklist rather than a
+   * verdict.
+   */
+  readonly deadlinePassed: number;
 }
 
 /**
  * The dashboard header. One round-trip per figure would be 14 queries; these
  * are grouped into a handful of aggregates instead.
  */
+/**
+ * "This parcel has a cost somebody published, and a value we established."
+ *
+ * Written as raw SQL because the aggregate that needs it is raw SQL, and
+ * spelled out once so the three FILTER clauses cannot drift apart. Mirrors
+ * `AllocationCandidate.priced` — the same question, asked by the allocator.
+ */
+const PRICED_AND_VALUED = Prisma.sql`
+  (p."askingPrice" IS NOT NULL OR p."minimumBid" IS NOT NULL)
+  AND p."quickSaleValue" IS NOT NULL
+`;
+
 export async function dashboardStats(now = new Date()): Promise<DashboardStats> {
   const startOfToday = new Date(now);
   startOfToday.setHours(0, 0, 0, 0);
@@ -313,6 +406,7 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
 
   const [
     activeOpportunities,
+    offeredForSale,
     newToday,
     newThisWeek,
     sums,
@@ -324,9 +418,13 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
     exceptionalCount,
     distressedInventoryCount,
     auctionsNext14Days,
+    deadlinePassed,
     runStats,
   ] = await Promise.all([
     prisma.parcelOpportunity.count({ where: liveWhere }),
+    prisma.parcelOpportunity.count({
+      where: buildWhere({ includeRejected: false, offeredOnly: true }),
+    }),
     prisma.parcelOpportunity.count({
       where: { AND: [liveWhere, { firstSeenAt: { gte: startOfToday } }] },
     }),
@@ -356,15 +454,23 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
         -- a cost and a value exist. Many government layers publish no price at
         -- all (Minnesota tax-forfeited land among them); including their value
         -- but not their cost would manufacture an enormous fictitious discount.
-        SUM(p."estimatedAllInBasis") FILTER (
-          WHERE p."estimatedAllInBasis" IS NOT NULL AND p."quickSaleValue" IS NOT NULL
-        )::text AS comparable_basis,
-        SUM(p."quickSaleValue") FILTER (
-          WHERE p."estimatedAllInBasis" IS NOT NULL AND p."quickSaleValue" IS NOT NULL
-        )::text AS comparable_qsv,
-        COUNT(*) FILTER (
-          WHERE p."estimatedAllInBasis" IS NOT NULL AND p."quickSaleValue" IS NOT NULL
-        )::int AS comparable_count
+        --
+        -- The comment above was right and the predicate under it was wrong, in
+        -- exactly the way ADR 0013 keeps recurring. estimatedAllInBasis is
+        -- NOT NULL for an unpriced parcel: it is the costs-only floor --
+        -- recording, title, marketing, carry -- which can be modelled without
+        -- knowing the price. So "has a basis" was never "has a cost", and the
+        -- headline read a 92.5% discount over 230 parcels of which precisely
+        -- zero had a published price. That is the allocator's defect
+        -- (allocation.service.ts) in a third consumer of the same field.
+        --
+        -- The test for a published cost is the one the allocator settled on:
+        -- an asking price or a minimum bid that somebody actually printed.
+        SUM(p."estimatedAllInBasis") FILTER (WHERE ${PRICED_AND_VALUED})::text
+          AS comparable_basis,
+        SUM(p."quickSaleValue") FILTER (WHERE ${PRICED_AND_VALUED})::text
+          AS comparable_qsv,
+        COUNT(*) FILTER (WHERE ${PRICED_AND_VALUED})::int AS comparable_count
       FROM "ParcelOpportunity" p
       WHERE p."removedFromSourceAt" IS NULL AND p."rejected" = false
     `,
@@ -383,6 +489,13 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
     }),
     prisma.parcelOpportunity.count({
       where: { AND: [liveWhere, { auctionDate: { gte: now, lte: inTwoWeeks } }] },
+    }),
+    // Built from the same filter the dashboard's link uses, rather than a
+    // second copy of the condition. A metric and the list it links to must
+    // describe the same set, and the only way to guarantee that is to compute
+    // them from one definition.
+    prisma.parcelOpportunity.count({
+      where: buildWhere({ includeRejected: false, deadlinePassed: true }),
     }),
     prisma.ingestionRun.groupBy({
       by: ['status'],
@@ -404,6 +517,7 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
 
   return {
     activeOpportunities,
+    offeredForSale,
     newToday,
     newThisWeek,
     totalAskingCents,
@@ -422,6 +536,7 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
     exceptionalCount,
     distressedInventoryCount,
     auctionsNext14Days,
+    deadlinePassed,
   };
 }
 

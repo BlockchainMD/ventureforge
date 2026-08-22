@@ -48,6 +48,7 @@ model User {
   savedSearches   SavedSearch[]
   watchlists      Watchlist[]
   notes           ParcelNote[]
+  environmentalScreens ManualEnvironmentalScreen[]
   activities      ActivityLog[]
   alertRules      AlertRule[]
   notifications   Notification[]
@@ -526,6 +527,10 @@ model ParcelOpportunity {
   currentUse               String?
   zoning                   String?
   zoningSource             String?
+  /// The assessor's neighbourhood code for this parcel. Comparable selection
+  /// prefers sales inside the same neighbourhood, because that is the boundary
+  /// the county itself drew around land it considers to trade alike.
+  neighborhood             String?
   zoningConfidence         ConfidenceLevel @default(UNKNOWN)
   minimumLotSizeAcres      Float?
   knownUtilities           String[] @default([])
@@ -572,6 +577,15 @@ model ParcelOpportunity {
   meanSlopePercent           Float?
   environmentalRiskScore     Float?
   environmentalConfidence    ConfidenceLevel @default(UNKNOWN)
+  /// What the environmental screen could not establish, and why. Populated by
+  /// the screening engine, which distinguishes "the layer says this parcel is
+  /// clear" from "we were never permitted to ask" — a distinction that is
+  /// worthless unless it is stored and shown.
+  environmentalUnknowns      String[] @default([])
+  /// Which public layers actually answered: FLOOD, WETLANDS, SOILS,
+  /// CONTAMINATION, TERRAIN. Every downstream statement of the form "no
+  /// wetlands here" must be gated on the corresponding layer appearing here.
+  environmentalLayersScreened String[] @default([])
 
   // ---- Buildability -------------------------------------------------------
   buildability             BuildabilityRating @default(UNKNOWN)
@@ -607,6 +621,14 @@ model ParcelOpportunity {
   roiAtQsv                Float?
   annualizedRoiAtQsv      Float?
   economicsTier           String?
+
+  // ---- Liquidity ----------------------------------------------------------
+  // How long this parcel is expected to take to sell, and why. Return is
+  // annualised, so a hold estimate is not a cost-model detail — it decides
+  // the order of the ranked list.
+  expectedHoldDays        Int?
+  liquidityConfidence     ConfidenceLevel @default(UNKNOWN)
+  liquidityFactors        Json?
 
   // ---- Scores -------------------------------------------------------------
   alphaScore            Float?
@@ -651,6 +673,7 @@ model ParcelOpportunity {
   evidence            Evidence[]
   changes             ParcelChange[]
   notes               ParcelNote[]
+  environmentalScreens ManualEnvironmentalScreen[]
   documents           ParcelDocument[]
   titleInstruments    TitleInstrument[]
   titleResearchTasks  TitleResearchTask[]
@@ -658,6 +681,7 @@ model ParcelOpportunity {
   scoreSnapshots      ParcelScoreSnapshot[]
   comparableLinks     ComparableLink[]
   deal                Deal?
+  financeNote         FinanceNote?
   portfolioAsset      PortfolioAsset?
   listing             Listing?
   leads               Lead[]
@@ -698,6 +722,52 @@ model Evidence {
 
   @@index([parcelId, field])
   @@index([parcelId, createdAt])
+}
+
+/// A layer an analyst screened by hand.
+///
+/// Flood, wetlands and regulated-cleanup-site data are all published behind
+/// robots directives or bot protection that Land Alpha does not work around,
+/// so the only way those layers are ever screened is a person opening the
+/// public map viewer. This records what they saw, so the screening engine can
+/// consume it exactly as it consumes an API response — same confidence rules,
+/// same buildability consequences, same memo text — with the difference that
+/// the observation names the person who made it.
+model ManualEnvironmentalScreen {
+  id        String                @id @default(uuid())
+  parcelId  String
+  layer     EnvironmentalLayer
+  /// Verbatim finding: flood zone codes, NWI classification codes, or the
+  /// distance and name of the nearest regulated site.
+  findings  String[]              @default([])
+  /// Share of the parcel affected, 0-1, where the analyst could judge it.
+  overlapFraction Float?
+  /// Metres to the nearest regulated cleanup site. CONTAMINATION only.
+  nearestSiteMeters Float?
+  /// True when the analyst confirmed the layer maps nothing here. Distinct
+  /// from an empty findings array on an abandoned entry.
+  clear     Boolean               @default(false)
+  /// Where they looked, so a reviewer can repeat it.
+  sourceUrl String?
+  notes     String?
+  screenedById String?
+  screenedByLabel String
+  screenedAt DateTime             @default(now())
+  /// Superseded entries are kept: a screening that later proved wrong is
+  /// evidence about the analyst, not something to erase.
+  supersededAt DateTime?
+
+  parcel     ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  screenedBy User?             @relation(fields: [screenedById], references: [id], onDelete: SetNull)
+
+  @@index([parcelId, layer, supersededAt])
+}
+
+enum EnvironmentalLayer {
+  FLOOD
+  WETLANDS
+  CONTAMINATION
+  SOILS
 }
 
 model ParcelNote {
@@ -750,6 +820,10 @@ model ComparableSale {
   centroid       Unsupported("geometry(Point, 4326)")?
   zoning         String?
   landUse        String?
+  /// The assessor's neighbourhood code. Assessors draw these boundaries for
+  /// exactly this purpose — grouping land that trades alike — which makes them
+  /// a sharper comparability test than any radius drawn on a map.
+  neighborhood   String?
   accessClass    AccessClass?
   hasUtilities   Boolean?
   isVacantLand   Boolean  @default(true)
@@ -763,6 +837,7 @@ model ComparableSale {
   links ComparableLink[]
 
   @@index([state, county, saleDate])
+  @@index([state, county, neighborhood])
   @@index([acreage])
   @@unique([state, county, apn, saleDate, salePrice])
 }
@@ -809,7 +884,8 @@ model ParcelValuationSnapshot {
 model ParcelScoreSnapshot {
   id            String   @id @default(uuid())
   parcelId      String
-  alphaScore    Float
+  /// Null when the parcel could not be valued and so could not be ranked.
+  alphaScore    Float?
   configVersion String
   components    Json
   breakdown     Json
@@ -830,6 +906,13 @@ model ScoringConfig {
   thresholds     Json
   rejectionRules Json
   costModel      Json
+  /**
+   * Per-market corrections learned from parcels actually bought and sold,
+   * keyed `STATE/County`. Written by the calibration run, never by hand — the
+   * whole point is that the numbers come from outcomes rather than opinion.
+   */
+  holdCalibration  Json?
+  valueCalibration Json?
   description    String?
   createdById    String?
   createdAt      DateTime @default(now())
@@ -905,6 +988,94 @@ model TitleResearchTask {
 
   @@index([status, createdAt])
   @@index([parcelId])
+}
+
+// ===========================================================================
+// Seller financing
+// ===========================================================================
+
+enum FinanceNoteStatus {
+  DRAFT
+  ACTIVE
+  PAID_OFF
+  DELINQUENT
+  DEFAULTED
+  FORFEITED
+  CANCELLED
+}
+
+enum FinancePaymentKind {
+  DOWN_PAYMENT
+  SCHEDULED
+  EXTRA_PRINCIPAL
+  PAYOFF
+  LATE_FEE
+  DOCUMENT_FEE
+  REFUND
+}
+
+/// An executed seller-financed sale: the terms, and where the note stands.
+///
+/// The schedule is derived from the terms rather than stored row by row, so a
+/// note cannot drift out of agreement with its own arithmetic. What is stored
+/// is what actually happened — the payments.
+model FinanceNote {
+  id             String            @id @default(uuid())
+  parcelId       String            @unique
+  buyerLeadId    String?
+  status         FinanceNoteStatus @default(DRAFT)
+
+  salePrice      Decimal  @db.Decimal(14, 2)
+  downPayment    Decimal  @db.Decimal(14, 2)
+  /// Nominal annual rate, e.g. 0.10 for 10%.
+  annualRate     Float
+  termMonths     Int
+  documentFee    Decimal  @db.Decimal(14, 2) @default(0)
+  monthlyFee     Decimal  @db.Decimal(14, 2) @default(0)
+  /// Charged when a payment is late by more than the grace period.
+  lateFee        Decimal  @db.Decimal(14, 2) @default(0)
+  graceDays      Int      @default(10)
+
+  firstPaymentDate DateTime
+  signedAt         DateTime?
+  closedAt         DateTime?
+  /// Why the note ended, when it ended other than by being paid off.
+  closureReason    String?
+
+  /// Recorded at signing so a later change to the engine cannot rewrite what
+  /// was agreed. The note is a contract; the model is not.
+  scheduleSnapshot Json?
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parcel   ParcelOpportunity @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  buyer    Lead?             @relation(fields: [buyerLeadId], references: [id], onDelete: SetNull)
+  payments FinancePayment[]
+
+  @@index([status])
+  @@index([firstPaymentDate])
+}
+
+/// One payment actually received. The ledger, not the plan.
+model FinancePayment {
+  id         String             @id @default(uuid())
+  noteId     String
+  kind       FinancePaymentKind @default(SCHEDULED)
+  amount     Decimal            @db.Decimal(14, 2)
+  receivedAt DateTime
+  /// Which scheduled instalment this was applied to, where it maps to one.
+  appliesToPaymentNumber Int?
+  method     String?
+  reference  String?
+  notes      String?
+  recordedById String?
+  createdAt  DateTime @default(now())
+
+  note FinanceNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId, receivedAt])
 }
 
 // ===========================================================================
@@ -1051,6 +1222,19 @@ model Listing {
   metaDescription   String
   socialCopy        String
   askingPrice       Decimal? @db.Decimal(14, 2)
+
+  /// Seller-financing terms offered publicly on this listing.
+  ///
+  /// A monthly figure is the single largest conversion lever in land sales: it
+  /// moves the buyer pool from people with cash to people with income. Stored
+  /// on the listing rather than derived at render time so that what a buyer was
+  /// shown is what was offered, even after the pricing model changes.
+  financeOffered    Boolean  @default(false)
+  financeDownPayment Decimal? @db.Decimal(14, 2)
+  financeMonthlyPayment Decimal? @db.Decimal(14, 2)
+  financeTermMonths Int?
+  financeAnnualRate Float?
+  financeDocumentFee Decimal? @db.Decimal(14, 2)
   published         Boolean  @default(false)
   publishedAt       DateTime?
   generatedBy       String   @default("listing-engine")
@@ -1120,6 +1304,7 @@ model Lead {
   updatedAt   DateTime   @updatedAt
 
   parcel     ParcelOpportunity? @relation(fields: [parcelId], references: [id], onDelete: SetNull)
+  financeNotes FinanceNote[]
   activities LeadActivity[]
 
   @@index([status, createdAt])
@@ -1214,6 +1399,13 @@ model Notification {
   body        String
   linkPath    String?
   parcelId    String?
+  /// The change that triggered this, when one did. Deduplication keys on it
+  /// rather than on the parcel, because a price drop on a parcel already
+  /// notified is precisely the alert worth sending.
+  parcelChangeId String?
+  /// Sorting key for the analyst's queue: a sale in three days outranks a
+  /// better parcel selling in three months.
+  urgency     String   @default("NORMAL")
   readAt      DateTime?
   deliveredAt DateTime?
   createdAt   DateTime @default(now())
@@ -1221,7 +1413,9 @@ model Notification {
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   alertRule AlertRule? @relation(fields: [alertRuleId], references: [id], onDelete: SetNull)
 
+  @@unique([alertRuleId, parcelChangeId])
   @@index([userId, readAt, createdAt])
+  @@index([userId, urgency, createdAt])
 }
 
 model InvestmentMemo {

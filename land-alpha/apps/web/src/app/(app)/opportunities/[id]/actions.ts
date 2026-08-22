@@ -318,3 +318,204 @@ export async function setListingPublishedAction(
   revalidatePath('/properties');
   return { ok: true, message: published ? 'Listing published.' : 'Listing unpublished.' };
 }
+
+/**
+ * Record what an analyst saw in a public map viewer.
+ *
+ * FEMA's NFHL, the National Wetlands Inventory and EPA's coordinate-bearing
+ * facility service are all published behind robots directives or bot protection
+ * that this project does not work around, so a person looking at the map is the
+ * only screening those layers will ever get. This puts what they saw into the
+ * same engine an API response would feed, then re-runs enrichment and scoring so
+ * the parcel's rating moves immediately — which is the whole point, since a
+ * parcel with no hazard screening is capped at buildability UNKNOWN.
+ */
+export async function recordEnvironmentalScreenAction(
+  parcelId: string,
+  input: {
+    layer: 'FLOOD' | 'WETLANDS' | 'CONTAMINATION' | 'SOILS';
+    findings: string;
+    overlapPercent: string;
+    nearestSiteMeters: string;
+    clear: boolean;
+    sourceUrl: string;
+    notes: string;
+  },
+): Promise<ActionResult> {
+  const user = await requireRole('ANALYST');
+  const { recordManualScreen } = await import('@land-alpha/core');
+
+  const findings = input.findings
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const overlapPercent = input.overlapPercent.trim() ? Number(input.overlapPercent) : null;
+  if (
+    overlapPercent != null &&
+    (!Number.isFinite(overlapPercent) || overlapPercent < 0 || overlapPercent > 100)
+  ) {
+    return { ok: false, message: 'Overlap must be a percentage between 0 and 100.' };
+  }
+  const nearestSiteMeters = input.nearestSiteMeters.trim() ? Number(input.nearestSiteMeters) : null;
+  if (nearestSiteMeters != null && (!Number.isFinite(nearestSiteMeters) || nearestSiteMeters < 0)) {
+    return {
+      ok: false,
+      message: 'Distance to the nearest site must be a positive number of metres.',
+    };
+  }
+
+  try {
+    await recordManualScreen({
+      parcelId,
+      layer: input.layer,
+      findings,
+      overlapFraction: overlapPercent == null ? null : overlapPercent / 100,
+      nearestSiteMeters,
+      clear: input.clear,
+      sourceUrl: input.sourceUrl.trim() || null,
+      notes: input.notes.trim() || null,
+      screenedById: user.id,
+      screenedByLabel: user.name,
+    });
+  } catch (error) {
+    return { ok: false, message: String(error instanceof Error ? error.message : error) };
+  }
+
+  await recordActivity(user, {
+    action: 'parcel.environmental-screen',
+    entityType: 'ParcelOpportunity',
+    entityId: parcelId,
+    summary: `Recorded a manual ${input.layer.toLowerCase()} screen: ${
+      input.clear ? 'clear' : findings.join(', ') || `${nearestSiteMeters} m to nearest site`
+    }`,
+    metadata: { layer: input.layer, findings, clear: input.clear, sourceUrl: input.sourceUrl },
+  });
+
+  // Re-run the screen so the rating reflects the new evidence without the
+  // analyst having to remember a second button.
+  await enrichParcel(parcelId, { stages: ['environmental', 'buildability'] });
+  await scoreParcelById(parcelId);
+
+  revalidatePath(`/opportunities/${parcelId}`);
+  return { ok: true, message: `Recorded. ${input.layer} is now screened.` };
+}
+
+/**
+ * Record the acquisition price an analyst obtained.
+ *
+ * Tax-deed and lands-available inventory is published without a price: Orange
+ * County's layer carries a TDA number, a sale date and a status, and the payoff
+ * figure — opening bid plus accrued taxes, interest and fees — comes from the
+ * Comptroller on request. Until someone asks, the parcel has no cost, and
+ * without a cost there is no spread, no return and nothing to rank.
+ *
+ * Writing it to `askingPrice` puts it exactly where a published price would go,
+ * so valuation, scoring and the memo consume it with no special case. What the
+ * audit log preserves is that a person supplied it.
+ */
+export async function setAcquisitionPriceAction(
+  parcelId: string,
+  dollars: string,
+  note: string,
+): Promise<ActionResult> {
+  const user = await requireRole('ANALYST');
+
+  const trimmed = dollars.trim();
+  if (!trimmed) {
+    await prisma.parcelOpportunity.update({
+      where: { id: parcelId },
+      data: { askingPrice: null },
+    });
+    await recordActivity(user, {
+      action: 'parcel.acquisition-price',
+      entityType: 'ParcelOpportunity',
+      entityId: parcelId,
+      summary: 'Cleared the acquisition price',
+    });
+  } else {
+    const amount = Number(trimmed.replace(/[$,]/g, ''));
+    if (!Number.isFinite(amount) || amount < 0) {
+      return { ok: false, message: 'Enter the price in dollars, or leave it blank to clear it.' };
+    }
+    await prisma.parcelOpportunity.update({
+      where: { id: parcelId },
+      data: { askingPrice: toDecimal(Math.round(amount * 100)) },
+    });
+    await recordActivity(user, {
+      action: 'parcel.acquisition-price',
+      entityType: 'ParcelOpportunity',
+      entityId: parcelId,
+      summary: `Recorded an acquisition price of $${amount.toLocaleString('en-US')}${note.trim() ? ` — ${note.trim()}` : ''}`,
+      metadata: { amount, note: note.trim() || null },
+    });
+  }
+
+  // Re-price and re-rank immediately. A figure entered and not acted on is the
+  // same as no figure at all.
+  await valuateParcel(parcelId);
+  await scoreParcelById(parcelId);
+  revalidatePath(`/opportunities/${parcelId}`);
+  revalidatePath('/opportunities');
+  return {
+    ok: true,
+    message: trimmed ? 'Price recorded. Economics and rank updated.' : 'Price cleared.',
+  };
+}
+
+export interface BulkPriceResult extends ActionResult {
+  readonly applied: number;
+  readonly unmatched: string[];
+}
+
+/**
+ * Record acquisition prices in bulk from a county's reply.
+ *
+ * A county holds one list and answers one request. Orange has forty-six
+ * parcels waiting on a payoff figure and one Comptroller; the reply comes back
+ * as a list, and re-typing forty-six numbers one page at a time is where this
+ * work stops being done.
+ *
+ * Accepts anything with a reference and an amount on each line — comma, tab or
+ * whitespace separated — because the reply will be pasted out of a spreadsheet
+ * or an email and should not have to be cleaned up first. References match
+ * against the source record ID (a TDA number) or the APN, in that order.
+ * Anything unmatched is reported rather than silently dropped: a line that
+ * quietly did nothing is how a parcel ends up priced in someone's head and not
+ * in the system.
+ */
+export async function recordPricesInBulkAction(
+  state: string,
+  county: string,
+  pasted: string,
+): Promise<BulkPriceResult> {
+  const user = await requireRole('ANALYST');
+  const { recordPricesInBulk } = await import('@land-alpha/core');
+  const outcome = await recordPricesInBulk(state, county, pasted);
+
+  if (outcome.applied > 0) {
+    await recordActivity(user, {
+      action: 'parcel.acquisition-price.bulk',
+      entityType: 'Source',
+      entityId: `${state}/${county}`,
+      summary: `Recorded ${outcome.applied} acquisition prices for ${county} County, ${state}`,
+      metadata: { applied: outcome.applied, unmatched: outcome.unmatched.length },
+    });
+  }
+
+  revalidatePath('/blocked');
+  revalidatePath('/opportunities');
+  return {
+    ok: outcome.applied > 0,
+    applied: outcome.applied,
+    unmatched: [...outcome.unmatched],
+    message:
+      outcome.applied === 0
+        ? 'No lines matched a parcel in this county.'
+        : `Recorded ${outcome.applied} price${outcome.applied === 1 ? '' : 's'}.${
+            outcome.unmatched.length > 0
+              ? ` ${outcome.unmatched.length} line(s) did not match.`
+              : ''
+          }`,
+  };
+}

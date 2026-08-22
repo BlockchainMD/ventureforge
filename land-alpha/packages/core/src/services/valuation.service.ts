@@ -18,12 +18,17 @@ import {
   acreageBandFor,
   computeEconomics,
   DEFAULT_COMPS_CONFIG,
+  DEFAULT_LIQUIDITY_CONFIG,
+  DEFAULT_VALUATION_CONFIG,
+  estimateHoldDays,
   maximumBidForTargetRatio,
   valueParcel,
   type CompCandidate,
 } from '@land-alpha/valuation';
 import { estimateCurativeCostCents } from '@land-alpha/title-research';
 import { FIXTURE_COMP_SOURCE } from '@land-alpha/db/seed/comparables';
+import { FIXTURE_APN_PREFIX } from '@land-alpha/db/seed/fixture-parcels';
+import { registryByKey } from '@land-alpha/source-registry';
 
 /**
  * Valuation orchestration.
@@ -54,7 +59,37 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
   const config = await getActiveScoringConfig();
   const warnings: string[] = [];
 
-  const acreage = parcel.acreage;
+  // A fixture parcel draws only on fixture sales and a real parcel only on
+  // recorded ones. Once a county publishes a real roll, letting the two mix
+  // would make a fixture's expected conclusion drift with that county's
+  // market — the specification tests would stop measuring the pipeline.
+  const fixtures = (parcel.apn ?? '').startsWith(FIXTURE_APN_PREFIX) ? 'only' : 'exclude';
+
+  // Value the land that may actually be built on.
+  //
+  // The comps engine adjusts for size, age, access, utilities and zoning, and
+  // nothing at all for flood — so until now a parcel 95% inside the floodplain
+  // was valued exactly like a dry one of the same size, and the recommended
+  // maximum bid followed it. That is a direct route to overpaying, and with
+  // seventeen Florida and seventeen Michigan parcels now known to sit in a
+  // Special Flood Hazard Area it is not hypothetical.
+  //
+  // The floodway is the defensible place to make the correction, because it is
+  // a regulatory fact rather than a market opinion: NFIP rules and local
+  // ordinance prohibit development that would raise the base flood elevation,
+  // which in practice bars new structures. Land inside it is not developable
+  // area, so it is excluded from the area being valued. A ten-acre parcel with
+  // five usable acres then prices like a five-acre parcel — which is right,
+  // and is not the same as half the ten-acre price, because the size curve
+  // applies to the usable figure.
+  //
+  // The rest of the 100-year floodplain is deliberately left alone. Building
+  // there is permitted with elevation, so the discount is real but it is a
+  // market judgement, and picking a percentage would be inventing one. It is
+  // recorded as a warning instead.
+  const developable = developableAcreage(parcel);
+  const acreage = developable.acreage;
+  if (developable.note) warnings.push(developable.note);
   const centroid =
     parcel.longitude != null && parcel.latitude != null
       ? ([parcel.longitude, parcel.latitude] as [number, number])
@@ -73,6 +108,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       maxAcreage: band.max,
       soldSince: new Date(Date.now() - DEFAULT_COMPS_CONFIG.maxAgeDays * 86_400_000),
       limit: 80,
+      fixtures,
     });
 
     candidates = rows.map((row) => ({
@@ -83,6 +119,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       acreage: row.acreage,
       distanceMeters: row.distance_m == null ? null : Number(row.distance_m),
       zoning: row.zoning,
+      neighborhood: row.neighborhood,
       accessClass: row.accessClass,
       hasUtilities: row.hasUtilities,
       source: row.source,
@@ -101,6 +138,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
         maxAcreage: band.max,
         soldSince: new Date(Date.now() - DEFAULT_COMPS_CONFIG.maxAgeDays * 86_400_000),
         limit: 80,
+        fixtures,
       });
       if (countyWide.length > candidates.length) {
         warnings.push(
@@ -114,6 +152,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
           acreage: row.acreage,
           distanceMeters: row.distance_m == null ? null : Number(row.distance_m),
           zoning: row.zoning,
+          neighborhood: row.neighborhood,
           accessClass: row.accessClass,
           hasUtilities: row.hasUtilities,
           source: row.source,
@@ -125,10 +164,18 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
     warnings.push('Parcel acreage is unknown, so no comparable-sales valuation is possible.');
   }
 
+  // A market where parcels consistently fetch less than predicted needs its
+  // estimates lowered, and the correction belongs on the value rather than on
+  // the comparables — the comps are what the market did, the error is in how we
+  // read them.
+  const marketKey = `${parcel.state}/${parcel.county}`;
+  const valueCorrection = config.valueCalibration?.[marketKey];
+
   const valuation = valueParcel(
     {
       subject: {
         acreage: acreage ?? 0,
+        neighborhood: parcel.neighborhood,
         zoning: parcel.zoning,
         accessClass: parcel.accessClass === 'UNKNOWN' ? null : parcel.accessClass,
         hasUtilities: parcel.knownUtilities.length > 0 ? true : null,
@@ -137,19 +184,53 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       landAssessedValueCents: toCents(parcel.landAssessedValue),
     },
     {
+      ...DEFAULT_VALUATION_CONFIG,
+      // Jurisdictions do not assess on the same basis, so the fallback
+      // multiplier belongs to the source rather than to the engine.
+      assessedValueMultiplier:
+        registryByKey(parcel.source.registryKey)?.assessedValueMultiplier ??
+        DEFAULT_VALUATION_CONFIG.assessedValueMultiplier,
       comps: DEFAULT_COMPS_CONFIG,
       quickSaleDiscount: config.costModel.quickSaleDiscountFromRetail,
       investorLiquidationDiscount: config.costModel.investorLiquidationDiscountFromRetail,
-      assessedValueMultiplier: 1.15,
+      marketCorrection: valueCorrection ?? 1,
     },
   );
   warnings.push(...valuation.warnings);
+  if (valueCorrection != null && Math.abs(valueCorrection - 1) > 0.02) {
+    warnings.push(
+      valueCorrection < 1
+        ? `Values in ${marketKey} are corrected down ${((1 - valueCorrection) * 100).toFixed(0)}% because parcels sold here have fetched less than this engine predicted.`
+        : `Values in ${marketKey} are corrected up ${((valueCorrection - 1) * 100).toFixed(0)}% because parcels sold here have fetched more than this engine predicted.`,
+    );
+  }
 
   // ---- Economics -----------------------------------------------------------
+  // Null, not zero. Nothing in this chain may substitute a favourable number
+  // for a missing one: a parcel priced at nothing scores as the best deal on
+  // the board, which is precisely inverted from the truth that nobody has
+  // obtained its payoff figure yet.
   const acquisitionPriceCents =
-    toCents(parcel.askingPrice) ?? toCents(parcel.minimumBid) ?? toCents(parcel.taxesDue) ?? 0;
+    toCents(parcel.askingPrice) ?? toCents(parcel.minimumBid) ?? toCents(parcel.taxesDue) ?? null;
 
   const curativeCents = parcel.titleRiskScore != null ? await curativeCostFor(parcelId) : 0;
+
+  // ---- Liquidity -----------------------------------------------------------
+  // Estimated before economics, because how long the parcel takes to sell sets
+  // the carrying cost and the annualised return the ranking is built on.
+  const liquidity = estimateHoldDays(
+    {
+      acreage,
+      quickSaleValueCents: valuation.quickSale?.mid ?? null,
+      accessClass: parcel.accessClass === 'UNKNOWN' ? null : parcel.accessClass,
+      buildability: parcel.buildability === 'UNKNOWN' ? null : parcel.buildability,
+      hasUtilities: parcel.knownUtilities.length > 0 ? true : null,
+      comparableCount: valuation.compCount,
+    },
+    { ...DEFAULT_LIQUIDITY_CONFIG, calibration: config.holdCalibration ?? {} },
+    `${parcel.state}/${parcel.county}`,
+  );
+  warnings.push(...liquidity.warnings);
 
   const economics =
     valuation.quickSale || valuation.retail
@@ -161,31 +242,35 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
             titleCurativeCents: curativeCents,
             quickSaleValueCents: valuation.quickSale?.mid ?? null,
             retailValueCents: valuation.retail?.mid ?? null,
+            holdDaysOverride: liquidity.holdDays,
           },
           config.costModel,
           config.thresholds,
         )
       : null;
 
-  const recommendedMaxBidCents =
-    valuation.quickSale && acquisitionPriceCents >= 0
-      ? maximumBidForTargetRatio({
-          quickSaleValueCents: valuation.quickSale.mid,
-          targetBasisToQsv: config.thresholds.strongBasisToQsv,
-          costs: config.costModel,
-          governmentFeesCents: toCents(parcel.fees) ?? 0,
-          annualTaxCents: toCents(parcel.annualTaxEstimate),
-          titleCurativeCents: curativeCents,
-        })
-      : null;
+  // Computed whether or not the price is known — when it is not, this is the
+  // single most useful number on the page: what the parcel is worth bidding.
+  const recommendedMaxBidCents = valuation.quickSale
+    ? maximumBidForTargetRatio({
+        quickSaleValueCents: valuation.quickSale.mid,
+        targetBasisToQsv: config.thresholds.strongBasisToQsv,
+        costs: config.costModel,
+        governmentFeesCents: toCents(parcel.fees) ?? 0,
+        annualTaxCents: toCents(parcel.annualTaxEstimate),
+        titleCurativeCents: curativeCents,
+      })
+    : null;
 
   // ---- Persist -------------------------------------------------------------
   const valuationConfidence: ConfidenceLevel =
-    acquisitionPriceCents === 0 ? minConfidence(valuation.confidence, 'LOW') : valuation.confidence;
+    acquisitionPriceCents == null
+      ? minConfidence(valuation.confidence, 'LOW')
+      : valuation.confidence;
 
-  if (acquisitionPriceCents === 0) {
+  if (acquisitionPriceCents == null) {
     warnings.push(
-      'No acquisition price is published for this parcel, so the all-in basis is a floor rather than an estimate.',
+      'No acquisition price is published for this parcel. The all-in basis shown is a floor covering closing and carrying costs only, and no return, margin or acquisition tier can be computed until the payoff figure is obtained.',
     );
   }
 
@@ -204,7 +289,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       valuationMethod: valuation.retail?.method ?? null,
       valuationWarnings: warnings.slice(0, 20),
 
-      estimatedAcquisitionCost: toDecimal(acquisitionPriceCents || null),
+      estimatedAcquisitionCost: toDecimal(acquisitionPriceCents),
       estimatedAllInBasis: toDecimal(economics?.allInBasis ?? null),
       estimatedCarryingCost: toDecimal(economics?.carryingCost ?? null),
       estimatedTitleCost: toDecimal(economics?.titleCost ?? null),
@@ -217,6 +302,10 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       roiAtQsv: economics?.roiAtQsv ?? null,
       annualizedRoiAtQsv: economics?.annualizedRoiAtQsv ?? null,
       economicsTier: economics?.tier ?? null,
+
+      expectedHoldDays: liquidity.holdDays,
+      liquidityConfidence: liquidity.confidence,
+      liquidityFactors: liquidity.factors as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -232,6 +321,7 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
       detail: {
         pricePerAcreUsed: valuation.pricePerAcreUsed,
         economics: economics as unknown as Prisma.InputJsonValue,
+        liquidity: liquidity as unknown as Prisma.InputJsonValue,
         warnings,
       } as unknown as Prisma.InputJsonValue,
     },
@@ -240,24 +330,40 @@ export async function valuateParcel(parcelId: string): Promise<ValuationOutcome>
 
   // Record exactly which comps were used, with their adjustments, so the
   // number can be defended rather than merely reproduced.
-  if (valuation.comps.length > 0) {
-    await prisma.comparableLink.createMany({
-      data: valuation.comps.map((comp) => ({
-        parcelId,
-        comparableId: comp.id,
-        valuationSnapshotId: snapshot.id,
-        distanceMeters: comp.distanceMeters,
-        weight: comp.weight,
-        adjustedPricePerAcre: toDecimal(comp.adjustedPricePerAcre)!,
-        adjustments: comp.adjustments as unknown as Prisma.InputJsonValue,
-      })),
-      skipDuplicates: true,
-    });
-  }
+  //
+  // The links belonging to superseded valuations go at the same time. They are
+  // not history: the value each run produced is kept on the snapshot, and what
+  // a link records is which sales stand behind the number the parcel carries
+  // now. Left in place they accumulate one set per run, and because every
+  // reader loads a parcel's links by weight without naming a snapshot, the
+  // comparables table and the investment memo end up quoting a mixture of runs
+  // — evidence that does not add up to the figure printed above it.
+  await prisma.$transaction([
+    prisma.comparableLink.deleteMany({
+      where: { parcelId, NOT: { valuationSnapshotId: snapshot.id } },
+    }),
+    ...(valuation.comps.length > 0
+      ? [
+          prisma.comparableLink.createMany({
+            data: valuation.comps.map((comp) => ({
+              parcelId,
+              comparableId: comp.id,
+              valuationSnapshotId: snapshot.id,
+              distanceMeters: comp.distanceMeters,
+              weight: comp.weight,
+              adjustedPricePerAcre: toDecimal(comp.adjustedPricePerAcre)!,
+              adjustments: comp.adjustments as unknown as Prisma.InputJsonValue,
+            })),
+            skipDuplicates: true,
+          }),
+        ]
+      : []),
+  ]);
 
   logger.info('valued parcel', {
     parcelId,
     comps: valuation.compCount,
+    holdDays: liquidity.holdDays,
     qsv: valuation.quickSale?.mid ?? null,
     basisToQsv: economics?.basisToQsv ?? null,
   });
@@ -299,4 +405,49 @@ export function totalCosts(economics: OpportunityEconomics): number {
     economics.carryingCost,
     economics.marketingCost,
   );
+}
+
+/**
+ * Acreage the valuation should be built on, after removing regulatory
+ * no-build area.
+ *
+ * Only the floodway is removed. That is a rule, not an estimate: it is the
+ * channel that has to carry the base flood discharge, and development raising
+ * the flood elevation is prohibited in it.
+ */
+function developableAcreage(parcel: {
+  acreage: number | null;
+  floodZones: string[];
+  floodOverlapFraction: number | null;
+  inSpecialFloodHazardArea: boolean | null;
+}): { acreage: number | null; note: string | null } {
+  const gross = parcel.acreage;
+  if (gross == null || gross <= 0) return { acreage: gross, note: null };
+
+  const inFloodway = parcel.floodZones.some((zone) => /floodway/i.test(zone));
+  const share = parcel.floodOverlapFraction;
+
+  if (inFloodway && share != null && share > 0) {
+    const usable = gross * (1 - share);
+    // Below a tenth of an acre there is no meaningful building envelope left,
+    // and the size curve would start returning implausible per-acre figures on
+    // the sliver that remains. The parcel is valued on the sliver anyway and
+    // the buildability engine is left to reject it, rather than this function
+    // quietly deciding it is worthless.
+    return {
+      acreage: Math.max(usable, 0.01),
+      note: `About ${(share * 100).toFixed(0)}% of this parcel lies in the regulatory floodway, where development is prohibited. It is valued on the roughly ${usable.toFixed(2)} developable acres that remain rather than its ${gross.toFixed(2)} gross acres.`,
+    };
+  }
+
+  if (parcel.inSpecialFloodHazardArea === true) {
+    return {
+      acreage: gross,
+      note: `This parcel is in a Special Flood Hazard Area${
+        share == null ? '' : ` across about ${(share * 100).toFixed(0)}% of its area`
+      }. Building there is permitted with elevation, so the value is not reduced here — the discount a buyer would apply is a market judgement this engine does not make for them.`,
+    };
+  }
+
+  return { acreage: gross, note: null };
 }

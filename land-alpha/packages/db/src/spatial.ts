@@ -210,6 +210,7 @@ export interface NearbyComparableRow {
   salePrice: string;
   acreage: number;
   zoning: string | null;
+  neighborhood: string | null;
   accessClass: string | null;
   hasUtilities: boolean | null;
   source: string;
@@ -233,8 +234,16 @@ export async function findNearbyComparables(params: {
   maxAcreage: number;
   soldSince: Date;
   limit?: number;
+  /**
+   * `exclude` for a real parcel, `only` for a fixture one. Synthetic and
+   * recorded sales never appear in the same valuation: a fixture exists to make
+   * the pipeline's conclusion deterministic, and one real sale in its comp set
+   * would end that.
+   */
+  fixtures?: 'exclude' | 'only';
 }): Promise<NearbyComparableRow[]> {
   const limit = Math.min(params.limit ?? 60, 250);
+  const fixtureMode = params.fixtures ?? 'exclude';
   return prisma.$queryRaw<NearbyComparableRow[]>`
     SELECT
       c."id",
@@ -243,6 +252,7 @@ export async function findNearbyComparables(params: {
       c."salePrice"::text AS "salePrice",
       c."acreage",
       c."zoning",
+      c."neighborhood",
       c."accessClass"::text AS "accessClass",
       c."hasUtilities",
       c."source",
@@ -256,6 +266,7 @@ export async function findNearbyComparables(params: {
       AND (${params.county ?? null}::text IS NULL OR c."county" = ${params.county ?? null}::text)
       AND c."isVacantLand" = true
       AND c."isArmsLength" = true
+      AND (c."source" LIKE 'Development fixture%') = ${fixtureMode === 'only'}
       AND c."saleDate" >= ${params.soldSince}
       AND c."acreage" BETWEEN ${params.minAcreage}::double precision AND ${params.maxAcreage}::double precision
       AND c."salePrice" > 0

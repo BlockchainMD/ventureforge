@@ -37,7 +37,16 @@ export default async function DashboardPage() {
     }),
   ]);
 
-  const staleSources = health.filter((s) => s.staleness === 'STALE' || s.staleness === 'NEVER_RUN');
+  // Only enabled sources can go stale. A CANDIDATE that has never run is a
+  // lead someone wrote down, not a feed that has stopped — counting it as
+  // needing attention put "3 sources need attention" directly beneath "3 of 4
+  // enabled sources healthy", which cannot both be read as true.
+  const staleSources = health.filter(
+    (s) => s.enabled && (s.staleness === 'STALE' || s.staleness === 'NEVER_RUN'),
+  );
+  const unexploredSources = health.filter(
+    (s) => !s.enabled && (s.staleness === 'STALE' || s.staleness === 'NEVER_RUN'),
+  );
 
   return (
     <>
@@ -45,11 +54,14 @@ export default async function DashboardPage() {
         title="Acquisition dashboard"
         subtitle={
           <>
-            {formatNumber(stats.activeOpportunities)} live opportunities across{' '}
+            <span className="text-ink">
+              {formatNumber(stats.offeredForSale)} parcels a county has actually offered
+            </span>
+            , out of {formatNumber(stats.activeOpportunities)} held across{' '}
             {formatNumber(stats.sourcesMonitored)} monitored sources.{' '}
             <span className="text-ink-faint">
-              {formatNumber(stats.rejectedCount)} parcels rejected by the screening rules and kept
-              out of your way.
+              {formatNumber(stats.rejectedCount)} rejected by the screening rules and kept out of
+              your way.
             </span>
           </>
         }
@@ -60,8 +72,18 @@ export default async function DashboardPage() {
         <Panel>
           <PanelBody>
             <MetricGrid columns={6}>
-              <Metric label="Active opportunities" hint="Live, unrejected inventory">
-                {formatNumber(stats.activeOpportunities)}
+              <Metric
+                label="Offered for sale"
+                hint="A county has put these up: status AVAILABLE or SCHEDULED. This is the inventory you can actually act on."
+                tone={stats.offeredForSale > 0 ? 'text-alpha' : undefined}
+              >
+                {formatNumber(stats.offeredForSale)}
+              </Metric>
+              <Metric
+                label="Held, not offered"
+                hint="Found in a government inventory with no offering attached. St. Louis County publishes its whole tax-forfeited roll and says in its own notes that appearing on it is not the same as being for sale — so these need an offering confirmed before anything else."
+              >
+                {formatNumber(stats.activeOpportunities - stats.offeredForSale)}
               </Metric>
               <Metric label="New today">
                 <span className={stats.newToday > 0 ? 'text-alpha' : undefined}>
@@ -72,12 +94,19 @@ export default async function DashboardPage() {
               <Metric label="Total asking" hint="Sum of asking prices or minimum bids">
                 {formatCentsCompact(stats.totalAskingCents)}
               </Metric>
-              <Metric label="Estimated QSV" hint="Sum of conservative quick-sale values">
+              <Metric
+                label="Estimated QSV"
+                hint="Sum of conservative quick-sale values across all live parcels — including the ones with no published price, which contribute nothing to Total asking. The two are not a matched pair and their ratio is not a discount."
+              >
                 {formatCentsCompact(stats.estimatedQsvCents)}
               </Metric>
               <Metric
                 label="Implied discount"
-                hint={`1 − (all-in basis ÷ quick-sale value), across the ${stats.pricedParcelCount} parcels that have both a published cost and an established value`}
+                hint={
+                  stats.pricedParcelCount === 0
+                    ? 'No live parcel currently has both a published price and an established value, so there is no discount to compute. Every priced parcel found so far has been rejected or withdrawn by its source.'
+                    : `1 − (all-in basis ÷ quick-sale value), across the ${stats.pricedParcelCount} parcels that have both a published cost and an established value`
+                }
                 tone={stats.aggregateImpliedDiscount != null ? 'text-good' : undefined}
               >
                 <Value>
@@ -103,6 +132,17 @@ export default async function DashboardPage() {
                   <span className={stats.auctionsNext14Days > 0 ? 'text-warn' : undefined}>
                     {formatNumber(stats.auctionsNext14Days)}
                   </span>
+                </Metric>
+                <Metric
+                  label="Sale date passed"
+                  hint="Still listed after their auction or offer deadline. A passed date does not say the parcel sold — an unsold Florida parcel moving to a lands-available list is how the best inventory appears — so these need re-checking against the source, not deleting."
+                >
+                  <Link
+                    href="/opportunities?deadlinePassed=true"
+                    className={stats.deadlinePassed > 0 ? 'text-bad hover:underline' : undefined}
+                  >
+                    {formatNumber(stats.deadlinePassed)}
+                  </Link>
                 </Metric>
                 <Metric label="Watchlisted">{formatNumber(stats.watchlisted)}</Metric>
                 <Metric label="In due diligence">{formatNumber(stats.inDueDiligence)}</Metric>
@@ -181,10 +221,24 @@ export default async function DashboardPage() {
                   </Badge>
                 </div>
               ))}
-              {staleSources.length > 0 ? (
+              {staleSources.length > 0 || unexploredSources.length > 0 ? (
                 <p className="border-t border-line pt-2 text-[10px] text-ink-faint">
-                  {staleSources.length} source{staleSources.length === 1 ? '' : 's'} need attention.
-                  Inventory from a stale source may no longer be available.
+                  {staleSources.length > 0 ? (
+                    <>
+                      {staleSources.length} enabled source
+                      {staleSources.length === 1 ? '' : 's'} need
+                      {staleSources.length === 1 ? 's' : ''} attention. Inventory from a stale
+                      source may no longer be available.{' '}
+                    </>
+                  ) : null}
+                  {unexploredSources.length > 0 ? (
+                    <>
+                      {unexploredSources.length}{' '}
+                      {unexploredSources.length === 1 ? 'candidate county' : 'candidate counties'}{' '}
+                      in the registry {unexploredSources.length === 1 ? 'has' : 'have'} never been
+                      switched on.
+                    </>
+                  ) : null}
                 </p>
               ) : null}
             </PanelBody>

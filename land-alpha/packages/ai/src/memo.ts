@@ -5,12 +5,15 @@ import {
   humanizeEnum,
   type UsdCents,
 } from '@land-alpha/shared';
+import { createLogger } from '@land-alpha/shared/logger';
 import {
   DETERMINISTIC_MARKER,
   getAiProvider,
   LAND_ALPHA_SYSTEM_PROMPT,
   type CompletionResult,
 } from './provider';
+
+const logger = createLogger({ component: 'investment-memo' });
 
 /**
  * The investment memo.
@@ -79,6 +82,13 @@ export interface MemoFacts {
   readonly buildabilityUnknowns: readonly string[];
   readonly buildabilityBlockers: readonly string[];
 
+  /**
+   * Layers that actually returned data. Gate every claim of absence on this:
+   * an unqueried layer and a clear parcel look identical in the data, and only
+   * one of them is safe to tell a buyer about.
+   */
+  readonly environmentalLayersScreened: readonly string[];
+  readonly environmentalUnknowns: readonly string[];
   readonly floodZones: readonly string[];
   readonly floodOverlapFraction: number | null;
   readonly wetlandTypes: readonly string[];
@@ -206,7 +216,58 @@ function parseSections(text: string, facts: MemoFacts): Record<string, string> {
   for (const section of MEMO_SECTIONS) {
     if (!sections[section]?.trim()) sections[section] = fallback[section] ?? '';
   }
+
+  // And any section quoting money the fact sheet does not contain is replaced
+  // wholesale. The system prompt forbids inventing figures, but a prompt is a
+  // request; this is the check. A memo is the document a person risks money on,
+  // so a single unsourced dollar figure disqualifies the section that carries
+  // it rather than being published alongside sound ones.
+  const permitted = permittedAmounts(renderFactSheet(facts));
+  for (const section of MEMO_SECTIONS) {
+    const unsourced = unsourcedAmounts(sections[section] ?? '', permitted);
+    if (unsourced.length > 0) {
+      logger.warn('memo section quoted a figure absent from the fact sheet', {
+        section,
+        unsourced,
+      });
+      sections[section] = fallback[section] ?? '';
+    }
+  }
   return sections;
+}
+
+/** Every money amount the model was actually given, in cents. */
+export function permittedAmounts(factSheet: string): Set<number> {
+  const amounts = new Set<number>();
+  for (const match of factSheet.matchAll(/\$\s?([\d,]+(?:\.\d{1,2})?)/g)) {
+    const value = Number(match[1]!.replace(/,/g, ''));
+    if (Number.isFinite(value)) amounts.add(Math.round(value * 100));
+  }
+  return amounts;
+}
+
+/**
+ * Money amounts in generated prose that the fact sheet never mentioned.
+ *
+ * Compared numerically rather than as strings, so a model that writes "$41,070"
+ * where the sheet said "$41,070.00" is not accused of inventing it. Rounding to
+ * the nearest dollar is tolerated for the same reason.
+ */
+export function unsourcedAmounts(text: string, permitted: Set<number>): string[] {
+  // The permitted figures, also as whole dollars, so a model that drops the
+  // cents off $24,843.16 is not accused of inventing $24,843.
+  const permittedWholeDollars = new Set<number>();
+  for (const cents of permitted) permittedWholeDollars.add(Math.round(cents / 100));
+
+  const offenders: string[] = [];
+  for (const match of text.matchAll(/\$\s?([\d,]+(?:\.\d{1,2})?)/g)) {
+    const value = Number(match[1]!.replace(/,/g, ''));
+    if (!Number.isFinite(value)) continue;
+    const ok =
+      permitted.has(Math.round(value * 100)) || permittedWholeDollars.has(Math.round(value));
+    if (!ok) offenders.push(match[0]);
+  }
+  return offenders;
 }
 
 /**
@@ -224,7 +285,9 @@ export function renderDeterministicMemo(facts: MemoFacts): Record<string, string
     'INVESTMENT THESIS': [
       `${facts.acreage == null ? 'A parcel of unknown acreage' : formatAcres(facts.acreage)} in ${facts.county} County, ${facts.state}, offered through ${facts.sourceName} as ${humanizeEnum(facts.sourceType)} inventory [source].`,
       facts.basisToQsv == null
-        ? 'No quick-sale value could be established, so no economic thesis can be stated.'
+        ? facts.acquisitionPriceCents == null && facts.quickSaleValueCents != null
+          ? `Conservative quick-sale value is ${money(facts.quickSaleValueCents)}, but no acquisition price has been obtained, so no economic thesis can be stated. Obtaining the payoff figure is the next step.`
+          : 'No quick-sale value could be established, so no economic thesis can be stated.'
         : `Estimated all-in basis of ${money(facts.allInBasisCents)} against a conservative quick-sale value of ${money(facts.quickSaleValueCents)} — ${formatPercent(facts.basisToQsv, 1)} of value [basisToQsv].`,
       facts.alphaScore == null
         ? ''
@@ -270,18 +333,25 @@ export function renderDeterministicMemo(facts: MemoFacts): Record<string, string
     ].join('\n'),
 
     ENVIRONMENTAL: [
-      facts.floodZones.length > 0
-        ? `FEMA flood zones intersecting the parcel: ${facts.floodZones.join(', ')}${facts.floodOverlapFraction == null ? '' : ` covering ${formatPercent(facts.floodOverlapFraction, 0)} of its area`} [floodZones].`
-        : `No FEMA flood hazard data recorded: ${unknown}.`,
-      facts.wetlandTypes.length > 0
-        ? `NWI wetlands mapped: ${facts.wetlandTypes.join(', ')}${facts.wetlandOverlapFraction == null ? '' : ` covering ${formatPercent(facts.wetlandOverlapFraction, 0)}`} [wetlands].`
-        : 'No NWI wetlands identified. Absence from the inventory does not prove absence of jurisdictional wetlands.',
+      screened(facts, 'FLOOD')
+        ? facts.floodZones.length > 0
+          ? `FEMA flood zones intersecting the parcel: ${facts.floodZones.join(', ')}${facts.floodOverlapFraction == null ? '' : ` covering ${formatPercent(facts.floodOverlapFraction, 0)} of its area`} [floodZones].`
+          : 'No FEMA Special Flood Hazard Area intersects the parcel [floodZones].'
+        : `Flood hazard: ${unknown} — the FEMA layer was not screened.`,
+      screened(facts, 'WETLANDS')
+        ? facts.wetlandTypes.length > 0
+          ? `NWI wetlands mapped: ${facts.wetlandTypes.join(', ')}${facts.wetlandOverlapFraction == null ? '' : ` covering ${formatPercent(facts.wetlandOverlapFraction, 0)}`} [wetlands].`
+          : 'No NWI wetlands identified. Absence from the inventory does not prove absence of jurisdictional wetlands.'
+        : `Wetlands: ${unknown} — the National Wetlands Inventory was not screened.`,
       facts.meanSlopePercent == null
         ? `Slope: ${unknown}.`
         : `Mean slope ${facts.meanSlopePercent.toFixed(1)}%.`,
-      facts.nearestContaminatedSiteMeters == null
-        ? 'No regulated cleanup site identified within the search radius.'
-        : `Nearest regulated cleanup site approximately ${Math.round(facts.nearestContaminatedSiteMeters)} m away.`,
+      screened(facts, 'CONTAMINATION')
+        ? facts.nearestContaminatedSiteMeters == null
+          ? 'No regulated cleanup site identified within the search radius.'
+          : `Nearest regulated cleanup site approximately ${Math.round(facts.nearestContaminatedSiteMeters)} m away.`
+        : `Regulated cleanup sites: ${unknown} — no proximity search was run.`,
+      ...facts.environmentalUnknowns.map((line) => `- ${unknown}: ${line}`),
       'This is a screening review of public mapping layers, not a Phase I Environmental Site Assessment.',
     ].join('\n'),
 
@@ -370,15 +440,26 @@ function recommendationFor(facts: MemoFacts): string {
   }
 }
 
+/** True when the named environmental layer actually returned data. */
+function screened(facts: MemoFacts, layer: string): boolean {
+  return facts.environmentalLayersScreened.includes(layer);
+}
+
 function collectUnknowns(facts: MemoFacts): string[] {
   const unknowns = new Set<string>([
     ...facts.remainingQuestions,
     ...facts.accessUnknowns,
     ...facts.buildabilityUnknowns,
+    ...facts.environmentalUnknowns,
   ]);
   if (facts.titleRiskScore == null) unknowns.add('Title pre-screen has not been run.');
   if (facts.acreage == null) unknowns.add('Parcel acreage is not established.');
   if (facts.comparableCount === 0) unknowns.add('No comparable sales support the valuation.');
+  if (facts.acquisitionPriceCents == null) {
+    unknowns.add(
+      'No acquisition price has been obtained. Until it is, the all-in basis omits its largest component and no return can be computed.',
+    );
+  }
   return [...unknowns];
 }
 

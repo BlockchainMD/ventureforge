@@ -55,6 +55,13 @@ export interface HttpClientOptions {
   readonly offline?: boolean;
   readonly offlineDir?: string;
   readonly signal?: AbortSignal;
+  /**
+   * Consecutive failures against one host before the client stops calling it
+   * for the rest of the run. Zero disables the breaker.
+   */
+  readonly hostFailureLimit?: number;
+  /** Attempts per request, including the first. Default 3. */
+  readonly retryAttempts?: number;
 }
 
 /** Bodies matching these are challenge pages, not data. */
@@ -81,6 +88,24 @@ export class IngestHttpClient {
   private readonly robotsCache = new Map<string, Promise<RobotsTxt>>();
   private readonly lastRequestAt = new Map<string, number>();
 
+  /**
+   * Circuit breaker.
+   *
+   * An enrichment run touches one host once per parcel. When that host is down
+   * — or is a WAF returning 500 to our User-Agent, which it will do for every
+   * parcel equally — three attempts with exponential backoff per parcel turns a
+   * five-minute run into an hour of waiting for the same answer 300 times.
+   *
+   * After `hostFailureLimit` consecutive failures the host is cut off for the
+   * rest of the run and every later call fails instantly with the reason the
+   * first one gave. That reason reaches the enrichment layer as a named
+   * unknown, so the run is both fast and honest about what it skipped. A single
+   * success resets the count: this is a breaker, not a blocklist.
+   */
+  private readonly hostFailures = new Map<string, { count: number; lastError: string }>();
+  private readonly hostFailureLimit: number;
+  private readonly retryAttempts: number;
+
   readonly stats: FetchStats = {
     requestCount: 0,
     bytesFetched: 0,
@@ -97,9 +122,20 @@ export class IngestHttpClient {
     this.offline = options.offline ?? config.INGEST_OFFLINE;
     this.offlineDir = options.offlineDir ?? 'data/fixtures/raw';
     this.signal = options.signal;
+    this.hostFailureLimit = options.hostFailureLimit ?? 3;
+    this.retryAttempts = Math.max(1, options.retryAttempts ?? 3);
   }
 
-  async get(url: string, headers: Record<string, string> = {}): Promise<HttpResponse> {
+  /**
+   * `options.timeoutMs` raises the per-request deadline for a bulk download.
+   * The default suits an API response; a county parcel archive is a quarter of
+   * a gigabyte and will not arrive inside it.
+   */
+  async get(
+    url: string,
+    headers: Record<string, string> = {},
+    options: { timeoutMs?: number } = {},
+  ): Promise<HttpResponse> {
     if (this.offline) return this.readOffline(url);
 
     if (this.stats.requestCount >= this.maxRequests) {
@@ -133,19 +169,54 @@ export class IngestHttpClient {
       await this.throttle(parsed.host, this.minDelayMs);
     }
 
-    return withRetry(() => this.performGet(url, headers), {
-      attempts: 3,
-      onRetry: (error, attempt, delayMs) =>
-        // Query strings on ArcGIS requests run to thousands of characters;
-        // logging them whole makes the log unreadable and hides the failure.
-        logger.warn('retrying request', {
-          url: truncateUrl(url),
-          attempt,
-          delayMs,
-          error: truncateUrl(String(error), 300),
-        }),
-      signal: this.signal,
-    });
+    const tripped = this.breakerFor(parsed.host);
+    if (tripped) {
+      throw new NetworkError(
+        `${parsed.host} has failed ${this.hostFailureLimit} consecutive requests this run and is not being called again. First failure: ${tripped}`,
+        { url: truncateUrl(url), host: parsed.host, circuitOpen: true },
+      );
+    }
+
+    try {
+      const response = await withRetry(() => this.performGet(url, headers, options.timeoutMs), {
+        attempts: this.retryAttempts,
+        onRetry: (error, attempt, delayMs) =>
+          // Query strings on ArcGIS requests run to thousands of characters;
+          // logging them whole makes the log unreadable and hides the failure.
+          logger.warn('retrying request', {
+            url: truncateUrl(url),
+            attempt,
+            delayMs,
+            error: truncateUrl(String(error), 300),
+          }),
+        signal: this.signal,
+      });
+      this.hostFailures.delete(parsed.host);
+      return response;
+    } catch (error) {
+      this.recordHostFailure(parsed.host, error);
+      throw error;
+    }
+  }
+
+  /** The reason a host is cut off, or null while it is still being called. */
+  private breakerFor(host: string): string | null {
+    if (this.hostFailureLimit <= 0) return null;
+    const state = this.hostFailures.get(host);
+    if (!state || state.count < this.hostFailureLimit) return null;
+    return state.lastError;
+  }
+
+  private recordHostFailure(host: string, error: unknown): void {
+    const existing = this.hostFailures.get(host);
+    const count = (existing?.count ?? 0) + 1;
+    // The *first* failure's message is kept. It is the one that explains the
+    // cause; later ones are all the same and the last is the least informative.
+    const lastError = existing?.lastError ?? truncateUrl(String(error), 300);
+    this.hostFailures.set(host, { count, lastError });
+    if (count === this.hostFailureLimit) {
+      logger.warn('host cut off for this run', { host, failures: count, error: lastError });
+    }
   }
 
   async getJson<T>(url: string): Promise<T> {
@@ -162,9 +233,13 @@ export class IngestHttpClient {
     }
   }
 
-  private async performGet(url: string, headers: Record<string, string>): Promise<HttpResponse> {
+  private async performGet(
+    url: string,
+    headers: Record<string, string>,
+    timeoutMs?: number,
+  ): Promise<HttpResponse> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), timeoutMs ?? this.timeoutMs);
     this.signal?.addEventListener('abort', () => controller.abort(), { once: true });
 
     try {

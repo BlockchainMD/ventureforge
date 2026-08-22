@@ -54,7 +54,7 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
       'Much of the inventory is remote, wetland-heavy or landlocked cutover timberland — the rejection rules do most of the work here.',
     ].join(' '),
     notes:
-      'The same MapServer publishes Road Centerlines (layer 18) and Zoning (layer 19), which the access and buildability engines use as authoritative county sources rather than relying on crowd-sourced data.',
+      'The same MapServer publishes Road Centerlines (layer 18) and Zoning (layer 19), which the access and buildability engines read as authoritative county sources rather than relying on crowd-sourced data. Most of the tax-forfeited inventory sits inside Duluth, which the county layer records as "Non Jurisdiction Area" — the city zones it, not the county, so those parcels legitimately come through without a county district.',
     config: {
       layerUrl:
         'https://gis.stlouiscountymn.gov/server2/rest/services/GeneralUse/Open_Data/MapServer/7',
@@ -196,13 +196,30 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
     dispositionNotes: [
       'The published layer carries both scheduled tax deed sales ("Active Sale") and the statutory Lands Available list ("Lands Available"); only the latter can be bought on demand.',
       'The layer is deliberately thin — TDA number, sale date, status and parcel ID only, with a point location. Acreage, value and legal description must be enriched from the Property Appraiser, and where that join fails the parcel is carried with unknown acreage rather than a guessed one.',
-      'Parcel IDs in this layer are in section-township-range order and do NOT match the county parcel layer’s range-township-section ordering, and municipal parcels are absent from the county (BCC) layer entirely. Enrichment is therefore best-effort by design.',
+      'Parcel IDs in the tax-sale layer are in section-township-range order while the parcel layer uses range-township-section, so the join reverses the first three groups — `24-22-32-6214-00-280` becomes `322224621400280`. Against the open-data parcel layer that matches all 55 records; against the BCC layer, which omits municipal parcels, it matched none.',
     ].join(' '),
     config: {
+      // The county's republication of its own FIRM. FEMA's host forbids
+      // automated queries against the NFHL, and Orange publishes the identical
+      // schema — FLD_ZONE, ZONE_SUBTY, SFHA_TF — because it is the same data
+      // adopted locally. Without this, every Florida parcel is unscreened for
+      // flood and buildability is capped at UNKNOWN.
+      floodLayerUrl: 'https://ocgis4.ocfl.net/arcgis/rest/services/AGOL_Open_Data/MapServer/19',
+      // Orange County's road inventory. The maintaining body is in S_OWNER
+      // ("COUNTY" or "None"). NOT in MAINTENANCE, which holds the single value
+      // "Unincorporated" for every segment in the layer — it names the layer's
+      // extent, not a maintainer, and reading it as one declared every Orange
+      // road public. DESIGNATION carries codes (FM/NM/NMC/ONM/URW/UB) the
+      // county publishes no dictionary for, so nothing interprets them.
+      roadsLayerUrl:
+        'https://services1.arcgis.com/0U8EQ1FrumPeIqDb/arcgis/rest/services/OCSHARE_Roads_Uninc/FeatureServer/0',
       layerUrl:
         'https://services1.arcgis.com/0U8EQ1FrumPeIqDb/arcgis/rest/services/Tax_Sale_Data/FeatureServer/0',
-      parcelLayerUrl:
-        'https://services1.arcgis.com/0U8EQ1FrumPeIqDb/arcgis/rest/services/Parcels_BCC/FeatureServer/5',
+      // The county's open-data parcel layer, not the BCC one. The BCC layer
+      // omits municipal parcels entirely and matched none of the 55 records;
+      // this one matched all 55, and carries the boundary, ACREAGE, LAND_MKT,
+      // TOTAL_MKT, TAXES, ZONING_CODE and SITUS besides.
+      parcelLayerUrl: 'https://ocgis4.ocfl.net/arcgis/rest/services/AGOL_Open_Data/MapServer/56',
       fieldMap: {
         sourceRecordId: 'USER_TDA_NUM',
         apn: 'USER_PARCEL',
@@ -227,14 +244,50 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
     ingestionMethod: 'PDF',
     inventoryFormat: 'PDF',
     updateFrequency: 'MONTHLY',
-    status: 'CANDIDATE',
-    enabled: false,
+    status: 'ACTIVE',
+    enabled: true,
     failedAuctionBecomesOtc: true,
-    adapterKey: 'pdf-list-import',
+    adapterKey: 'fl-lands-available-pdf',
     officialUrl: 'https://www.marioncountyclerk.org/',
-    dispositionNotes:
-      'Publishes the statutory list as a periodically-replaced PDF. Rural north-central Florida: exactly the profile where Lands Available inventory is both cheap and resaleable. The PDF path changes each publication, so discovery must resolve the current file rather than hard-coding it.',
-    config: {},
+    taxSaleUrl:
+      'https://www.marioncountyclerk.org/departments/records-recording/tax-deeds-and-lands-available-for-taxes/land-available-for-taxes-information/',
+    attribution: 'Marion County Clerk of Court and Comptroller',
+    acquisitionMethod:
+      'Purchase from the Clerk for the opening bid plus accrued taxes, interest and fees. County has a 90-day priority window after the failed sale; thereafter first come, first served.',
+    dispositionNotes: [
+      'The tax-deed *auction* runs on marion.realtaxdeed.com, which answers 403 to an identified client and is therefore out of reach. An earlier investigation stopped there and recorded the whole county as manual-only.',
+      'That was too broad. The auction platform and the lands-available list are different things published by different parties, and the Clerk publishes the list on its own site as two PDFs with embedded text: the inventory, and a monthly price sheet giving the purchase amount for each parcel to the cent. robots.txt disallows nothing.',
+      'That price sheet is the only per-parcel acquisition price this product has found anywhere. Every other source in the registry requires a telephone call to the county to learn what a parcel costs.',
+      'The list is short by construction — it holds what did not sell — but Marion also has the deepest comparable-sales coverage in the registry, so these are the parcels the engine can underwrite end to end rather than merely describe.',
+      'The purchase amount rises every month with accruing interest and omitted taxes, so a figure is only correct for the month of the sheet it came from.',
+    ].join(' '),
+    config: {
+      indexUrl:
+        'https://www.marioncountyclerk.org/departments/records-recording/tax-deeds-and-lands-available-for-taxes/land-available-for-taxes-information/',
+      // The Clerk republishes this file under a new name every month
+      // ("2026-August-LAT-Purchase-Amounts-1.pdf"), so the link is discovered
+      // from the index page rather than pinned.
+      purchaseAmountsPattern: 'LAT[-_ ]?Purchase[-_ ]?Amounts',
+      // The price sheet names a parcel and a figure and nothing else. The
+      // county's parcel layer carries ACRES, TOT_LND_VA, TOT_VAL, TOT_TAXES,
+      // ZONE1 and the boundary for the same identifier, which is the
+      // difference between a price and something that can be underwritten.
+      parcelLayerUrl: 'https://gis.marionfl.org/public/rest/services/General/Parcels/MapServer/0',
+      parcelIdField: 'PARCEL',
+      // The county's adoption of the 2017 FIRM, republished by the county
+      // itself and carrying the identical NFHL schema — FLD_ZONE, SFHA_TF,
+      // ZONE_SUBTY — because it is the same data.
+      floodLayerUrl:
+        'https://gis.marionfl.org/public/rest/services/General/FEMAFloodZones2017/MapServer/1',
+      zoningLayerUrl:
+        'https://gis.marionfl.org/public/rest/services/General/PlanningZoning/MapServer/20',
+      // Marion states the maintaining body outright in Jurisdiction, which is
+      // the field legal access turns on, and marks Paved as a flag.
+      roadsLayerUrl:
+        'https://gis.marionfl.org/public/rest/services/General/RoadMaintenance/MapServer/7',
+      acquisitionInstructions:
+        'Complete the Clerk’s LAT Purchase Request Form and mail it with a certified cheque for the purchase amount payable to the Tax Collector, plus a separate cheque for recording fees and documentary stamps payable to the Clerk. First come, first served. Confirm the current month’s figure before sending funds — it rises monthly.',
+    },
   },
 
   // =========================================================================
@@ -267,6 +320,26 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
     failedAuctionBecomesOtc: true,
     acquisitionMethod:
       'Act 123 tax foreclosure auction, followed by a second no-minimum-bid sale. Parcels still unsold remain in treasurer or land bank inventory and may be sold by negotiated offer.',
+    /**
+     * Michigan assesses at half of true cash value.
+     *
+     * A statutory property of the state, not a quirk of Ottawa: assessed value
+     * equals the State Equalized Value, and the SEV is set at 50% of true cash
+     * value. Every sampled parcel here has AssessedValue exactly equal to
+     * SEVValue, and the doubling is what makes the numbers read correctly — a
+     * 37.75-acre agricultural parcel at an SEV of $283,100 comes to about
+     * $15,000 an acre doubled, which is Ottawa County farmland; at the SEV
+     * alone it would be $7,500 and far too low.
+     *
+     * The 1.15 default suits a jurisdiction assessing at full value, as Florida
+     * does. Applying it here understates Michigan land by half.
+     *
+     * This belongs to the entry, not to `config`. `config` is a bag of unknowns
+     * the adapter reads; this is read by the valuation service through
+     * `registryByKey(...).assessedValueMultiplier`, so a copy inside `config`
+     * type-checks, looks configured, and does nothing at all.
+     */
+    assessedValueMultiplier: 2,
     adapterKey: 'arcgis-parcel-inventory',
     parserVersion: '1',
     officialUrl: 'https://www.miottawa.org/',
@@ -276,8 +349,32 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
       'Identified from the authoritative public parcel layer by vesting: parcels whose owner is the county treasurer, the land bank, or the county itself.',
       'The parcel layer carries property class descriptions ("RESIDENTIAL-VACANT", "COMMERCIAL-VACANT"), assessed and taxable values, acreage, legal description and polygon geometry — a materially richer record than most tax-sale lists.',
       'Vesting in the treasurer is strong evidence of foreclosure inventory but does not itself confirm a parcel is offered for sale; that must be confirmed against the treasurer’s published auction list.',
+      'Act 123 runs three sales a year and the third is the one that matters: a minimum-bid auction, a minimum-bid re-offer, and finally a no-reserve sale where parcels carry no minimum at all. In 2026 those fall on 26 August, 25 September and 30 October. Every other channel in this registry prices at accrued taxes, which on cheap land routinely exceeds what the land is worth; a no-reserve sale is the only channel found so far where the price is set by demand rather than by arrears.',
+      'Neither the auction nor the treasurer’s own list can be read automatically. The auction is run by an agent on tax-sale.info, whose terms permit using the listings for one’s own good-faith purchase diligence but not compiling or aggregating them, and miottawa.org itself sits behind a CAPTCHA. Both are respected rather than worked around, so bidding here means an analyst reading the catalogue and importing through the manual workflow. The county GIS server is a separate host, is not gated, and is what everything else here reads.',
+      'Ninety-one of the ninety-nine parcels cannot be valued at all, and the reason is not a gap in our data: Ottawa publishes AssessedValue as 0 for them because a county-owned parcel is tax-exempt, so the county has stopped assessing the land it took. There is no assessor figure to fall back on and, with no Michigan sales source available, no comparables either. Looking for a missing assessment is wasted effort; these need a comparable-sales source or a physical inspection.',
+      'The historic assessment rolls (HostedServices/HistoricParcels, 2004 to date) do carry the pre-forfeiture assessment, and were tested against all ninety-one. Only eleven were both non-zero and classed vacant at the time — the rest were either never assessed, already exempt, or carried a building whose value cannot be read as land. Eleven stale assessments were not judged worth the risk of presenting them as current land value.',
     ].join(' '),
     config: {
+      /**
+       * The county's parcel-keyed flood table.
+       *
+       * Ottawa lists every parcel touching a mapped flood zone with the share
+       * of each already measured against its own boundary — better than
+       * anything derived here, and absence from the table is itself the
+       * screening result. Sixty-three of the ninety-nine parcels in inventory
+       * appear in it, several of them almost entirely inside the regulatory
+       * floodway.
+       */
+      parcelFloodLayer: {
+        url: 'https://gis.miottawa.org/arcgis/rest/services/HostedServices/FloodParcels/FeatureServer/5',
+        parcelIdField: 'FinalPIN',
+        floodplainPercentField: 'PercentAcresFloodplain',
+        floodwayPercentField: 'PercentAcresFloodway',
+        floodplain100PercentField: 'PercentAcresFloodplain100',
+      },
+      // Act 51 legal designation names the maintaining authority outright, which is exactly the field access class A turns on.
+      roadsLayerUrl:
+        'https://gis.miottawa.org/arcgis/rest/services/HostedServices/StreetCenterlines/FeatureServer/0',
       layerUrl:
         'https://gis.miottawa.org/arcgis/rest/services/HostedServices/ParcelsPublic/FeatureServer/0',
       where:
@@ -289,6 +386,11 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
         owner: 'OwnerName',
         legalDescription: 'LegalDesc',
         assessedValue: 'AssessedValue',
+        // The inventory is filtered to vacant classes, so the total assessed
+        // value is the land value: there is nothing else on the parcel to
+        // carry any of it. Without this the valuation fallback never fires and
+        // all 99 Ottawa parcels come out unvaluable and so unrankable.
+        landAssessedValue: 'AssessedValue',
         taxableValue: 'TaxableValue',
         propertyClass: 'PropertyClass',
         propertyClassDescription: 'PropertyClassDescription',
@@ -329,6 +431,30 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
       'This host serves a bot-challenge interstitial (sgcaptcha) in place of content, including for robots.txt.',
       'Land Alpha does not circumvent CAPTCHAs or bot protection, so this source is registered MANUAL_ONLY: an analyst downloads the published list and imports it through the manual import workflow, where it is normalised into exactly the same ParcelOpportunity records as an automated source.',
       'This is the intended outcome, not a gap. The registry records the finding so that no future engineer re-investigates it.',
+    ].join(' '),
+    config: {},
+  },
+  {
+    key: 'fl-citrus-lands-available',
+    state: 'FL',
+    county: 'Citrus',
+    fipsCode: '12017',
+    timezone: 'America/New_York',
+    name: 'Citrus County Clerk — Tax Deeds & Lands Available for Taxes',
+    sourceType: 'LANDS_AVAILABLE_FOR_TAXES',
+    sourceUrl: 'https://www.citrusclerk.org/',
+    discoveryUrl: 'https://www.citrusclerk.org/',
+    ingestionMethod: 'MANUAL_SOURCE',
+    inventoryFormat: 'HTML',
+    updateFrequency: 'WEEKLY',
+    status: 'MANUAL_ONLY',
+    enabled: false,
+    failedAuctionBecomesOtc: true,
+    adapterKey: 'manual-import',
+    officialUrl: 'https://www.citrusclerk.org/',
+    dispositionNotes: [
+      'Same posture as Marion: the auction platform citrus.realtaxdeed.com answers 403 to an identified client and is not worked around.',
+      'Citrus has 3,138 geocoded comparables waiting, and its Citrus Springs and Beverly Hills platted lots are the archetypal parcel this product exists to find.',
     ].join(' '),
     config: {},
   },

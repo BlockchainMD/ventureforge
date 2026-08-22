@@ -4,6 +4,7 @@ import {
   type UsdCents,
   type ValuationEstimate,
   type ValuationResult,
+  formatCents,
 } from '@land-alpha/shared';
 import { MINIMUM_PLAUSIBLE_PARCEL_VALUE_CENTS } from './acreage-curve';
 import {
@@ -42,6 +43,27 @@ export interface ValuationConfig {
    * land, so this is a weak, clearly-labelled last resort.
    */
   readonly assessedValueMultiplier: number;
+  /**
+   * How far a comps valuation may sit above the assessor's land value before
+   * it is treated as a disagreement rather than a lag.
+   *
+   * Assessors are consistently behind the market on vacant land — across
+   * Orange County the median ratio here is 1.5 — so a valuation above the
+   * assessment is expected and is not a fault. Several times above it is a
+   * different claim: that the comparables describe land this parcel is not.
+   */
+  readonly assessedDisagreementWarn: number;
+  /** Beyond this the two are not describing the same parcel. */
+  readonly assessedDisagreementSevere: number;
+  /** Below this multiple of the assessment the valuation is equally suspect. */
+  readonly assessedDisagreementLow: number;
+  /**
+   * Correction learned from parcels actually sold in this market. 1 means the
+   * engine has been accurate here, or that nothing has sold yet. Applied to the
+   * price per acre rather than to the comparables: the comps are what the
+   * market did, and any error is in how this engine reads them.
+   */
+  readonly marketCorrection?: number;
 }
 
 export const DEFAULT_VALUATION_CONFIG: ValuationConfig = {
@@ -49,6 +71,10 @@ export const DEFAULT_VALUATION_CONFIG: ValuationConfig = {
   quickSaleDiscount: 0.25,
   investorLiquidationDiscount: 0.5,
   assessedValueMultiplier: 1.15,
+  assessedDisagreementWarn: 4,
+  assessedDisagreementSevere: 10,
+  assessedDisagreementLow: 0.25,
+  marketCorrection: 1,
 };
 
 export interface ValuationInputs {
@@ -74,44 +100,88 @@ export function valueParcel(
   const comps = analyzeComps(inputs.subject, inputs.candidates, now, config.comps);
   warnings.push(...comps.warnings);
 
+  let compsRejectedByAssessment = false;
   if (comps.pricePerAcre != null) {
+    const correction =
+      config.marketCorrection != null && config.marketCorrection > 0 ? config.marketCorrection : 1;
+    const corrected = comps.pricePerAcre * correction;
     const retail = buildEstimate({
-      midPerAcre: comps.pricePerAcre,
-      lowPerAcre: comps.pricePerAcreLow ?? comps.pricePerAcre * 0.75,
-      highPerAcre: comps.pricePerAcreHigh ?? comps.pricePerAcre * 1.25,
+      midPerAcre: corrected,
+      lowPerAcre: (comps.pricePerAcreLow ?? comps.pricePerAcre * 0.75) * correction,
+      highPerAcre: (comps.pricePerAcreHigh ?? comps.pricePerAcre * 1.25) * correction,
       acreage,
       confidence: comps.confidence,
-      method: `Comparable sales (${comps.comps.length} recorded sales, size-adjusted)`,
+      method:
+        correction === 1
+          ? `Comparable sales (${comps.comps.length} recorded sales, size-adjusted)`
+          : `Comparable sales (${comps.comps.length} recorded sales, size-adjusted, corrected ${correction.toFixed(2)}× against realised sales)`,
     });
 
-    return {
-      retail,
-      quickSale: discountEstimate(retail, config.quickSaleDiscount, 'Quick-sale pricing'),
-      investorLiquidation: discountEstimate(
-        retail,
-        config.investorLiquidationDiscount,
-        'Investor liquidation',
-      ),
-      compCount: comps.comps.length,
-      comps: comps.comps,
-      pricePerAcreUsed: comps.pricePerAcre,
-      confidence: comps.confidence,
-      warnings,
-    };
+    // Cross-check against the assessor.
+    //
+    // The assessment is a lagging indicator and never overrides comparables —
+    // it is the number the county last agreed with the owner, not the market.
+    // But it is an independent read on the same parcel, and it is free. When
+    // it disagrees by an order of magnitude the likeliest explanation is not
+    // that the assessor is behind; it is that the comparables describe land
+    // somewhere else. Orange County holds a 0.07-acre parcel assessed at $100
+    // that this engine valued at $206,986.
+    const sanity = crossCheckAssessment(retail.mid, inputs.landAssessedValueCents ?? null, config);
+    if (sanity.warning) warnings.push(sanity.warning);
+    const confidence = sanity.cap ? minConfidence(comps.confidence, sanity.cap) : comps.confidence;
+
+    // A capped confidence is a label, and nothing downstream ranks on labels.
+    // The worklist sorts by quick-sale value, the maximum bid is solved from
+    // it, and the allocator sizes a position against it — so a parcel the
+    // engine has just declared implausible still led the buy list at a figure
+    // the engine does not stand behind. Orange County's top-ranked parcel was
+    // valued at 12.6× the county's own assessment of the same half-acre.
+    //
+    // So the figure goes, not just the confidence. The assessor's number is a
+    // poor valuation, but it is a poor valuation *of this parcel*, which beats
+    // a good valuation of somewhere else.
+    if (sanity.severe) {
+      compsRejectedByAssessment = true;
+    } else {
+      // The capped estimate is what the discounts derive from, not the original:
+      // discountEstimate carries confidence forward, and a quick-sale figure that
+      // looked more certain than the retail value it came from would undo the
+      // cross-check one line after applying it.
+      const qualified: ValuationEstimate = { ...retail, confidence };
+
+      return {
+        retail: qualified,
+        quickSale: discountEstimate(qualified, config.quickSaleDiscount, 'Quick-sale pricing'),
+        investorLiquidation: discountEstimate(
+          qualified,
+          config.investorLiquidationDiscount,
+          'Investor liquidation',
+        ),
+        compCount: comps.comps.length,
+        comps: comps.comps,
+        pricePerAcreUsed: corrected,
+        confidence,
+        warnings,
+      };
+    }
   }
 
   // ---- Fallback: assessed land value ---------------------------------------
   if (inputs.landAssessedValueCents != null && inputs.landAssessedValueCents > 0) {
     const mid = Math.round(inputs.landAssessedValueCents * config.assessedValueMultiplier);
     warnings.push(
-      'No usable comparable sales. Value is inferred from the assessor’s land value, which frequently lags the market on vacant land. Treat as indicative only.',
+      compsRejectedByAssessment
+        ? 'Value is inferred from the assessor’s land value because the comparable sales disagreed with it by an order of magnitude. The assessor’s figure lags the market, so treat this as a floor and a placeholder, not a valuation.'
+        : 'No usable comparable sales. Value is inferred from the assessor’s land value, which frequently lags the market on vacant land. Treat as indicative only.',
     );
     const retail: ValuationEstimate = {
       low: Math.max(MINIMUM_PLAUSIBLE_PARCEL_VALUE_CENTS, Math.round(mid * 0.6)),
       mid: Math.max(MINIMUM_PLAUSIBLE_PARCEL_VALUE_CENTS, mid),
       high: Math.max(MINIMUM_PLAUSIBLE_PARCEL_VALUE_CENTS, Math.round(mid * 1.6)),
       confidence: 'LOW',
-      method: 'Assessor land value × multiplier (no comparable sales available)',
+      method: compsRejectedByAssessment
+        ? 'Assessor land value × multiplier (comparable sales rejected as describing other land)'
+        : 'Assessor land value × multiplier (no comparable sales available)',
       notes: 'Fallback method. Not a comparable-sales valuation.',
     };
     return {
@@ -184,4 +254,58 @@ function emptyResult(warnings: string[]): ValuationResult {
     confidence: 'UNKNOWN',
     warnings,
   };
+}
+
+/**
+ * Reads a comps valuation against the county's own land assessment.
+ *
+ * An assessment that is half the market is ordinary on vacant land; one that is
+ * a twentieth of it means one of the two numbers is about a different piece of
+ * ground. Short of that the check returns a warning and a confidence ceiling
+ * and leaves the value alone, because the assessment lags and the comparables
+ * are still the better read. At the severe threshold it reports `severe`, and
+ * the caller stops publishing the comparables figure altogether.
+ */
+export function crossCheckAssessment(
+  retailCents: UsdCents,
+  landAssessedCents: UsdCents | null,
+  config: ValuationConfig,
+): { warning: string | null; cap: ConfidenceLevel | null; severe: boolean } {
+  if (landAssessedCents == null || landAssessedCents <= 0 || retailCents <= 0) {
+    return { warning: null, cap: null, severe: false };
+  }
+  const ratio = retailCents / landAssessedCents;
+
+  if (ratio >= config.assessedDisagreementSevere) {
+    return {
+      warning:
+        `Comparable sales put this parcel at ${ratio.toFixed(0)}× the county's assessed land value ` +
+        `(${formatCents(landAssessedCents)}). Assessments lag the market on vacant land, but not by ` +
+        `this much, so the comparables are describing a different location. The assessor's figure ` +
+        `is used instead until an analyst confirms otherwise.`,
+      cap: 'UNKNOWN',
+      severe: true,
+    };
+  }
+  if (ratio >= config.assessedDisagreementWarn) {
+    return {
+      warning:
+        `This valuation is ${ratio.toFixed(1)}× the county's assessed land value ` +
+        `(${formatCents(landAssessedCents)}), which is high even allowing for the lag typical of ` +
+        `vacant-land assessments.`,
+      cap: 'LOW',
+      severe: false,
+    };
+  }
+  if (ratio <= config.assessedDisagreementLow) {
+    return {
+      warning:
+        `This valuation is only ${(ratio * 100).toFixed(0)}% of the county's assessed land value ` +
+        `(${formatCents(landAssessedCents)}). An assessment above the market is unusual and may ` +
+        `indicate the comparables are drawn from weaker land than this parcel.`,
+      cap: 'LOW',
+      severe: false,
+    };
+  }
+  return { warning: null, cap: null, severe: false };
 }

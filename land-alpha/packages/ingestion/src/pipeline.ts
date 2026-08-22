@@ -253,7 +253,7 @@ export async function runSource(
   }
 }
 
-interface UpsertResult {
+export interface UpsertResult {
   readonly parcelId: string;
   readonly naturalKey: string;
   readonly outcome: 'created' | 'changed' | 'unchanged';
@@ -261,7 +261,7 @@ interface UpsertResult {
   readonly needsRescore: boolean;
 }
 
-async function upsertParcel(
+export async function upsertParcel(
   item: ParcelOpportunityInput,
   registryEntry: RegistryEntry,
   runId: string,
@@ -333,6 +333,7 @@ async function upsertParcel(
     isVacant: item.isVacant ?? null,
     currentUse: item.currentUse ?? null,
     zoning: item.zoning ?? null,
+    neighborhood: item.neighborhood ?? null,
     zoningSource: item.zoningSource ?? null,
     zoningConfidence: item.zoning ? ('HIGH' as const) : ('UNKNOWN' as const),
     annualTaxEstimate: toDecimal(item.annualTaxEstimate ?? null),

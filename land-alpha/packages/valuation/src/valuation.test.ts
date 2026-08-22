@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { adjustPricePerAcreForSize, acreageBandFor } from './acreage-curve';
-import { analyzeComps, DEFAULT_COMPS_CONFIG, weightedMedian, type CompCandidate } from './comps';
-import { valueParcel } from './valuation';
+import {
+  analyzeComps,
+  DEFAULT_COMPS_CONFIG,
+  selectByRadius,
+  weightedMedian,
+  type CompCandidate,
+  selectByNeighborhood,
+} from './comps';
+import { valueParcel, DEFAULT_VALUATION_CONFIG, crossCheckAssessment } from './valuation';
 import { classifyTier, computeEconomics, maximumBidForTargetRatio } from './economics';
 import type { EconomicsCostModel, EconomicsThresholds } from './economics';
 
@@ -215,14 +222,92 @@ describe('analyzeComps — fixture provenance', () => {
         landAssessedValueCents: null,
       },
       {
+        ...DEFAULT_VALUATION_CONFIG,
         comps: DEFAULT_COMPS_CONFIG,
         quickSaleDiscount: 0.25,
         investorLiquidationDiscount: 0.45,
-        assessedValueMultiplier: 1.15,
       },
     );
     expect(result.confidence).toBe('LOW');
     expect(result.warnings.some((w) => w.includes('Do not underwrite'))).toBe(true);
+  });
+});
+
+describe('selectByRadius', () => {
+  const config = { ...DEFAULT_COMPS_CONFIG };
+  const at = (metres: number | null) => comp({ distanceMeters: metres });
+
+  it('stays in the neighbourhood when the neighbourhood has enough sales', () => {
+    const near = Array.from({ length: 10 }, () => at(1500));
+    const far = Array.from({ length: 30 }, () => at(30_000));
+    const result = selectByRadius([...near, ...far], config);
+    expect(result.radiusMeters).toBe(3000);
+    expect(result.pool).toHaveLength(10);
+    expect(result.widened).toBeNull();
+  });
+
+  it('widens only as far as it must', () => {
+    const result = selectByRadius(
+      [...Array.from({ length: 2 }, () => at(1500)), ...Array.from({ length: 9 }, () => at(8000))],
+      config,
+    );
+    expect(result.radiusMeters).toBe(10_000);
+    expect(result.pool).toHaveLength(11);
+    expect(result.widened).toBe(2);
+  });
+
+  it('falls back to the widest ring rather than returning nothing', () => {
+    const result = selectByRadius([at(35_000), at(38_000)], config);
+    expect(result.radiusMeters).toBe(40_000);
+    expect(result.pool).toHaveLength(2);
+    expect(result.widened).toBe(0);
+  });
+
+  it('leaves unlocated sales out of a ring that fills without them', () => {
+    // An unlocated sale used to satisfy every radius, so the tightest ring
+    // always looked full: the search never widened, never warned, and reported
+    // 3km while valuing off sales from anywhere in the county.
+    const result = selectByRadius(
+      [...Array.from({ length: 9 }, () => at(1000)), at(null), at(null)],
+      config,
+    );
+    expect(result.radiusMeters).toBe(3000);
+    expect(result.pool).toHaveLength(9);
+    expect(result.unlocatedUsed).toBe(0);
+  });
+
+  it('falls back to unlocated sales rather than refusing to value', () => {
+    // The case the old rule was written for, and the only one it was right
+    // about: a county part-way through geocoding its roll. Two located sales
+    // cannot carry a valuation, so the unlocated ones are taken — and counted,
+    // so the caller can say so and mark the valuation down.
+    const result = selectByRadius([at(1000), at(35_000), at(null), at(null), at(null)], config);
+    expect(result.pool).toHaveLength(5);
+    expect(result.unlocatedUsed).toBe(3);
+  });
+
+  it('does not reach for unlocated sales once the widest ring is full', () => {
+    const result = selectByRadius(
+      [...Array.from({ length: 8 }, () => at(35_000)), at(null)],
+      config,
+    );
+    expect(result.radiusMeters).toBe(40_000);
+    expect(result.unlocatedUsed).toBe(0);
+    expect(result.pool).toHaveLength(8);
+  });
+
+  it('keeps a metropolitan lot away from rural sales forty kilometres off', () => {
+    // The case this exists for: 40km spans greater Orlando, and a downtown
+    // infill lot has nothing in common with a parcel east of the river.
+    const urban = Array.from({ length: 8 }, () =>
+      comp({ distanceMeters: 2000, salePriceCents: 8_000_000 }),
+    );
+    const rural = Array.from({ length: 40 }, () =>
+      comp({ distanceMeters: 35_000, salePriceCents: 300_000 }),
+    );
+    const result = selectByRadius([...urban, ...rural], config);
+    expect(result.pool).toHaveLength(8);
+    expect(result.pool.every((c) => c.salePriceCents === 8_000_000)).toBe(true);
   });
 });
 
@@ -272,6 +357,45 @@ describe('valueParcel', () => {
     expect(result.warnings.some((w) => w.includes('must not be scored'))).toBe(true);
   });
 
+  it('uses the assessor when the comparables disagree by an order of magnitude', () => {
+    // Orange County's top-ranked parcel: half an acre assessed at $65,000,
+    // valued from comparables at $821,408. Capping confidence was not enough —
+    // the worklist sorts by quick-sale value and the maximum bid is solved from
+    // it, so the parcel led the buy list at a figure the engine disowned.
+    const result = valueParcel({
+      subject: { ...subject, acreage: 0.51 },
+      candidates: [
+        comp({ acreage: 0.5, salePriceCents: 750_000_00 }),
+        comp({ acreage: 0.5, salePriceCents: 750_000_00 }),
+        comp({ acreage: 0.5, salePriceCents: 750_000_00 }),
+        comp({ acreage: 0.5, salePriceCents: 750_000_00 }),
+      ],
+      landAssessedValueCents: 65_000_00,
+      now: NOW,
+    });
+    expect(result.retail!.method).toContain('Assessor land value');
+    // The label has to say which fallback this is. "No comparable sales
+    // available" would be a lie: there were four, and they were rejected.
+    expect(result.retail!.method).toContain('rejected as describing other land');
+    // The comparables would have produced roughly $765,000 against an
+    // assessment of $65,000. Whatever the parcel is worth, it is not that.
+    expect(result.retail!.mid).toBeLessThan(200_000_00);
+    expect(result.warnings.some((w) => w.includes('describing a different location'))).toBe(true);
+    expect(result.warnings.some((w) => w.includes('a floor and a placeholder'))).toBe(true);
+  });
+
+  it('keeps the comparables when the assessment merely lags', () => {
+    // A 2× gap is ordinary on vacant land and must not trigger the fallback,
+    // or every parcel in the product reverts to the assessor's number.
+    const result = valueParcel({
+      subject,
+      candidates: [comp(), comp(), comp(), comp()],
+      landAssessedValueCents: 3_000_00,
+      now: NOW,
+    });
+    expect(result.retail!.method).toContain('Comparable sales');
+  });
+
   it('refuses to value a parcel of unknown acreage', () => {
     const result = valueParcel({
       subject: { ...subject, acreage: 0 },
@@ -284,6 +408,53 @@ describe('valueParcel', () => {
 });
 
 describe('computeEconomics', () => {
+  it('refuses to price a parcel whose cost nobody knows', () => {
+    // Tax-deed inventory is published without a price. Coercing that to zero
+    // yields a basis of pure closing costs, a basis/QSV ratio near zero and a
+    // tier of EXCEPTIONAL — which is how an unpriced parcel reaches the top of
+    // a buy list carrying a fabricated four-figure return.
+    const economics = computeEconomics(
+      { acquisitionPriceCents: null, quickSaleValueCents: 4_584_038 },
+      COSTS,
+      THRESHOLDS,
+    );
+    expect(economics.priced).toBe(false);
+    expect(economics.tier).toBe('UNKNOWN');
+    expect(economics.basisToQsv).toBeNull();
+    expect(economics.basisToRetail).toBeNull();
+    expect(economics.roiAtQsv).toBeNull();
+    expect(economics.annualizedRoiAtQsv).toBeNull();
+    expect(economics.grossProfitAtQsv).toBeNull();
+    // The basis is still reported: it is a genuine floor, and knowing that
+    // owning the parcel costs $3,300 before you have paid for it is useful.
+    expect(economics.allInBasis).toBeGreaterThan(0);
+  });
+
+  it('still measures the cost floor against value when there is no price', () => {
+    // Suppressing every ratio would suppress the one conclusion that needs no
+    // price: if closing and holding already cost more than the parcel is
+    // worth, no purchase figure rescues it. That rejection has to keep firing.
+    const economics = computeEconomics(
+      { acquisitionPriceCents: null, quickSaleValueCents: 56_250 },
+      COSTS,
+      THRESHOLDS,
+    );
+    expect(economics.basisToQsv).toBeNull();
+    expect(economics.basisFloorToQsv).not.toBeNull();
+    expect(economics.basisFloorToQsv!).toBeGreaterThan(1);
+  });
+
+  it('treats a genuinely free parcel differently from an unpriced one', () => {
+    const free = computeEconomics(
+      { acquisitionPriceCents: 0, quickSaleValueCents: 4_584_038 },
+      COSTS,
+      THRESHOLDS,
+    );
+    expect(free.priced).toBe(true);
+    expect(free.basisToQsv).not.toBeNull();
+    expect(free.tier).not.toBe('UNKNOWN');
+  });
+
   it('builds an all-in basis that exceeds the acquisition price', () => {
     const economics = computeEconomics(
       { acquisitionPriceCents: 314_000, quickSaleValueCents: 2_600_000 },
@@ -324,6 +495,52 @@ describe('computeEconomics', () => {
     expect(economics.basisToQsv).toBeNull();
     expect(economics.roiAtQsv).toBeNull();
     expect(economics.tier).toBe('UNKNOWN');
+  });
+
+  it('scales the annualised return by time rather than compounding it', () => {
+    // A 4-month hold used to be compounded across the year, which reported
+    // 2,560% on the buy list. Nothing about land supports assuming the deal
+    // repeats twice more before December.
+    const economics = computeEconomics(
+      { acquisitionPriceCents: 300_000, quickSaleValueCents: 1_500_000, holdDaysOverride: 122 },
+      COSTS,
+      THRESHOLDS,
+    );
+    const holdYears = 122 / 365;
+    expect(economics.annualizedRoiAtQsv).toBeCloseTo(economics.roiAtQsv! / holdYears, 6);
+    expect(economics.annualizedRoiAtQsv!).toBeLessThan(
+      Math.pow(1 + economics.roiAtQsv!, 1 / holdYears) - 1,
+    );
+  });
+
+  it('ranks by capital efficiency, not by how short the hold is', () => {
+    // The field is sortable and filterable, so the exponent was reordering the
+    // buy list: a quick small flip outranked a parcel earning several times as
+    // much per dollar deployed. Equal return per dollar-year must rank equal.
+    const quickFlip = computeEconomics(
+      { acquisitionPriceCents: 100_000, quickSaleValueCents: 400_000, holdDaysOverride: 91 },
+      COSTS,
+      THRESHOLDS,
+    );
+    const longHold = computeEconomics(
+      { acquisitionPriceCents: 100_000, quickSaleValueCents: 400_000, holdDaysOverride: 365 },
+      COSTS,
+      THRESHOLDS,
+    );
+    // The quick flip earns the same gross return in a quarter of the time, so
+    // its annualised rate lands a little over 4x the long hold's — a little
+    // over, not exactly, because the longer hold accrues more carrying cost and
+    // so earns a slightly lower return to annualise.
+    const ratio = quickFlip.annualizedRoiAtQsv! / longHold.annualizedRoiAtQsv!;
+    expect(ratio).toBeGreaterThan(4);
+    expect(ratio).toBeLessThan(5);
+
+    // Compounding is what made this field unusable for ranking: the same pair
+    // separates by an order of magnitude under an exponent, so the buy list
+    // sorted by hold length wearing the costume of profitability.
+    const compounded = (e: typeof quickFlip) =>
+      Math.pow(1 + e.roiAtQsv!, 365 / e.expectedHoldDays) - 1;
+    expect(compounded(quickFlip) / compounded(longHold)).toBeGreaterThan(20);
   });
 
   it('does not report a fantasy annualised return on a loss', () => {
@@ -372,5 +589,107 @@ describe('maximumBidForTargetRatio', () => {
       costs: COSTS,
     });
     expect(bid).toBe(0);
+  });
+});
+
+describe('crossCheckAssessment', () => {
+  const config = DEFAULT_VALUATION_CONFIG;
+
+  it('says nothing about the ordinary gap between market and assessment', () => {
+    // Across Orange County the median ratio is 1.5. Assessors lag the market
+    // on vacant land; that is expected and is not a fault.
+    expect(crossCheckAssessment(150_000, 100_000, config)).toEqual({
+      warning: null,
+      cap: null,
+      severe: false,
+    });
+  });
+
+  it('caps confidence when the valuation runs well ahead of the assessment', () => {
+    const result = crossCheckAssessment(500_000, 100_000, config);
+    expect(result.cap).toBe('LOW');
+    expect(result.warning).toContain('5.0×');
+  });
+
+  it('treats an order-of-magnitude gap as a disagreement, not a lag', () => {
+    // Orange County holds a 0.07-acre parcel assessed at $100 that the engine
+    // valued at $206,986. That is not the assessor being behind the market.
+    const result = crossCheckAssessment(20_698_643, 10_000, config);
+    expect(result.cap).toBe('UNKNOWN');
+    expect(result.severe).toBe(true);
+    expect(result.warning).toContain('different location');
+  });
+
+  it('is equally suspicious of a valuation far below the assessment', () => {
+    const result = crossCheckAssessment(10_000, 100_000, config);
+    expect(result.cap).toBe('LOW');
+    expect(result.warning).toContain('weaker land');
+  });
+
+  it('stays silent when the county publishes no land value', () => {
+    expect(crossCheckAssessment(150_000, null, config)).toEqual({
+      warning: null,
+      cap: null,
+      severe: false,
+    });
+    expect(crossCheckAssessment(150_000, 0, config)).toEqual({
+      warning: null,
+      cap: null,
+      severe: false,
+    });
+  });
+
+  it('reports a verdict rather than a replacement value', () => {
+    // The check does not price the parcel. At the severe threshold it says the
+    // comparables are unusable and leaves the caller to fall back to the
+    // assessor; short of that it qualifies the comps valuation and nothing
+    // more. Either way the number it returns is a confidence, never a price.
+    const result = crossCheckAssessment(20_000_000, 10_000, config);
+    expect(result).not.toHaveProperty('value');
+    expect(Object.keys(result).sort()).toEqual(['cap', 'severe', 'warning']);
+  });
+
+  it('leaves an assessment that merely lags in charge of nothing', () => {
+    // Two thresholds, and only the far one displaces the comparables. A 2× gap
+    // is the median across Orange County; treating that as a disagreement would
+    // revert the whole product to assessor values.
+    expect(crossCheckAssessment(200_000, 100_000, config).severe).toBe(false);
+    expect(crossCheckAssessment(500_000, 100_000, config).severe).toBe(false);
+    expect(crossCheckAssessment(1_000_000, 100_000, config).severe).toBe(true);
+  });
+});
+
+describe('selectByNeighborhood', () => {
+  const config = { ...DEFAULT_COMPS_CONFIG, minComps: 3, preferredComps: 4 };
+  const inHood = (n: number) =>
+    Array.from({ length: n }, () => comp({ neighborhood: '04490123', distanceMeters: 38_000 }));
+  const elsewhere = (n: number) =>
+    Array.from({ length: n }, () => comp({ neighborhood: '09112277', distanceMeters: 200 }));
+
+  it('prefers the assessor’s boundary over proximity', () => {
+    // A sale two towns over inside the same coded neighbourhood is a better
+    // comparable than one across the street outside it. Orange County's sales
+    // span $166k to $6.3M per acre inside ten kilometres, so distance alone
+    // reliably collects land that has nothing to do with the subject.
+    const result = selectByNeighborhood([...inHood(4), ...elsewhere(9)], '04490123', config);
+    expect(result?.pool).toHaveLength(4);
+    expect(result?.pool.every((c) => c.neighborhood === '04490123')).toBe(true);
+  });
+
+  it('declines to decide when too few sales share the neighbourhood', () => {
+    // A thin neighbourhood is noisier than a broader ring, not tighter. On
+    // Orange County's 655 sales across 184 neighbourhoods, letting three
+    // decide moved one parcel from nine times the county's assessment to
+    // seventy-two.
+    const result = selectByNeighborhood([...inHood(3), ...elsewhere(9)], '04490123', config);
+    expect(result?.pool).toHaveLength(0);
+    // Reported rather than silently zero, so the caller can say the fallback
+    // happened instead of implying the neighbourhood was used.
+    expect(result?.matched).toBe(3);
+  });
+
+  it('returns null when the subject has no neighbourhood at all', () => {
+    expect(selectByNeighborhood(inHood(9), null, config)).toBeNull();
+    expect(selectByNeighborhood(inHood(9), '   ', config)).toBeNull();
   });
 });

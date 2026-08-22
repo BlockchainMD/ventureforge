@@ -8,6 +8,9 @@
 import { prisma } from '@land-alpha/db';
 import { enrichParcel, scoreParcelById, valuateParcel } from '@land-alpha/core';
 import { createLogger } from '@land-alpha/shared/logger';
+import { IngestHttpClient } from '@land-alpha/ingestion';
+import { FIXTURE_APN_PREFIX } from '@land-alpha/db/seed/fixture-parcels';
+import { env } from '@land-alpha/shared/env';
 
 const logger = createLogger({ component: 'pipeline-cli' });
 
@@ -25,7 +28,19 @@ async function main(): Promise<void> {
   const parcels = id
     ? await prisma.parcelOpportunity.findMany({ where: { id }, select: { id: true, apn: true } })
     : await prisma.parcelOpportunity.findMany({
-        where: { removedFromSourceAt: null, ...(state ? { state } : {}) },
+        where: {
+          removedFromSourceAt: null,
+          // Fixture parcels carry real Minnesota coordinates, so a *live* run
+          // happily replaces their curated values with whatever the network
+          // said today — and the specifications that assert on them then fail
+          // for reasons having nothing to do with the code under test. In
+          // fixture mode they are exactly what the pipeline is meant to
+          // process, so they stay in.
+          ...(env().ENRICHMENT_MODE === 'live'
+            ? { apn: { not: { startsWith: FIXTURE_APN_PREFIX } } }
+            : {}),
+          ...(state ? { state } : {}),
+        },
         select: { id: true, apn: true },
         orderBy: { firstSeenAt: 'desc' },
         ...(limit ? { take: limit } : {}),
@@ -35,9 +50,15 @@ async function main(): Promise<void> {
   let ok = 0;
   const failures: { apn: string | null; error: string }[] = [];
 
+  // One client for the whole run. Its circuit breaker counts failures per host,
+  // which is worth nothing if each parcel gets a fresh client and therefore a
+  // fresh count — the point is to stop asking a dead service the same question
+  // once per parcel, and that only works if the run remembers.
+  const http = new IngestHttpClient({});
+
   for (const parcel of parcels) {
     try {
-      await enrichParcel(parcel.id);
+      await enrichParcel(parcel.id, { http });
       await valuateParcel(parcel.id);
       await scoreParcelById(parcel.id);
       ok += 1;

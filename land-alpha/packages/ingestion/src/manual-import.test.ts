@@ -249,6 +249,27 @@ describe('ArcGIS helpers', () => {
     expect(chunks.flat()).toHaveLength(values.length);
   });
 
+  it('produces the ordering Orange County’s parcel layer actually uses', () => {
+    // The tax-sale layer publishes section-township-range and the parcel layer
+    // stores range-township-section, so the join hinges on reversing the first
+    // three groups. Verified against the live layer: this form matched all 55
+    // Orange records, and the unreversed one matched none.
+    expect(parcelIdCandidates('24-22-32-6214-00-280')).toContain('322224621400280');
+  });
+
+  it('reverses a bare fifteen-digit id, not only a hyphenated one', () => {
+    // Florida's tax roll publishes parcel IDs unpunctuated. Only the
+    // hyphenated form was ever reordered, so 655 Orange comparables matched
+    // nothing at all against the county parcel layer.
+    expect(parcelIdCandidates('032229262817070')).toContain('292203262817070');
+    expect(parcelIdCandidates('062332102705001')).toContain('322306102705001');
+  });
+
+  it('leaves an id that is not fifteen digits alone', () => {
+    const candidates = parcelIdCandidates('010-0070-00070');
+    expect(candidates).toContain('010007000070');
+  });
+
   it('generates plausible parcel-id orderings without duplicates', () => {
     const candidates = parcelIdCandidates('05-23-29-7398-05-150');
     expect(candidates).toContain('052329739805150');

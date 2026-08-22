@@ -45,6 +45,36 @@ export interface OpportunityFilter {
   auctionAfter?: string;
   /** Only inventory that can be bought on demand rather than at auction. */
   otcOnly?: boolean;
+  /**
+   * Only parcels a county has actually put up for sale.
+   *
+   * Most sources publish a government-held inventory, not an offer list. St.
+   * Louis County publishes its entire tax-forfeited roll — 14,220 parcels — and
+   * says in its own notes that being on it is not the same as being offered.
+   * Without this the ranked list is 99.6% land nobody can buy, and the fifty-odd
+   * parcels a county has genuinely offered are impossible to find in it.
+   */
+  offeredOnly?: boolean;
+  /**
+   * Parcels still on offer after their sale date has gone by.
+   *
+   * A worklist, not a verdict: the date passing says nothing about whether the
+   * parcel sold, was withdrawn, or went unsold and moved to a lands-available
+   * list — which in Florida is exactly how the best inventory appears. Only the
+   * source settles that, so these are surfaced for re-checking rather than
+   * resolved by a clock.
+   */
+  deadlinePassed?: boolean;
+  /**
+   * Let the flood and wetland thresholds pass parcels that were never screened.
+   *
+   * Off by default, because a threshold that admits unmeasured parcels is not a
+   * threshold. On, for the discovery case: seeing fresh inventory before anyone
+   * has been able to screen it. FEMA and the USGS wetlands service both refuse
+   * us (ADR 0011), so this is the difference between a handful of parcels and
+   * effectively all of them.
+   */
+  includeUnscreened?: boolean;
   noReserveOnly?: boolean;
   minFailedSaleCount?: number;
   statuses?: ParcelStatus[];
@@ -70,6 +100,10 @@ export const OPPORTUNITY_SORTS = [
   'firstSeenAt',
   'titleRiskScore',
   'confidenceScore',
+  // Return per year of capital tied up. The one an investor with finite money
+  // should actually sort by.
+  'annualizedRoiAtQsv',
+  'expectedHoldDays',
 ] as const;
 export type OpportunitySort = (typeof OPPORTUNITY_SORTS)[number];
 
@@ -171,6 +205,9 @@ export function filterFromSearchParams(
   if (statuses.length) filter.statuses = statuses;
 
   if (get('otcOnly') === 'true') filter.otcOnly = true;
+  if (get('offeredOnly') === 'true') filter.offeredOnly = true;
+  if (get('deadlinePassed') === 'true') filter.deadlinePassed = true;
+  if (get('includeUnscreened') === 'true') filter.includeUnscreened = true;
   if (get('noReserveOnly') === 'true') filter.noReserveOnly = true;
   if (get('watchlistedOnly') === 'true') filter.watchlistedOnly = true;
   if (get('includeRejected') === 'true') filter.includeRejected = true;

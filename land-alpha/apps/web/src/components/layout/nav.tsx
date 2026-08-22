@@ -6,14 +6,18 @@ import {
   Activity,
   Building2,
   ClipboardCheck,
+  Coins,
   Database,
   Eye,
   Gauge,
+  KeyRound,
   LayoutGrid,
   type LucideIcon,
   Map,
   Settings,
+  Upload,
   SlidersHorizontal,
+  Target,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -35,6 +39,8 @@ const SECTIONS: { heading: string; items: NavItem[] }[] = [
       { href: '/opportunities', label: 'Opportunities', icon: LayoutGrid },
       { href: '/map', label: 'Map', icon: Map },
       { href: '/watchlists', label: 'Watchlists', icon: Eye },
+      { href: '/blocked', label: 'Blocked', icon: KeyRound, minRole: 'ANALYST' },
+      { href: '/allocate', label: 'Allocate capital', icon: Coins, minRole: 'ANALYST' },
     ],
   },
   {
@@ -50,12 +56,14 @@ const SECTIONS: { heading: string; items: NavItem[] }[] = [
     items: [
       { href: '/sources', label: 'Sources', icon: Database },
       { href: '/ingestion', label: 'Ingestion', icon: Activity },
+      { href: '/ingestion/import', label: 'Import', icon: Upload, minRole: 'ANALYST' },
     ],
   },
   {
     heading: 'Configuration',
     items: [
       { href: '/admin/scoring', label: 'Scoring model', icon: SlidersHorizontal, minRole: 'ADMIN' },
+      { href: '/admin/calibration', label: 'Calibration', icon: Target, minRole: 'ADMIN' },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],
   },
