@@ -196,7 +196,7 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
     dispositionNotes: [
       'The published layer carries both scheduled tax deed sales ("Active Sale") and the statutory Lands Available list ("Lands Available"); only the latter can be bought on demand.',
       'The layer is deliberately thin — TDA number, sale date, status and parcel ID only, with a point location. Acreage, value and legal description must be enriched from the Property Appraiser, and where that join fails the parcel is carried with unknown acreage rather than a guessed one.',
-      'Parcel IDs in this layer are in section-township-range order and do NOT match the county parcel layer’s range-township-section ordering, and municipal parcels are absent from the county (BCC) layer entirely. Enrichment is therefore best-effort by design.',
+      'Parcel IDs in the tax-sale layer are in section-township-range order while the parcel layer uses range-township-section, so the join reverses the first three groups — `24-22-32-6214-00-280` becomes `322224621400280`. Against the open-data parcel layer that matches all 55 records; against the BCC layer, which omits municipal parcels, it matched none.',
     ].join(' '),
     config: {
       // Orange County's road inventory. MAINTENANCE states the maintaining body; SURFACE_TYPE and STREET_CLASSIFICATION come free.
@@ -204,8 +204,11 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
         'https://services1.arcgis.com/0U8EQ1FrumPeIqDb/arcgis/rest/services/OCSHARE_Roads_Uninc/FeatureServer/0',
       layerUrl:
         'https://services1.arcgis.com/0U8EQ1FrumPeIqDb/arcgis/rest/services/Tax_Sale_Data/FeatureServer/0',
-      parcelLayerUrl:
-        'https://services1.arcgis.com/0U8EQ1FrumPeIqDb/arcgis/rest/services/Parcels_BCC/FeatureServer/5',
+      // The county's open-data parcel layer, not the BCC one. The BCC layer
+      // omits municipal parcels entirely and matched none of the 55 records;
+      // this one matched all 55, and carries the boundary, ACREAGE, LAND_MKT,
+      // TOTAL_MKT, TAXES, ZONING_CODE and SITUS besides.
+      parcelLayerUrl: 'https://ocgis4.ocfl.net/arcgis/rest/services/AGOL_Open_Data/MapServer/56',
       fieldMap: {
         sourceRecordId: 'USER_TDA_NUM',
         apn: 'USER_PARCEL',

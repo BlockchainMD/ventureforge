@@ -6,6 +6,7 @@ import {
   type SaleStatus,
   type SaleType,
 } from '@land-alpha/shared';
+import { normalizeParcelGeometry, centroidOf } from '@land-alpha/gis';
 import { ArcGisClient, arcgisLiteral } from '../fetch/arcgis';
 import {
   validateNormalized,
@@ -199,6 +200,15 @@ export const arcgisTaxSalePointsAdapter: SourceAdapter = {
       const point = record.__point as [number, number] | null;
       const acreage = parcel ? num(parcel[map.acreage ?? 'ACREAGE']) : null;
 
+      const rawGeometry = parcel?.__geometry;
+      const { geometry, reason } = rawGeometry
+        ? normalizeParcelGeometry(rawGeometry)
+        : { geometry: null, reason: null };
+      if (reason) warnings.push(`${apn ?? 'unknown parcel'}: ${reason}`);
+      // The dot the tax-sale layer publishes is a label position, not a
+      // centroid. Where a boundary exists it decides where the parcel is.
+      const centroid = geometry ? centroidOf(geometry) : point;
+
       items.push({
         sourceId: ctx.sourceId,
         sourceRecordId: str(record[map.sourceRecordId]),
@@ -218,8 +228,9 @@ export const arcgisTaxSalePointsAdapter: SourceAdapter = {
         priorAuctionStatus: isLandsAvailable ? 'No bid received; placed on Lands Available' : null,
         acquisitionInstructions: config.acquisitionInstructions ?? null,
 
-        latitude: point ? point[1] : null,
-        longitude: point ? point[0] : null,
+        latitude: centroid ? centroid[1] : null,
+        longitude: centroid ? centroid[0] : null,
+        geometry,
         acreage,
         legalDescription: parcel ? str(parcel[map.legalDescription ?? 'LEGAL']) : null,
         situsAddress: parcel ? str(parcel.SITUS) : null,
@@ -294,7 +305,12 @@ async function batchLookupParcels(
     try {
       const features = await client.queryAll(parcelLayerUrl, {
         where: `PARCEL IN (${literals})`,
-        returnGeometry: false,
+        // The polygon is the point of this lookup, not a bonus. A tax-sale
+        // layer publishes a dot; without a boundary there is no frontage to
+        // measure, no shape to judge and no buildable area to speak of, so
+        // every parcel from such a source scores UNKNOWN on a fifth of the
+        // Alpha Score for want of an outline the county publishes for free.
+        returnGeometry: true,
         maxFeatures: chunk.length * 3,
       });
       for (const feature of features) {
@@ -304,7 +320,7 @@ async function batchLookupParcels(
           ambiguous.add(key);
           continue;
         }
-        resolved.set(key, feature.attributes);
+        resolved.set(key, { ...feature.attributes, __geometry: feature.geometry });
       }
     } catch {
       // Enrichment is best-effort: a failure here must never fail the run.
