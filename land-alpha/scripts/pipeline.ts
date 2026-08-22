@@ -8,6 +8,7 @@
 import { prisma } from '@land-alpha/db';
 import { enrichParcel, scoreParcelById, valuateParcel } from '@land-alpha/core';
 import { createLogger } from '@land-alpha/shared/logger';
+import { IngestHttpClient } from '@land-alpha/ingestion';
 
 const logger = createLogger({ component: 'pipeline-cli' });
 
@@ -35,9 +36,15 @@ async function main(): Promise<void> {
   let ok = 0;
   const failures: { apn: string | null; error: string }[] = [];
 
+  // One client for the whole run. Its circuit breaker counts failures per host,
+  // which is worth nothing if each parcel gets a fresh client and therefore a
+  // fresh count — the point is to stop asking a dead service the same question
+  // once per parcel, and that only works if the run remembers.
+  const http = new IngestHttpClient({});
+
   for (const parcel of parcels) {
     try {
-      await enrichParcel(parcel.id);
+      await enrichParcel(parcel.id, { http });
       await valuateParcel(parcel.id);
       await scoreParcelById(parcel.id);
       ok += 1;
