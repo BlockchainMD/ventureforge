@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { prisma, toCents, getActiveScoringConfig } from '@land-alpha/db';
 import { maximumBidForTargetRatio } from '@land-alpha/valuation';
 import { formatAcres, formatCents } from '@land-alpha/shared';
+import { FIXTURE_APN_PREFIX } from '@land-alpha/shared/ids';
 import { getSessionUser, hasRole } from '@/server/auth';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
 import { BlockedRow } from './blocked-row';
@@ -43,6 +44,13 @@ export default async function BlockedPage() {
       quickSaleValue: { not: null },
       // A parcel the engine has already rejected is not waiting on anybody.
       rejected: false,
+      // Development fixtures are built to be indistinguishable from real
+      // records to the engines, which is what makes them useful. They must not
+      // be indistinguishable to a person: what this page produces is a list of
+      // parcel references to read down the telephone to a county office, and a
+      // synthetic parcel number in that list wastes a clerk's time and the
+      // analyst's credibility. There is no county to ring about a fixture.
+      apn: { not: { startsWith: FIXTURE_APN_PREFIX } },
       OR: [{ askingPrice: null }, { environmentalLayersScreened: { isEmpty: true } }],
     },
     select: {

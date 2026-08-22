@@ -8,6 +8,7 @@ import {
   humanizeEnum,
   type OpportunitySummary,
 } from '@land-alpha/shared';
+import { isFixtureApn } from '@land-alpha/shared/ids';
 import { DataTable, EmptyRow, Td, Th, Thead, Tr } from '@/components/ui/table';
 import { Badge, statusTone } from '@/components/ui/badge';
 import { Value } from '@/components/ui/value';
@@ -100,6 +101,17 @@ export function OpportunityTable({
                   <span className="num text-[11px] text-ink-muted">
                     <Value>{row.apn}</Value>
                   </span>
+                  {/* Fixtures are built to be indistinguishable from real
+                      records to the engines. To a person deciding where to
+                      send money they must not be. */}
+                  {isFixtureApn(row.apn) ? (
+                    <span
+                      className="ml-1 rounded border border-ink-faint/40 px-1 text-[9px] uppercase tracking-wide text-ink-faint"
+                      title="Synthetic development fixture, not a parcel any county has published."
+                    >
+                      fixture
+                    </span>
+                  ) : null}
                 </Td>
                 <Td align="right">
                   <Value>{row.acreage == null ? null : formatAcres(row.acreage)}</Value>

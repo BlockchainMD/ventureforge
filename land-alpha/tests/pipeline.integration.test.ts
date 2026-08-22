@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { prisma, getActiveScoringConfig, spatial, toCents } from '@land-alpha/db';
-import { FIXTURE_PARCELS } from '@land-alpha/db/seed/fixture-parcels';
+import { FIXTURE_APN_PREFIX, FIXTURE_PARCELS } from '@land-alpha/db/seed/fixture-parcels';
 import {
   collectRealisedOutcomes,
   commitImport,
@@ -242,6 +242,30 @@ describe('valuation integration', () => {
     expect(links.length).toBeGreaterThan(0);
     for (const link of links) {
       expect(link.valuationSnapshotId).toBe(latest!.id);
+    }
+  });
+});
+
+describe('the worklist is a list of real errands', () => {
+  spec('keeps development fixtures out of the references sent to a county', async () => {
+    // The blocked page's output is a list of parcel numbers to read down the
+    // telephone to a county office. Fixtures are built to be indistinguishable
+    // from real records to the engines — that is what makes them useful — and
+    // must not be indistinguishable to the person making that call. There is
+    // no county to ring about a fixture.
+    const queued = await prisma.parcelOpportunity.findMany({
+      where: {
+        removedFromSourceAt: null,
+        status: { notIn: ['REJECTED', 'ACQUIRED', 'SOLD'] },
+        quickSaleValue: { not: null },
+        rejected: false,
+        apn: { not: { startsWith: FIXTURE_APN_PREFIX } },
+        OR: [{ askingPrice: null }, { environmentalLayersScreened: { isEmpty: true } }],
+      },
+      select: { apn: true },
+    });
+    for (const parcel of queued) {
+      expect(parcel.apn?.startsWith(FIXTURE_APN_PREFIX)).toBe(false);
     }
   });
 });
