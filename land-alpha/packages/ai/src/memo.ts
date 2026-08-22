@@ -5,12 +5,15 @@ import {
   humanizeEnum,
   type UsdCents,
 } from '@land-alpha/shared';
+import { createLogger } from '@land-alpha/shared/logger';
 import {
   DETERMINISTIC_MARKER,
   getAiProvider,
   LAND_ALPHA_SYSTEM_PROMPT,
   type CompletionResult,
 } from './provider';
+
+const logger = createLogger({ component: 'investment-memo' });
 
 /**
  * The investment memo.
@@ -213,7 +216,58 @@ function parseSections(text: string, facts: MemoFacts): Record<string, string> {
   for (const section of MEMO_SECTIONS) {
     if (!sections[section]?.trim()) sections[section] = fallback[section] ?? '';
   }
+
+  // And any section quoting money the fact sheet does not contain is replaced
+  // wholesale. The system prompt forbids inventing figures, but a prompt is a
+  // request; this is the check. A memo is the document a person risks money on,
+  // so a single unsourced dollar figure disqualifies the section that carries
+  // it rather than being published alongside sound ones.
+  const permitted = permittedAmounts(renderFactSheet(facts));
+  for (const section of MEMO_SECTIONS) {
+    const unsourced = unsourcedAmounts(sections[section] ?? '', permitted);
+    if (unsourced.length > 0) {
+      logger.warn('memo section quoted a figure absent from the fact sheet', {
+        section,
+        unsourced,
+      });
+      sections[section] = fallback[section] ?? '';
+    }
+  }
   return sections;
+}
+
+/** Every money amount the model was actually given, in cents. */
+export function permittedAmounts(factSheet: string): Set<number> {
+  const amounts = new Set<number>();
+  for (const match of factSheet.matchAll(/\$\s?([\d,]+(?:\.\d{1,2})?)/g)) {
+    const value = Number(match[1]!.replace(/,/g, ''));
+    if (Number.isFinite(value)) amounts.add(Math.round(value * 100));
+  }
+  return amounts;
+}
+
+/**
+ * Money amounts in generated prose that the fact sheet never mentioned.
+ *
+ * Compared numerically rather than as strings, so a model that writes "$41,070"
+ * where the sheet said "$41,070.00" is not accused of inventing it. Rounding to
+ * the nearest dollar is tolerated for the same reason.
+ */
+export function unsourcedAmounts(text: string, permitted: Set<number>): string[] {
+  // The permitted figures, also as whole dollars, so a model that drops the
+  // cents off $24,843.16 is not accused of inventing $24,843.
+  const permittedWholeDollars = new Set<number>();
+  for (const cents of permitted) permittedWholeDollars.add(Math.round(cents / 100));
+
+  const offenders: string[] = [];
+  for (const match of text.matchAll(/\$\s?([\d,]+(?:\.\d{1,2})?)/g)) {
+    const value = Number(match[1]!.replace(/,/g, ''));
+    if (!Number.isFinite(value)) continue;
+    const ok =
+      permitted.has(Math.round(value * 100)) || permittedWholeDollars.has(Math.round(value));
+    if (!ok) offenders.push(match[0]);
+  }
+  return offenders;
 }
 
 /**
