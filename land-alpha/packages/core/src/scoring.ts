@@ -523,12 +523,25 @@ export function evaluateRejectionRules(
   }
 
   const basisRule = enabled('BASIS_EXCEEDS_QSV');
-  if (basisRule && inputs.economics?.basisToQsv != null && inputs.economics.basisToQsv >= 1) {
-    reasons.push({
-      rule: 'BASIS_EXCEEDS_QSV',
-      explanation: `All-in basis (${(inputs.economics.basisToQsv * 100).toFixed(0)}% of quick-sale value) meets or exceeds what the parcel is worth.`,
-      overridable: basisRule.overridable,
-    });
+  if (basisRule && inputs.economics != null) {
+    // With a price, this is the real ratio. Without one, the floor — closing
+    // and carrying costs alone — is enough to decide: if owning the parcel
+    // already costs more than it is worth before paying for the land, no
+    // acquisition price makes it work, so the rule fires on the floor too.
+    const { basisToQsv, basisFloorToQsv } = inputs.economics;
+    if (basisToQsv != null && basisToQsv >= 1) {
+      reasons.push({
+        rule: 'BASIS_EXCEEDS_QSV',
+        explanation: `All-in basis (${(basisToQsv * 100).toFixed(0)}% of quick-sale value) meets or exceeds what the parcel is worth.`,
+        overridable: basisRule.overridable,
+      });
+    } else if (basisToQsv == null && basisFloorToQsv != null && basisFloorToQsv >= 1) {
+      reasons.push({
+        rule: 'BASIS_EXCEEDS_QSV',
+        explanation: `Before any acquisition price, the cost of closing and holding this parcel is already ${(basisFloorToQsv * 100).toFixed(0)}% of its quick-sale value. No purchase price makes it profitable.`,
+        overridable: basisRule.overridable,
+      });
+    }
   }
 
   const titleRule = enabled('SEVERE_TITLE_RISK');

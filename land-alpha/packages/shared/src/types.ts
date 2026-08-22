@@ -248,6 +248,13 @@ export interface OpportunityEconomics {
   readonly allInBasis: UsdCents;
   readonly basisToQsv: number | null;
   readonly basisToRetail: number | null;
+  /**
+   * The floor basis as a share of quick-sale value — always computed, because
+   * it needs no acquisition price. When it already meets or exceeds 1, the
+   * parcel is unbuyable at any price: the costs of owning it exceed what it is
+   * worth before a cent has been paid for the land.
+   */
+  readonly basisFloorToQsv: number | null;
   readonly grossProfitAtQsv: UsdCents | null;
   readonly roiAtQsv: number | null;
   readonly annualizedRoiAtQsv: number | null;

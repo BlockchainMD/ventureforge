@@ -368,6 +368,20 @@ describe('computeEconomics', () => {
     expect(economics.allInBasis).toBeGreaterThan(0);
   });
 
+  it('still measures the cost floor against value when there is no price', () => {
+    // Suppressing every ratio would suppress the one conclusion that needs no
+    // price: if closing and holding already cost more than the parcel is
+    // worth, no purchase figure rescues it. That rejection has to keep firing.
+    const economics = computeEconomics(
+      { acquisitionPriceCents: null, quickSaleValueCents: 56_250 },
+      COSTS,
+      THRESHOLDS,
+    );
+    expect(economics.basisToQsv).toBeNull();
+    expect(economics.basisFloorToQsv).not.toBeNull();
+    expect(economics.basisFloorToQsv!).toBeGreaterThan(1);
+  });
+
   it('treats a genuinely free parcel differently from an unpriced one', () => {
     const free = computeEconomics(
       { acquisitionPriceCents: 0, quickSaleValueCents: 4_584_038 },

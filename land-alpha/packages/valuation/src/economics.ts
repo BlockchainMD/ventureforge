@@ -94,6 +94,11 @@ export function computeEconomics(
   // and the ratios are not; `classifyTier` returns UNKNOWN on a null ratio,
   // which is the honest tier for a parcel whose price has not been obtained.
   const basisToQsv = priced ? ratio(allInBasis, inputs.quickSaleValueCents ?? null) : null;
+  // Always computed. Suppressing every ratio when the price is unknown would
+  // also suppress the one conclusion that needs no price: a parcel whose
+  // costs-only floor already exceeds its quick-sale value cannot be bought
+  // profitably at any figure, and the rejection rule has to keep firing.
+  const basisFloorToQsv = ratio(allInBasis, inputs.quickSaleValueCents ?? null);
   const basisToRetail = priced ? ratio(allInBasis, inputs.retailValueCents ?? null) : null;
 
   const grossProfitAtQsv =
@@ -124,6 +129,7 @@ export function computeEconomics(
     allInBasis,
     basisToQsv,
     basisToRetail,
+    basisFloorToQsv,
     grossProfitAtQsv,
     roiAtQsv,
     annualizedRoiAtQsv,

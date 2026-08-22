@@ -168,6 +168,14 @@ export async function scoreParcelById(parcelId: string): Promise<AlphaScoreResul
           allInBasis: toCents(parcel.estimatedAllInBasis) ?? 0,
           basisToQsv: parcel.basisToQsv,
           basisToRetail: parcel.basisToRetail,
+          // Recomputed rather than stored: both terms are already persisted,
+          // and a derived column that can drift from its inputs is worse than
+          // one line of arithmetic.
+          basisFloorToQsv: (() => {
+            const basis = toCents(parcel.estimatedAllInBasis);
+            const qsv = toCents(parcel.quickSaleValue);
+            return basis == null || qsv == null || qsv <= 0 ? null : basis / qsv;
+          })(),
           grossProfitAtQsv: toCents(parcel.expectedGrossMargin),
           roiAtQsv: parcel.roiAtQsv,
           annualizedRoiAtQsv: parcel.annualizedRoiAtQsv,

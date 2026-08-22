@@ -514,6 +514,7 @@ function economics(overrides: Partial<OpportunityEconomics> = {}): OpportunityEc
     allInBasis: 533_000,
     basisToQsv: 0.205,
     basisToRetail: 0.157,
+    basisFloorToQsv: 0.205,
     grossProfitAtQsv: 2_067_000,
     roiAtQsv: 3.88,
     annualizedRoiAtQsv: 22.8,
@@ -689,6 +690,47 @@ describe('scoreParcel', () => {
       DEFAULT_SCORING_CONFIG,
     );
     expect(result.rejectionReasons.map((r) => r.rule)).toContain('BASIS_EXCEEDS_QSV');
+  });
+
+  it('rejects on the cost floor alone when no price has been obtained', () => {
+    // Making the acquisition price nullable correctly suppressed basisToQsv,
+    // and silently disabled this rejection for every unpriced parcel — which
+    // is currently all of them. The floor is enough to decide: a parcel whose
+    // closing and holding costs already exceed its value cannot be rescued by
+    // any purchase figure.
+    const result = scoreParcel(
+      scoringInputs({
+        economics: economics({
+          priced: false,
+          basisToQsv: null,
+          basisToRetail: null,
+          basisFloorToQsv: 1.56,
+          roiAtQsv: null,
+          tier: 'UNKNOWN',
+        }),
+      }),
+      DEFAULT_SCORING_CONFIG,
+    );
+    const rejection = result.rejectionReasons.find((r) => r.rule === 'BASIS_EXCEEDS_QSV');
+    expect(rejection).toBeDefined();
+    expect(rejection!.explanation).toContain('No purchase price makes it profitable');
+  });
+
+  it('does not reject an unpriced parcel whose floor leaves room', () => {
+    const result = scoreParcel(
+      scoringInputs({
+        economics: economics({
+          priced: false,
+          basisToQsv: null,
+          basisToRetail: null,
+          basisFloorToQsv: 0.07,
+          roiAtQsv: null,
+          tier: 'UNKNOWN',
+        }),
+      }),
+      DEFAULT_SCORING_CONFIG,
+    );
+    expect(result.rejectionReasons.map((r) => r.rule)).not.toContain('BASIS_EXCEEDS_QSV');
   });
 
   it('honours an analyst override on an overridable rule', () => {
