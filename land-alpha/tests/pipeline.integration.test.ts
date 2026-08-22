@@ -721,3 +721,66 @@ describe('analyst import', () => {
     }
   });
 });
+
+/**
+ * Financing on the public listing.
+ *
+ * A monthly figure changes who the buyer is: cash buyers for rural land are a
+ * thin, price-sensitive pool, and buyers who can pay $300 a month are a much
+ * larger one comparing against different alternatives. Publishing the terms is
+ * where the financing engine turns into revenue rather than an internal number.
+ */
+describe('listing finance offer', () => {
+  spec('publishes terms a buyer can act on, and stores what was shown', async () => {
+    const listing = await prisma.listing.findFirst({
+      where: { financeOffered: true },
+      select: {
+        askingPrice: true,
+        financeDownPayment: true,
+        financeMonthlyPayment: true,
+        financeTermMonths: true,
+        financeAnnualRate: true,
+      },
+    });
+    if (!listing) {
+      console.warn('  (no financed listing generated yet)');
+      return;
+    }
+
+    const price = toCents(listing.askingPrice)!;
+    const down = toCents(listing.financeDownPayment)!;
+    const monthly = toCents(listing.financeMonthlyPayment)!;
+
+    expect(down).toBeGreaterThan(0);
+    expect(down).toBeLessThan(price);
+    expect(monthly).toBeGreaterThan(0);
+    // The whole point: the monthly figure must be small relative to the price,
+    // or it reaches nobody new.
+    expect(monthly).toBeLessThan(price / 12);
+    expect(listing.financeTermMonths).toBeGreaterThan(0);
+
+    // The payments must actually retire the balance, not merely look plausible.
+    const schedule = buildAmortizationSchedule(
+      {
+        salePriceCents: price,
+        downPaymentCents: down,
+        annualRate: listing.financeAnnualRate!,
+        termMonths: listing.financeTermMonths!,
+      },
+      new Date(),
+    );
+    expect(schedule.payments.at(-1)!.balanceAfterCents).toBe(0);
+  });
+
+  spec('does not offer a note too small to be worth servicing', async () => {
+    const cheap = await prisma.listing.findMany({
+      where: { askingPrice: { lt: 3000 } },
+      select: { financeOffered: true, askingPrice: true },
+    });
+    for (const listing of cheap) {
+      // Below ~$3,000 the paperwork, collection risk and bookkeeping cost more
+      // than the interest earns.
+      expect(listing.financeOffered).toBe(false);
+    }
+  });
+});

@@ -87,7 +87,29 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
             </span>
           )}
         </p>
-        <p className="mt-1 text-sm text-ink-muted">{listing.locationSummary}</p>
+        {listing.financeOffered && listing.financeMonthlyPayment != null ? (
+          <div className="mt-3 inline-block rounded-sm border border-good/40 bg-good/5 px-4 py-3">
+            <p className="num text-lg text-good">
+              or {formatCents(toCents(listing.financeDownPayment))} down and{' '}
+              {formatCents(toCents(listing.financeMonthlyPayment))}/month
+            </p>
+            <p className="mt-0.5 text-xs text-ink-muted">
+              {listing.financeTermMonths} monthly payments
+              {listing.financeAnnualRate == null
+                ? ''
+                : ` at ${(listing.financeAnnualRate * 100).toFixed(1)}% interest`}
+              {listing.financeDocumentFee == null
+                ? ''
+                : `, plus a ${formatCents(toCents(listing.financeDocumentFee))} document fee`}
+              . No credit check. Pay it off early at any time with no penalty.
+            </p>
+            <p className="mt-1 text-[10px] text-ink-faint">
+              Indicative terms, subject to a signed agreement. You take possession on signing; title
+              transfers when the balance is paid.
+            </p>
+          </div>
+        ) : null}
+        <p className="mt-3 text-sm text-ink-muted">{listing.locationSummary}</p>
       </header>
 
       <div className="mt-6">

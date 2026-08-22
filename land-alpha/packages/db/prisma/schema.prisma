@@ -1155,6 +1155,19 @@ model Listing {
   metaDescription   String
   socialCopy        String
   askingPrice       Decimal? @db.Decimal(14, 2)
+
+  /// Seller-financing terms offered publicly on this listing.
+  ///
+  /// A monthly figure is the single largest conversion lever in land sales: it
+  /// moves the buyer pool from people with cash to people with income. Stored
+  /// on the listing rather than derived at render time so that what a buyer was
+  /// shown is what was offered, even after the pricing model changes.
+  financeOffered    Boolean  @default(false)
+  financeDownPayment Decimal? @db.Decimal(14, 2)
+  financeMonthlyPayment Decimal? @db.Decimal(14, 2)
+  financeTermMonths Int?
+  financeAnnualRate Float?
+  financeDocumentFee Decimal? @db.Decimal(14, 2)
   published         Boolean  @default(false)
   publishedAt       DateTime?
   generatedBy       String   @default("listing-engine")
