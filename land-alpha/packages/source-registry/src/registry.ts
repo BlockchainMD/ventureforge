@@ -199,6 +199,12 @@ export const SOURCE_REGISTRY: RegistryEntry[] = defineSources([
       'Parcel IDs in the tax-sale layer are in section-township-range order while the parcel layer uses range-township-section, so the join reverses the first three groups — `24-22-32-6214-00-280` becomes `322224621400280`. Against the open-data parcel layer that matches all 55 records; against the BCC layer, which omits municipal parcels, it matched none.',
     ].join(' '),
     config: {
+      // The county's republication of its own FIRM. FEMA's host forbids
+      // automated queries against the NFHL, and Orange publishes the identical
+      // schema — FLD_ZONE, ZONE_SUBTY, SFHA_TF — because it is the same data
+      // adopted locally. Without this, every Florida parcel is unscreened for
+      // flood and buildability is capped at UNKNOWN.
+      floodLayerUrl: 'https://ocgis4.ocfl.net/arcgis/rest/services/AGOL_Open_Data/MapServer/19',
       // Orange County's road inventory. MAINTENANCE states the maintaining body; SURFACE_TYPE and STREET_CLASSIFICATION come free.
       roadsLayerUrl:
         'https://services1.arcgis.com/0U8EQ1FrumPeIqDb/arcgis/rest/services/OCSHARE_Roads_Uninc/FeatureServer/0',

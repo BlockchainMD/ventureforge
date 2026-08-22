@@ -31,13 +31,50 @@ export interface FloodObservation {
 export async function fetchFloodHazard(
   ctx: EnrichmentContext,
   target: EnrichmentTarget,
+  options: { countyFloodLayerUrl?: string | null } = {},
 ): Promise<FloodObservation> {
-  const source = 'FEMA National Flood Hazard Layer';
   if (ctx.mode === 'fixture') {
-    return { zones: [], polygons: [], available: false, source, note: 'fixture mode' };
+    return {
+      zones: [],
+      polygons: [],
+      available: false,
+      source: 'FEMA National Flood Hazard Layer',
+      note: 'fixture mode',
+    };
   }
 
-  const baseUrl = env().FEMA_NFHL_URL;
+  // The county's republication first, where it exists.
+  //
+  // FEMA's own host forbids automated queries against the NFHL, which left
+  // every parcel unscreened for flood and so capped buildability at UNKNOWN.
+  // Counties that adopt a FIRM commonly republish it in their own GIS, and
+  // Orange County's layer carries the identical schema — FLD_ZONE, ZONE_SUBTY,
+  // SFHA_TF, DFIRM_ID — because it is the same data. Reading it there is not a
+  // way around FEMA's preference; it is a different publisher who permits it.
+  if (options.countyFloodLayerUrl) {
+    const county = await queryFloodLayer(
+      ctx,
+      target,
+      options.countyFloodLayerUrl,
+      'County republication of the FEMA National Flood Hazard Layer',
+    );
+    if (county.available) return county;
+  }
+
+  return queryFloodLayer(
+    ctx,
+    target,
+    `${env().FEMA_NFHL_URL}/${FLOOD_HAZARD_LAYER}`,
+    'FEMA National Flood Hazard Layer',
+  );
+}
+
+async function queryFloodLayer(
+  ctx: EnrichmentContext,
+  target: EnrichmentTarget,
+  layerUrl: string,
+  source: string,
+): Promise<FloodObservation> {
   const geometry = envelopeParam(target);
 
   const params = new URLSearchParams({
@@ -55,7 +92,7 @@ export async function fetchFloodHazard(
     const response = await ctx.http.getJson<{
       features?: { attributes?: Record<string, unknown>; geometry?: EsriPolygon }[];
       error?: unknown;
-    }>(`${baseUrl}/${FLOOD_HAZARD_LAYER}/query?${params.toString()}`);
+    }>(`${layerUrl}/query?${params.toString()}`);
 
     if (response.error || !response.features) {
       return {

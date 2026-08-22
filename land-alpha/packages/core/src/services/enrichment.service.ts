@@ -203,8 +203,12 @@ export async function enrichParcel(
   // ---- Environmental -------------------------------------------------------
   let environmental: EnvironmentalAssessment | null = null;
   if (stages.has('environmental')) {
+    const countyFloodLayerUrl =
+      (registryByKey(parcel.source.registryKey)?.config as { floodLayerUrl?: string } | undefined)
+        ?.floodLayerUrl ?? null;
+
     const [flood, wetlands, contamination, terrain, manual] = await Promise.all([
-      enrichment.fetchFloodHazard(ctx, target),
+      enrichment.fetchFloodHazard(ctx, target, { countyFloodLayerUrl }),
       enrichment.fetchWetlands(ctx, target),
       enrichment.fetchContamination(ctx, target),
       enrichment.fetchTerrain(ctx, target),
