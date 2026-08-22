@@ -12,6 +12,39 @@ import { ConfigurationError } from './errors';
 
 const optionalUrl = z.string().url().optional();
 
+/**
+ * A boolean read from the environment.
+ *
+ * `z.coerce.boolean()` is `Boolean(value)`, and every non-empty string is
+ * truthy — so `PUBLIC_SITE_ENABLED=false` parsed as **true**, and the only
+ * spelling that turned a flag off was the empty string. Nobody guesses that.
+ * Two of these flags are safety switches (the unauthenticated listing site, and
+ * whether ingestion touches the network at all), which made a silent
+ * misreading expensive.
+ *
+ * An unrecognised value is a hard configuration error rather than a default.
+ * `PUBLIC_SITE_ENABLED=flase` must not quietly publish the listing site.
+ */
+const TRUE_VALUES = new Set(['true', '1', 'yes', 'y', 'on']);
+const FALSE_VALUES = new Set(['false', '0', 'no', 'n', 'off', '']);
+
+function envBoolean(defaultValue: boolean) {
+  return z
+    .union([z.boolean(), z.string()])
+    .default(defaultValue)
+    .transform((value, ctx) => {
+      if (typeof value === 'boolean') return value;
+      const normalised = value.trim().toLowerCase();
+      if (TRUE_VALUES.has(normalised)) return true;
+      if (FALSE_VALUES.has(normalised)) return false;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `expected a boolean (true/false, 1/0, yes/no, on/off), got ${JSON.stringify(value)}`,
+      });
+      return z.NEVER;
+    });
+}
+
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
@@ -36,7 +69,7 @@ export const envSchema = z.object({
   S3_BUCKET: z.string().optional(),
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
-  S3_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
+  S3_FORCE_PATH_STYLE: envBoolean(true),
 
   // --- AI -------------------------------------------------------------------
   /** `fixture` needs no credentials and is the default. */
@@ -56,9 +89,9 @@ export const envSchema = z.object({
   INGEST_MIN_DELAY_MS: z.coerce.number().int().nonnegative().default(1500),
   INGEST_MAX_REQUESTS_PER_RUN: z.coerce.number().int().positive().default(600),
   INGEST_TIMEOUT_MS: z.coerce.number().int().positive().default(45_000),
-  INGEST_RESPECT_ROBOTS: z.coerce.boolean().default(true),
+  INGEST_RESPECT_ROBOTS: envBoolean(true),
   /** When true, adapters read from `data/fixtures/raw` instead of the network. */
-  INGEST_OFFLINE: z.coerce.boolean().default(false),
+  INGEST_OFFLINE: envBoolean(false),
 
   // --- Enrichment services --------------------------------------------------
   /** `fixture` uses the bundled local datasets; `live` calls the public APIs. */
@@ -99,7 +132,7 @@ export const envSchema = z.object({
    */
   NEXT_PUBLIC_SITE_URL: z.string().url().default('http://localhost:3000'),
   NEXT_PUBLIC_MAP_STYLE_URL: z.string().optional(),
-  PUBLIC_SITE_ENABLED: z.coerce.boolean().default(true),
+  PUBLIC_SITE_ENABLED: envBoolean(true),
 
   // --- Email ----------------------------------------------------------------
   EMAIL_DRIVER: z.enum(['console', 'smtp']).default('console'),

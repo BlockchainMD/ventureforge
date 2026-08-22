@@ -1,0 +1,72 @@
+# Build the two images a Cloud Run deployment needs, from the one Dockerfile.
+#
+#   web   — `runtime` stage. The standalone server and nothing else: no pnpm
+#           store, no TypeScript, no dev dependencies. This is what serves
+#           traffic, so it stays as small as it can be.
+#
+#   jobs  — `build` stage. The whole installed workspace, which is what the
+#           Prisma CLI and tsx need. Migrations, the bootstrap and ingestion
+#           run from here as Cloud Run Jobs, never from the serving image.
+#
+# Splitting them this way is not tidiness. Schema migrations must run once per
+# release; baking them into the serving image runs them once per instance that
+# happens to start, which is a different and much worse thing.
+#
+# Invoked by deploy.sh — see that script for the substitutions.
+
+substitutions:
+  _REPO: land-alpha
+  _TAG: latest
+
+options:
+  # No machineType override: the default pool is the one covered by Cloud
+  # Build's free build-minutes. A larger machine finishes sooner and bills for
+  # the privilege; this build is not slow enough to be worth that.
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 2400s
+
+images:
+  - '${_AR_HOST}/${PROJECT_ID}/${_REPO}/web:${_TAG}'
+  - '${_AR_HOST}/${PROJECT_ID}/${_REPO}/web:latest'
+  - '${_AR_HOST}/${PROJECT_ID}/${_REPO}/jobs:${_TAG}'
+  - '${_AR_HOST}/${PROJECT_ID}/${_REPO}/jobs:latest'
+
+steps:
+  # Pull the previous images so their layers can seed the cache. On the first
+  # build there is nothing to pull, which is not an error — hence `|| true`.
+  # Without this every build reinstalls the entire pnpm store from scratch.
+  - id: warm-cache
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        docker pull '${_AR_HOST}/${PROJECT_ID}/${_REPO}/jobs:latest' || true
+        docker pull '${_AR_HOST}/${PROJECT_ID}/${_REPO}/web:latest'  || true
+
+  # `jobs` first, and not only because `web` depends on the same early layers.
+  # This stage is where the install and the Next build actually happen, so a
+  # failure here is a real build failure and surfaces before anything is pushed.
+  - id: build-jobs
+    name: gcr.io/cloud-builders/docker
+    waitFor: ['warm-cache']
+    args:
+      - build
+      - --target=build
+      - --cache-from=${_AR_HOST}/${PROJECT_ID}/${_REPO}/jobs:latest
+      - --tag=${_AR_HOST}/${PROJECT_ID}/${_REPO}/jobs:${_TAG}
+      - --tag=${_AR_HOST}/${PROJECT_ID}/${_REPO}/jobs:latest
+      - .
+
+  - id: build-web
+    name: gcr.io/cloud-builders/docker
+    waitFor: ['build-jobs']
+    args:
+      - build
+      - --target=runtime
+      - --cache-from=${_AR_HOST}/${PROJECT_ID}/${_REPO}/jobs:latest
+      - --cache-from=${_AR_HOST}/${PROJECT_ID}/${_REPO}/web:latest
+      - --tag=${_AR_HOST}/${PROJECT_ID}/${_REPO}/web:${_TAG}
+      - --tag=${_AR_HOST}/${PROJECT_ID}/${_REPO}/web:latest
+      - .

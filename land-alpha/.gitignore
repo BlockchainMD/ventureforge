@@ -4,9 +4,15 @@ dist/
 out/
 coverage/
 *.tsbuildinfo
+# Every .env variant except the committed template. `.env.cloud` in
+# particular is written by infra/gcp/connect.sh and holds a live database
+# password, so an exact-name rule is not enough here.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+
+# Downloaded tooling (the Cloud SQL Auth Proxy binary).
+.cache/
 .DS_Store
 data/raw/
 data/storage/

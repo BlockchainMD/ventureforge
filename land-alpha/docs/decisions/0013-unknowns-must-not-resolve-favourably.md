@@ -17,10 +17,32 @@ that flattered the parcel.
 | `roads.ts` | Failed query → no roads | 228 of 304 parcels penalised on 20% of their score because Overpass answered 503 to every request |
 | `scoring.ts` | No valuation → neutral 50 | Parcels with no comparable sales and no value outranked every parcel that had been assessed |
 | `allocation.service.ts` | Unpriced parcel → costs-only floor treated as the basis | The capital plan committed $46,000 across twelve parcels whose price nobody had, at a reported 584% a year |
+| `env.ts` | `z.coerce.boolean()` → every non-empty string is `true` | `PUBLIC_SITE_ENABLED=false` read as **true**. The switch that keeps the unauthenticated listing site off did nothing, and the only spelling that worked was the empty string |
 
 Each one is individually defensible in isolation, which is precisely why they
 accumulated. A `?? 0` looks like defensive programming. An empty array looks
 like an empty result. A neutral score looks fair.
+
+## The seventh instance was not a domain value
+
+The six above are all measurements: a price, a layer, a road, a valuation. The
+seventh is a configuration flag, and it arrived by a different route — not a
+missing value substituted with a favourable one, but an *unparseable* value
+coerced into the permissive direction. `z.coerce.boolean()` is `Boolean(value)`,
+so every non-empty string is true, including `'false'`.
+
+The shape is the same and so is the rule. Where a value governs whether
+something is exposed, run, or spent, an input the system cannot interpret must
+fail closed — and here it must fail loudly, because a flag that silently picks
+the permissive side gives no signal at all. `PUBLIC_SITE_ENABLED=flase` is now a
+configuration error that stops the boot rather than a decision to publish.
+
+The lesson for review: this defect was invisible in the source. Reading
+`PUBLIC_SITE_ENABLED: z.coerce.boolean().default(true)` alongside
+`--set-env-vars=PUBLIC_SITE_ENABLED=false` gives every appearance of a control
+that works. It was only caught by curling the route in the built image, which is
+the argument for verifying safety switches by exercising them in both positions
+rather than by reading the code that implements them.
 
 ## Decision
 

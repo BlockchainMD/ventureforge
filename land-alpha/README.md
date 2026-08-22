@@ -517,6 +517,30 @@ to a rejection rule that breaks an archetype fails loudly, with the rule named.
 
 ## Deployment
 
+### Google Cloud, one command
+
+```bash
+PROJECT_ID=your-project ADMIN_EMAIL=you@example.com ./infra/gcp/deploy.sh
+```
+
+Cloud Run in front of Cloud SQL for PostgreSQL: roughly ten minutes, roughly
+$10/month, and a URL that works from a phone. The script is idempotent — re-run
+it to ship a change. `./infra/gcp/teardown.sh` removes every billable resource,
+and `./infra/gcp/connect.sh` opens an IAM-authenticated tunnel so a laptop or an
+agent container can drive the hosted database directly.
+
+Two things ship deliberately switched off. The deployment is **never seeded** —
+`pnpm db:seed` publishes its passwords in this repository, so `pnpm
+bootstrap:admin` creates a single administrator from Secret Manager instead, and
+refuses to finish if any account still carries the development password. And the
+unauthenticated listing site is off (`PUBLIC_SITE_ENABLED=false`) until you turn
+it on.
+
+Full runbook, cost breakdown and troubleshooting: [`infra/gcp/README.md`](infra/gcp/README.md).
+Reasoning: [ADR 0016](docs/decisions/0016-hosting-on-cloud-run-and-cloud-sql.md).
+
+### Anywhere else
+
 **Web** — the root `Dockerfile` builds a self-contained image (Next standalone output,
 ~630MB) that runs anywhere containers do: Cloud Run, Fly, ECS, a VM. Or Vercel, or any
 Node host. Set `DATABASE_URL`, `AUTH_SECRET`, and whichever integrations you are enabling.
