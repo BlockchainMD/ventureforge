@@ -79,6 +79,15 @@ export const envSchema = z.object({
   USDA_SOILS_URL: z.string().default('https://sdmdataaccess.sc.egov.usda.gov/Tabular/post.rest'),
   EPA_FRS_URL: z.string().default('https://data.epa.gov/efservice'),
   USGS_EPQS_URL: z.string().default('https://epqs.nationalmap.gov/v1/json'),
+  /**
+   * The 3DEP image service. Its `getSamples` operation answers every sample
+   * point in one request, where the point-query service above answers one per
+   * request — which, with the politeness delay between calls to a host, is the
+   * single largest cost in an enrichment run.
+   */
+  USGS_3DEP_IMAGE_URL: z
+    .string()
+    .default('https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer'),
   OVERPASS_URL: z.string().default('https://overpass-api.de/api/interpreter'),
 
   // --- Web ------------------------------------------------------------------
