@@ -48,10 +48,93 @@ export async function generateMetadata({
   const { slug } = await params;
   const listing = await loadListing(slug);
   if (!listing) return { title: 'Property not found' };
+  const base = env().NEXT_PUBLIC_SITE_URL.replace(/\/$/, '');
+  const url = `${base}/properties/${slug}`;
+  // Photos are held by storage key with no public URL yet, so no image is
+  // advertised rather than one invented. A social card pointing at a 404 is
+  // worse than a plain one.
+  const photo: string | undefined = undefined;
   return {
     title: listing.seoTitle,
     description: listing.metaDescription,
-    openGraph: { title: listing.seoTitle, description: listing.metaDescription },
+    // Explicitly indexable: the root layout covers the analyst terminal too,
+    // and this page's whole purpose is to be found.
+    robots: { index: true, follow: true },
+    alternates: { canonical: url },
+    openGraph: {
+      type: 'website',
+      url,
+      title: listing.seoTitle,
+      description: listing.metaDescription,
+      images: photo ? [photo] : undefined,
+    },
+    twitter: {
+      card: photo ? 'summary_large_image' : 'summary',
+      title: listing.seoTitle,
+      description: listing.metaDescription,
+    },
+  };
+}
+
+/**
+ * Structured data for the listing.
+ *
+ * Search engines surface a price, an area and a location far more prominently
+ * when they are stated as data rather than inferred from prose. Every value
+ * here is one already published on the page — nothing is asserted to a crawler
+ * that a buyer cannot see, which is both an honesty rule and the rule that
+ * keeps structured data from being treated as spam.
+ */
+function listingJsonLd(
+  listing: {
+    title: string;
+    metaDescription: string | null;
+    askingPrice: unknown;
+    parcel: {
+      acreage: number | null;
+      county: string;
+      state: string;
+      latitude: number | null;
+      longitude: number | null;
+    };
+  },
+  url: string,
+  photo: string | undefined,
+): Record<string, unknown> {
+  const price = toCents(listing.askingPrice as never);
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: listing.title,
+    description: listing.metaDescription ?? undefined,
+    url,
+    image: photo ? [photo] : undefined,
+    category: 'Vacant land',
+    offers:
+      price == null
+        ? undefined
+        : {
+            '@type': 'Offer',
+            price: (price / 100).toFixed(2),
+            priceCurrency: 'USD',
+            availability: 'https://schema.org/InStock',
+            url,
+          },
+    additionalProperty: [
+      listing.parcel.acreage == null
+        ? null
+        : {
+            '@type': 'PropertyValue',
+            name: 'Acreage',
+            value: listing.parcel.acreage,
+            unitText: 'acre',
+          },
+      {
+        '@type': 'PropertyValue',
+        name: 'County',
+        value: `${listing.parcel.county} County, ${listing.parcel.state}`,
+      },
+    ].filter(Boolean),
   };
 }
 
@@ -73,8 +156,19 @@ export default async function PropertyPage({ params }: { params: Promise<{ slug:
   const facts = (listing.propertyFacts ?? []) as unknown as PropertyFactRow[];
   const faq = (listing.faq ?? []) as unknown as FaqRow[];
 
+  const base = env().NEXT_PUBLIC_SITE_URL.replace(/\/$/, '');
+  const canonical = `${base}/properties/${listing.slug}`;
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
+      <script
+        type="application/ld+json"
+        // Serialised from the same values rendered below, so a crawler is never
+        // told something a visitor is not.
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(listingJsonLd(listing, canonical, undefined)),
+        }}
+      />
       <header>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">{listing.title}</h1>
         <p className="num mt-2 text-xl text-alpha">

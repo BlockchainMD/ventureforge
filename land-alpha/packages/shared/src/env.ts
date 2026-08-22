@@ -76,6 +76,12 @@ export const envSchema = z.object({
 
   // --- Web ------------------------------------------------------------------
   NEXT_PUBLIC_APP_NAME: z.string().default('Land Alpha'),
+  /**
+   * Public origin of the listing site, used for canonical URLs and the
+   * sitemap. Search engines need absolute URLs; a relative one in a sitemap is
+   * simply ignored.
+   */
+  NEXT_PUBLIC_SITE_URL: z.string().url().default('http://localhost:3000'),
   NEXT_PUBLIC_MAP_STYLE_URL: z.string().optional(),
   PUBLIC_SITE_ENABLED: z.coerce.boolean().default(true),
 

@@ -2,7 +2,12 @@ import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/server/auth';
 import { LoginForm } from './login-form';
 
-export const metadata = { title: 'Sign in — Land Alpha' };
+export const metadata = {
+  title: 'Sign in — Land Alpha',
+  // robots.txt stops a crawler fetching this; the tag stops the URL being
+  // indexed if it is discovered somewhere else.
+  robots: { index: false, follow: false },
+};
 
 export default async function LoginPage({
   searchParams,

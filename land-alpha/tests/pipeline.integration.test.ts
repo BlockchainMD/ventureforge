@@ -16,6 +16,8 @@ import {
 } from '@land-alpha/core';
 import { buildAmortizationSchedule, calibrateFromOutcomes } from '@land-alpha/valuation';
 import { normalizeApn } from '@land-alpha/shared/ids';
+import robots from '../apps/web/src/app/robots';
+import sitemap from '../apps/web/src/app/sitemap';
 
 /**
  * Pipeline integration tests.
@@ -782,5 +784,48 @@ describe('listing finance offer', () => {
       // than the interest earns.
       expect(listing.financeOffered).toBe(false);
     }
+  });
+});
+
+/**
+ * Which pages may be indexed.
+ *
+ * This is a revenue rule, not a preference. The root layout used to apply
+ * `noindex` to the whole application, which was right for the analyst terminal
+ * and silently kept every property listing out of every search result —
+ * organic search being a primary channel for rural land. A regression here
+ * costs sales without failing anything, so it is asserted.
+ */
+describe('indexing rules', () => {
+  spec('publishes a sitemap of listings that are actually for sale', async () => {
+    const entries = await sitemap();
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries[0]!.url).toMatch(/\/properties$/);
+    for (const entry of entries) expect(entry.url).toMatch(/^https?:\/\//);
+
+    // A sold parcel in the sitemap wastes crawl budget and sends buyers to a
+    // dead end.
+    const sold = await prisma.listing.findMany({
+      where: { parcel: { status: { in: ['SOLD', 'ARCHIVED'] } } },
+      select: { slug: true },
+    });
+    for (const listing of sold) {
+      expect(entries.some((entry) => entry.url.endsWith(listing.slug))).toBe(false);
+    }
+  });
+
+  spec('lets crawlers into the listings and nowhere else', async () => {
+    const rules = robots();
+    const rule = Array.isArray(rules.rules) ? rules.rules[0]! : rules.rules;
+    const allow = [rule.allow].flat().filter(Boolean) as string[];
+    const disallow = [rule.disallow].flat().filter(Boolean) as string[];
+
+    expect(allow.some((path) => path.startsWith('/properties'))).toBe(true);
+    // Acquisition analysis on parcels the business intends to bid on. A
+    // competitor reading it from a search result is a direct commercial loss.
+    for (const path of ['/opportunities', '/deals', '/allocate', '/admin', '/api/']) {
+      expect(disallow, `${path} must stay out of the index`).toContain(path);
+    }
+    expect(rules.sitemap).toMatch(/\/sitemap\.xml$/);
   });
 });

@@ -1,11 +1,17 @@
 import type { Metadata, Viewport } from 'next';
+import { env } from '@land-alpha/shared/env';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Land Alpha',
   description:
     'Land-acquisition intelligence: discover, underwrite and rank mispriced government land inventory.',
-  robots: { index: false, follow: false },
+  // Deliberately not set here. The root layout covers both the analyst
+  // terminal and the public listing site, and a blanket noindex — which is
+  // what used to be here — was correct for the terminal and silently kept
+  // every listing out of every search result. The terminal opts out in its own
+  // layout; robots.ts states the same rule for crawlers that never render.
+  metadataBase: new URL(env().NEXT_PUBLIC_SITE_URL),
 };
 
 /**
