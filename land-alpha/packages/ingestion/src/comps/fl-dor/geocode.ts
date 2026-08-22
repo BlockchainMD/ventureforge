@@ -10,7 +10,8 @@ import { unzipSync } from 'fflate';
 import { prisma } from '@land-alpha/db';
 import { createLogger } from '@land-alpha/shared/logger';
 import type { IngestHttpClient } from '../../fetch/http';
-import { absoluteUrl } from './catalog';
+import { absoluteUrl, listRollFiles, listVintages, matchCounty } from './catalog';
+import { chunkByLength } from '../../adapters/arcgis-tax-sale-points';
 
 /**
  * Put the Florida comparables on the map.
@@ -122,6 +123,135 @@ export function representativeCentroid(geometry: {
     if (!best || area > best.area) best = { ring, area };
   }
   return best ? ringCentroid(best.ring) : null;
+}
+
+/**
+ * The statewide centroid service.
+ *
+ * The Florida Geographic Information Office publishes every parcel in the
+ * state as a point — 10.8 million of them — keyed on the same `CO_NO` and
+ * `PARCEL_ID` the assessment roll uses, already in WGS84. That makes it
+ * strictly better than the per-county shapefiles for this job: no quarter-
+ * gigabyte download, no State Plane transform, no shapefile parsing, and one
+ * code path for all 67 counties.
+ *
+ * The shapefile reader below is kept as the fallback, because a hosted service
+ * can be retired or rate-limited and the published archives cannot.
+ */
+const STATEWIDE_CENTROIDS =
+  'https://services9.arcgis.com/Gh9awoU677aKree0/arcgis/rest/services/Florida_Statewide_Parcel_Centroid_Version/FeatureServer/0';
+
+export async function geocodeFromStatewideCentroids(
+  http: IngestHttpClient,
+  options: { county: string; state?: string; countyCode?: number | null; signal?: AbortSignal },
+): Promise<GeocodeResult> {
+  const state = options.state ?? 'FL';
+  const warnings: string[] = [];
+
+  const pending = await prisma.comparableSale.findMany({
+    where: { state, county: options.county, latitude: null },
+    select: { id: true, apn: true },
+  });
+  if (pending.length === 0) {
+    return {
+      county: options.county,
+      vintage: 'statewide-centroids',
+      comparablesWanted: 0,
+      parcelsScanned: 0,
+      located: 0,
+      srid: 4326,
+      warnings: ['Every comparable in this county already has a location.'],
+    };
+  }
+
+  const wanted = new Map<string, string[]>();
+  for (const row of pending) {
+    const key = (row.apn ?? '').trim();
+    if (!key) continue;
+    const bucket = wanted.get(key);
+    if (bucket) bucket.push(row.id);
+    else wanted.set(key, [row.id]);
+  }
+
+  // Scoping to the county matters: a parcel identifier is unique within a
+  // county roll, not across the state, so an unscoped lookup could place a
+  // Marion parcel in Escambia.
+  const countyCode = options.countyCode ?? (await resolveCountyCode(http, options.county));
+  if (countyCode == null) {
+    warnings.push(
+      `Could not establish ${options.county} County's DOR number, so parcel identifiers could not be scoped to it. Falling back to the published parcel shapefile.`,
+    );
+    return geocodeFloridaComparables(http, options);
+  }
+
+  const located: { ids: string[]; x: number; y: number }[] = [];
+  let scanned = 0;
+
+  // The `where` clause is a literal IN list, and ArcGIS servers reject a URL
+  // beyond a few thousand characters, so batch by rendered length rather than
+  // by count.
+  for (const batch of chunkByLength([...wanted.keys()], 1400)) {
+    if (options.signal?.aborted) break;
+    const list = batch.map((apn) => `'${apn.replace(/'/g, "''")}'`).join(',');
+    const url =
+      `${STATEWIDE_CENTROIDS}/query?f=json&outSR=4326&returnGeometry=true` +
+      `&outFields=${encodeURIComponent('PARCEL_ID')}` +
+      `&where=${encodeURIComponent(`CO_NO=${countyCode} AND PARCEL_ID IN (${list})`)}`;
+
+    const body = await http.getJson<{
+      features?: { attributes: Record<string, unknown>; geometry?: { x: number; y: number } }[];
+      error?: { message?: string };
+    }>(url);
+    if (body.error) throw new Error(`Statewide centroid query failed: ${body.error.message}`);
+
+    for (const feature of body.features ?? []) {
+      scanned += 1;
+      const key = String(feature.attributes?.PARCEL_ID ?? '').trim();
+      const ids = wanted.get(key);
+      if (!ids || !feature.geometry) continue;
+      located.push({ ids, x: feature.geometry.x, y: feature.geometry.y });
+      wanted.delete(key);
+    }
+  }
+
+  let written = 0;
+  for (const batch of chunk(located, 500)) {
+    // Already WGS84, so the transform is a no-op the bounds check still guards.
+    written += await writeCentroids(batch, 4326);
+  }
+
+  if (wanted.size > 0) {
+    warnings.push(
+      `${wanted.size} sold parcels are absent from the statewide centroid layer — usually split or combined since it was compiled.`,
+    );
+  }
+
+  logger.info('florida comparables geocoded from statewide centroids', {
+    county: options.county,
+    countyCode,
+    wanted: pending.length,
+    located: written,
+  });
+
+  return {
+    county: options.county,
+    vintage: 'statewide-centroids',
+    comparablesWanted: pending.length,
+    parcelsScanned: scanned,
+    located: written,
+    srid: 4326,
+    warnings,
+  };
+}
+
+/** The DOR county number, read from the roll file names rather than tabulated. */
+async function resolveCountyCode(http: IngestHttpClient, county: string): Promise<number | null> {
+  const vintages = await listVintages(http, 'SDF');
+  for (const vintage of vintages) {
+    const match = matchCounty(await listRollFiles(http, 'SDF', vintage.folder), county);
+    if (match?.countyCode != null) return match.countyCode;
+  }
+  return null;
 }
 
 export async function geocodeFloridaComparables(

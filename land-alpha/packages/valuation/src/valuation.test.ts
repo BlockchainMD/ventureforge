@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { adjustPricePerAcreForSize, acreageBandFor } from './acreage-curve';
-import { analyzeComps, DEFAULT_COMPS_CONFIG, weightedMedian, type CompCandidate } from './comps';
+import {
+  analyzeComps,
+  DEFAULT_COMPS_CONFIG,
+  selectByRadius,
+  weightedMedian,
+  type CompCandidate,
+} from './comps';
 import { valueParcel } from './valuation';
 import { classifyTier, computeEconomics, maximumBidForTargetRatio } from './economics';
 import type { EconomicsCostModel, EconomicsThresholds } from './economics';
@@ -223,6 +229,62 @@ describe('analyzeComps — fixture provenance', () => {
     );
     expect(result.confidence).toBe('LOW');
     expect(result.warnings.some((w) => w.includes('Do not underwrite'))).toBe(true);
+  });
+});
+
+describe('selectByRadius', () => {
+  const config = { ...DEFAULT_COMPS_CONFIG };
+  const at = (metres: number | null) => comp({ distanceMeters: metres });
+
+  it('stays in the neighbourhood when the neighbourhood has enough sales', () => {
+    const near = Array.from({ length: 10 }, () => at(1500));
+    const far = Array.from({ length: 30 }, () => at(30_000));
+    const result = selectByRadius([...near, ...far], config);
+    expect(result.radiusMeters).toBe(3000);
+    expect(result.pool).toHaveLength(10);
+    expect(result.widened).toBeNull();
+  });
+
+  it('widens only as far as it must', () => {
+    const result = selectByRadius(
+      [...Array.from({ length: 2 }, () => at(1500)), ...Array.from({ length: 9 }, () => at(8000))],
+      config,
+    );
+    expect(result.radiusMeters).toBe(10_000);
+    expect(result.pool).toHaveLength(11);
+    expect(result.widened).toBe(2);
+  });
+
+  it('falls back to the widest ring rather than returning nothing', () => {
+    const result = selectByRadius([at(35_000), at(38_000)], config);
+    expect(result.radiusMeters).toBe(40_000);
+    expect(result.pool).toHaveLength(2);
+    expect(result.widened).toBe(0);
+  });
+
+  it('never discards a sale that has no location', () => {
+    // Dropping these would silently discard a whole source — any roll not yet
+    // geocoded — the moment one located sale existed.
+    const result = selectByRadius(
+      [...Array.from({ length: 9 }, () => at(1000)), at(null), at(null)],
+      config,
+    );
+    expect(result.radiusMeters).toBe(3000);
+    expect(result.pool).toHaveLength(11);
+  });
+
+  it('keeps a metropolitan lot away from rural sales forty kilometres off', () => {
+    // The case this exists for: 40km spans greater Orlando, and a downtown
+    // infill lot has nothing in common with a parcel east of the river.
+    const urban = Array.from({ length: 8 }, () =>
+      comp({ distanceMeters: 2000, salePriceCents: 8_000_000 }),
+    );
+    const rural = Array.from({ length: 40 }, () =>
+      comp({ distanceMeters: 35_000, salePriceCents: 300_000 }),
+    );
+    const result = selectByRadius([...urban, ...rural], config);
+    expect(result.pool).toHaveLength(8);
+    expect(result.pool.every((c) => c.salePriceCents === 8_000_000)).toBe(true);
   });
 });
 

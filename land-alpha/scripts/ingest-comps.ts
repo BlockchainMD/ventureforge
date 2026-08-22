@@ -20,7 +20,7 @@ async function main(): Promise<void> {
     if (counties.length === 0) throw new Error('Usage: pnpm comps --geocode-fl <County> [County…]');
     const http = new IngestHttpClient();
     for (const county of counties) {
-      const result = await comps.geocodeFloridaComparables(http, { county });
+      const result = await comps.geocodeFromStatewideCentroids(http, { county });
       console.log(`\n─── Geocoding ${county} County ───`);
       console.log(`  comparables needing a location  ${result.comparablesWanted}`);
       console.log(`  parcels scanned                 ${result.parcelsScanned}`);

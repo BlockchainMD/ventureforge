@@ -46,6 +46,13 @@ export interface CompsConfig {
   readonly maxAgeDays: number;
   /** Comps beyond this are dropped entirely. */
   readonly maxDistanceMeters: number;
+  /**
+   * Radii tried in order, closest first. The first that holds at least
+   * `preferredComps` sales wins; if none does, the widest is used.
+   */
+  readonly radiusTiers?: readonly number[];
+  /** Enough comparables that widening the search would cost more than it adds. */
+  readonly preferredComps?: number;
   /** Annual land-price drift applied to age-adjust older sales. */
   readonly annualAppreciation: number;
   readonly minComps: number;
@@ -56,6 +63,9 @@ export const DEFAULT_COMPS_CONFIG: CompsConfig = {
   curve: DEFAULT_ACREAGE_CURVE,
   maxAgeDays: 365 * 3,
   maxDistanceMeters: 40_000,
+  // 3km is a neighbourhood, 10km a town and its edge, 40km a metropolitan area.
+  radiusTiers: [3_000, 10_000, 40_000],
+  preferredComps: 8,
   annualAppreciation: 0.03,
   minComps: 3,
   targetComps: 12,
@@ -70,6 +80,38 @@ export interface CompsResult {
   readonly confidence: ConfidenceLevel;
   readonly warnings: string[];
   readonly rejectedCount: number;
+}
+
+/**
+ * The tightest ring of comparables that still holds enough sales.
+ *
+ * Comparables with no location are always kept: an unlocated sale is weighted
+ * down and warned about elsewhere, and dropping it here would silently discard
+ * a whole source — Grant County's layer, or any roll not yet geocoded — the
+ * moment one geolocated sale existed.
+ */
+export function selectByRadius(
+  candidates: readonly CompCandidate[],
+  config: CompsConfig,
+): { pool: readonly CompCandidate[]; radiusMeters: number; widened: number | null } {
+  const tiers = config.radiusTiers ?? [config.maxDistanceMeters];
+  const preferred = config.preferredComps ?? config.minComps;
+
+  const within = (radius: number): CompCandidate[] =>
+    candidates.filter(
+      (candidate) => candidate.distanceMeters == null || candidate.distanceMeters <= radius,
+    );
+
+  let tightestCount: number | null = null;
+  for (const [index, radius] of tiers.entries()) {
+    const pool = within(radius);
+    if (index === 0) tightestCount = pool.length;
+    if (pool.length >= preferred) {
+      return { pool, radiusMeters: radius, widened: index === 0 ? null : tightestCount };
+    }
+  }
+  const widest = tiers[tiers.length - 1] ?? config.maxDistanceMeters;
+  return { pool: within(widest), radiusMeters: widest, widened: tightestCount };
 }
 
 /**
@@ -89,7 +131,26 @@ export function analyzeComps(
   const summaries: ComparableSummary[] = [];
   let rejectedCount = 0;
 
-  for (const candidate of candidates) {
+  // Prefer the tightest ring of comparables that still has enough sales in it.
+  //
+  // A single wide radius was the only option while comparables had no
+  // coordinates. Now that they do, taking every sale within forty kilometres is
+  // actively harmful in a metropolitan county: forty kilometres spans the whole
+  // of greater Orlando, so a downtown infill lot and a rural parcel east of the
+  // Econlockhatchee end up in the same comp set, and the resulting spread makes
+  // an honest valuation impossible. Appraisal practice is to start close and
+  // widen only when forced to, which is what this does.
+  const { pool, radiusMeters, widened } = selectByRadius(candidates, config);
+  // Sales outside the chosen ring were still considered and dropped, and the
+  // count of what was dropped is part of what makes a valuation auditable.
+  rejectedCount += candidates.length - pool.length;
+  if (widened != null) {
+    warnings.push(
+      `Only ${widened} comparable sales within ${(config.radiusTiers?.[0] ?? 0) / 1000}km, so the search was widened to ${Math.round(radiusMeters / 1000)}km. Sales further away are less like the subject.`,
+    );
+  }
+
+  for (const candidate of pool) {
     if (candidate.acreage <= 0 || candidate.salePriceCents <= 0) {
       rejectedCount += 1;
       continue;
@@ -100,7 +161,7 @@ export function analyzeComps(
       rejectedCount += 1;
       continue;
     }
-    if (candidate.distanceMeters != null && candidate.distanceMeters > config.maxDistanceMeters) {
+    if (candidate.distanceMeters != null && candidate.distanceMeters > radiusMeters) {
       rejectedCount += 1;
       continue;
     }
