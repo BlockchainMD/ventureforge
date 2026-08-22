@@ -497,6 +497,50 @@ describe('computeEconomics', () => {
     expect(economics.tier).toBe('UNKNOWN');
   });
 
+  it('scales the annualised return by time rather than compounding it', () => {
+    // A 4-month hold used to be compounded across the year, which reported
+    // 2,560% on the buy list. Nothing about land supports assuming the deal
+    // repeats twice more before December.
+    const economics = computeEconomics(
+      { acquisitionPriceCents: 300_000, quickSaleValueCents: 1_500_000, holdDaysOverride: 122 },
+      COSTS,
+      THRESHOLDS,
+    );
+    const holdYears = 122 / 365;
+    expect(economics.annualizedRoiAtQsv).toBeCloseTo(economics.roiAtQsv! / holdYears, 6);
+    expect(economics.annualizedRoiAtQsv!).toBeLessThan(Math.pow(1 + economics.roiAtQsv!, 1 / holdYears) - 1);
+  });
+
+  it('ranks by capital efficiency, not by how short the hold is', () => {
+    // The field is sortable and filterable, so the exponent was reordering the
+    // buy list: a quick small flip outranked a parcel earning several times as
+    // much per dollar deployed. Equal return per dollar-year must rank equal.
+    const quickFlip = computeEconomics(
+      { acquisitionPriceCents: 100_000, quickSaleValueCents: 400_000, holdDaysOverride: 91 },
+      COSTS,
+      THRESHOLDS,
+    );
+    const longHold = computeEconomics(
+      { acquisitionPriceCents: 100_000, quickSaleValueCents: 400_000, holdDaysOverride: 365 },
+      COSTS,
+      THRESHOLDS,
+    );
+    // The quick flip earns the same gross return in a quarter of the time, so
+    // its annualised rate lands a little over 4x the long hold's — a little
+    // over, not exactly, because the longer hold accrues more carrying cost and
+    // so earns a slightly lower return to annualise.
+    const ratio = quickFlip.annualizedRoiAtQsv! / longHold.annualizedRoiAtQsv!;
+    expect(ratio).toBeGreaterThan(4);
+    expect(ratio).toBeLessThan(5);
+
+    // Compounding is what made this field unusable for ranking: the same pair
+    // separates by an order of magnitude under an exponent, so the buy list
+    // sorted by hold length wearing the costume of profitability.
+    const compounded = (e: typeof quickFlip) =>
+      Math.pow(1 + e.roiAtQsv!, 365 / e.expectedHoldDays) - 1;
+    expect(compounded(quickFlip) / compounded(longHold)).toBeGreaterThan(20);
+  });
+
   it('does not report a fantasy annualised return on a loss', () => {
     const economics = computeEconomics(
       { acquisitionPriceCents: 5_000_000, quickSaleValueCents: 1_000_000 },

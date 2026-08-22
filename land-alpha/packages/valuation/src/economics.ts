@@ -106,16 +106,26 @@ export function computeEconomics(
   const roiAtQsv =
     grossProfitAtQsv == null || allInBasis === 0 ? null : grossProfitAtQsv / allInBasis;
 
-  // Annualised return. Only meaningful for a profitable position; a -40% return
-  // annualised by compounding produces a nonsense figure, so losses report the
-  // simple return scaled by time instead.
-  let annualizedRoiAtQsv: number | null = null;
-  if (roiAtQsv != null && holdYears > 0) {
-    annualizedRoiAtQsv =
-      roiAtQsv > -1 && roiAtQsv > 0
-        ? Math.pow(1 + roiAtQsv, 1 / holdYears) - 1
-        : roiAtQsv / holdYears;
-  }
+  // Annualised return, scaled by time rather than compounded.
+  //
+  // Compounding answers "what if I did this deal, then immediately did it
+  // again, and again, all year" — which is not a thing land does. Inventory is
+  // the binding constraint, not capital: there is no queue of identical parcels
+  // to roll into, and a 4-month flip cannot be assumed to repeat twice more.
+  // Compounding a 225% four-month gain reported 2,560% on the buy list, a
+  // figure the product cannot defend to anyone about to wire money.
+  //
+  // It also broke the ranking, and that is the part that costs money. This
+  // field is sortable and filterable, and the exponent rewards short holds
+  // superlinearly: 50% over three months compounded to 406% and outranked 200%
+  // over a year, though the second earns four times as much per dollar
+  // deployed. Scaling by time makes both 200%/yr, which is the honest
+  // comparison of capital efficiency and the one an allocator needs.
+  //
+  // Losses were already scaled rather than compounded. Gains now match, so the
+  // number means the same thing in both directions.
+  const annualizedRoiAtQsv =
+    roiAtQsv != null && holdYears > 0 ? roiAtQsv / holdYears : null;
 
   return {
     acquisitionPrice,
