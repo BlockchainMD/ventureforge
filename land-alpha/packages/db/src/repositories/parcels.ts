@@ -385,6 +385,18 @@ export interface DashboardStats {
  * The dashboard header. One round-trip per figure would be 14 queries; these
  * are grouped into a handful of aggregates instead.
  */
+/**
+ * "This parcel has a cost somebody published, and a value we established."
+ *
+ * Written as raw SQL because the aggregate that needs it is raw SQL, and
+ * spelled out once so the three FILTER clauses cannot drift apart. Mirrors
+ * `AllocationCandidate.priced` — the same question, asked by the allocator.
+ */
+const PRICED_AND_VALUED = Prisma.sql`
+  (p."askingPrice" IS NOT NULL OR p."minimumBid" IS NOT NULL)
+  AND p."quickSaleValue" IS NOT NULL
+`;
+
 export async function dashboardStats(now = new Date()): Promise<DashboardStats> {
   const startOfToday = new Date(now);
   startOfToday.setHours(0, 0, 0, 0);
@@ -442,15 +454,23 @@ export async function dashboardStats(now = new Date()): Promise<DashboardStats> 
         -- a cost and a value exist. Many government layers publish no price at
         -- all (Minnesota tax-forfeited land among them); including their value
         -- but not their cost would manufacture an enormous fictitious discount.
-        SUM(p."estimatedAllInBasis") FILTER (
-          WHERE p."estimatedAllInBasis" IS NOT NULL AND p."quickSaleValue" IS NOT NULL
-        )::text AS comparable_basis,
-        SUM(p."quickSaleValue") FILTER (
-          WHERE p."estimatedAllInBasis" IS NOT NULL AND p."quickSaleValue" IS NOT NULL
-        )::text AS comparable_qsv,
-        COUNT(*) FILTER (
-          WHERE p."estimatedAllInBasis" IS NOT NULL AND p."quickSaleValue" IS NOT NULL
-        )::int AS comparable_count
+        --
+        -- The comment above was right and the predicate under it was wrong, in
+        -- exactly the way ADR 0013 keeps recurring. estimatedAllInBasis is
+        -- NOT NULL for an unpriced parcel: it is the costs-only floor --
+        -- recording, title, marketing, carry -- which can be modelled without
+        -- knowing the price. So "has a basis" was never "has a cost", and the
+        -- headline read a 92.5% discount over 230 parcels of which precisely
+        -- zero had a published price. That is the allocator's defect
+        -- (allocation.service.ts) in a third consumer of the same field.
+        --
+        -- The test for a published cost is the one the allocator settled on:
+        -- an asking price or a minimum bid that somebody actually printed.
+        SUM(p."estimatedAllInBasis") FILTER (WHERE ${PRICED_AND_VALUED})::text
+          AS comparable_basis,
+        SUM(p."quickSaleValue") FILTER (WHERE ${PRICED_AND_VALUED})::text
+          AS comparable_qsv,
+        COUNT(*) FILTER (WHERE ${PRICED_AND_VALUED})::int AS comparable_count
       FROM "ParcelOpportunity" p
       WHERE p."removedFromSourceAt" IS NULL AND p."rejected" = false
     `,

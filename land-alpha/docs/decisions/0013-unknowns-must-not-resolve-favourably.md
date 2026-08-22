@@ -19,10 +19,47 @@ that flattered the parcel.
 | `allocation.service.ts` | Unpriced parcel → costs-only floor treated as the basis | The capital plan committed $46,000 across twelve parcels whose price nobody had, at a reported 584% a year |
 | `env.ts` | `z.coerce.boolean()` → every non-empty string is `true` | `PUBLIC_SITE_ENABLED=false` read as **true**. The switch that keeps the unauthenticated listing site off did nothing, and the only spelling that worked was the empty string |
 | `parcels.ts` | Unmeasured flood/wetland overlap → passes any threshold | `FLOOD ≤ 0%` returned **14,247 of 14,310** live parcels while presenting itself as a satisfied constraint. Screened-only, the honest answer is **30** |
+| `parcels.ts` (dashboard) | "Has an all-in basis" read as "has a cost" | IMPLIED DISCOUNT showed **92.5% across 230 parcels**, of which **zero** had a published price. The tooltip named a denominator that did not exist |
 
 Each one is individually defensible in isolation, which is precisely why they
 accumulated. A `?? 0` looks like defensive programming. An empty array looks
 like an empty result. A neutral score looks fair.
+
+## The ninth was the sixth, in a third consumer
+
+`estimatedAllInBasis` has now caused this three times. It is the costs-only
+floor — recording, title, marketing, carry — and it is non-null for an unpriced
+parcel because those costs can be modelled without knowing the price. Every
+consumer that reads it as "the cost" is reading a number that exists precisely
+when the cost does not.
+
+- `valuation.service.ts` substituted `acquisitionPrice ?? 0` (instance one).
+- `allocation.service.ts` treated the floor as the basis, and committed $46,000
+  to twelve parcels nobody had a price for (instance six).
+- `dashboardStats` filtered on `estimatedAllInBasis IS NOT NULL` to decide which
+  parcels had "both a published cost and an established value" (this one).
+
+The SQL comment above the third one states the correct rule in full — *"including
+their value but not their cost would manufacture an enormous fictitious
+discount"* — and then the predicate under it does exactly that. The author knew
+the rule, wrote it down, and still reached for the wrong field, because the
+wrong field is named as though it were the right one.
+
+**Rule 9 was not enough.** "Nulling the derived figures is not enough" told
+consumers not to recompute from raw inputs. It did not stop a consumer from
+*testing* a raw input for presence. The addition:
+
+> **A field that is populated when the fact is unknown must not be used to test
+> whether the fact is known.** `estimatedAllInBasis` answers "what would this
+> cost us if we won it", not "does anyone know the price". The question "is
+> there a published price" has exactly one honest test — `askingPrice` or
+> `minimumBid` being non-null — and it is now written once, as
+> `PRICED_AND_VALUED`, and shared.
+
+The honest figure, once the predicate is right, is that **no live unrejected
+parcel in the database has a published price at all** — every priced parcel
+found so far has been rejected or withdrawn by its source. The dashboard now
+says so rather than deriving 92.5% from the absence.
 
 ## The eighth was in a filter, where the analyst had asked the question out loud
 

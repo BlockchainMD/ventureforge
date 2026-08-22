@@ -94,12 +94,19 @@ export default async function DashboardPage() {
               <Metric label="Total asking" hint="Sum of asking prices or minimum bids">
                 {formatCentsCompact(stats.totalAskingCents)}
               </Metric>
-              <Metric label="Estimated QSV" hint="Sum of conservative quick-sale values">
+              <Metric
+                label="Estimated QSV"
+                hint="Sum of conservative quick-sale values across all live parcels — including the ones with no published price, which contribute nothing to Total asking. The two are not a matched pair and their ratio is not a discount."
+              >
                 {formatCentsCompact(stats.estimatedQsvCents)}
               </Metric>
               <Metric
                 label="Implied discount"
-                hint={`1 − (all-in basis ÷ quick-sale value), across the ${stats.pricedParcelCount} parcels that have both a published cost and an established value`}
+                hint={
+                  stats.pricedParcelCount === 0
+                    ? 'No live parcel currently has both a published price and an established value, so there is no discount to compute. Every priced parcel found so far has been rejected or withdrawn by its source.'
+                    : `1 − (all-in basis ÷ quick-sale value), across the ${stats.pricedParcelCount} parcels that have both a published cost and an established value`
+                }
                 tone={stats.aggregateImpliedDiscount != null ? 'text-good' : undefined}
               >
                 <Value>

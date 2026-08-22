@@ -374,6 +374,48 @@ describe('offered for sale is distinguished from merely held', () => {
     }
   });
 
+  spec('the implied discount is computed only from parcels with a published price', async () => {
+    // The defect: the FILTER gated on estimatedAllInBasis IS NOT NULL, which is
+    // true for unpriced parcels because it is the costs-only floor. The
+    // dashboard read a 92.5% discount across 230 parcels, none of which had a
+    // published price. Third consumer of the field after the allocator.
+    const stats = await dashboardStats();
+
+    const priced = await prisma.parcelOpportunity.count({
+      where: {
+        removedFromSourceAt: null,
+        rejected: false,
+        quickSaleValue: { not: null },
+        OR: [{ askingPrice: { not: null } }, { minimumBid: { not: null } }],
+      },
+    });
+    expect(stats.pricedParcelCount).toBe(priced);
+
+    if (priced === 0) {
+      // No basis for the figure means no figure, not a figure computed from
+      // whatever happened to be non-null.
+      expect(stats.aggregateImpliedDiscount).toBeNull();
+      return;
+    }
+    expect(stats.aggregateImpliedDiscount).not.toBeNull();
+
+    // A discount over parcels that all carry a real price can still be
+    // negative (paying above value, which is what both Marion parcels do), but
+    // it cannot exceed 1 — that would mean a basis below zero.
+    expect(stats.aggregateImpliedDiscount!).toBeLessThanOrEqual(1);
+  });
+
+  spec('total asking and estimated QSV are not presented as a matched pair', async () => {
+    // Total asking COALESCEs an absent price to zero while estimated QSV sums
+    // every live parcel, so their ratio is not a discount. The guard here is
+    // that pricedParcelCount stays the honest denominator: if it is zero while
+    // QSV is large, nothing may derive a discount from the two sums.
+    const stats = await dashboardStats();
+    if (stats.pricedParcelCount === 0 && stats.estimatedQsvCents > 0) {
+      expect(stats.aggregateImpliedDiscount).toBeNull();
+    }
+  });
+
   spec('the unscreened opt-in round-trips through the URL', async () => {
     const params = filterToSearchParams({ ...DEFAULT_FILTER, includeUnscreened: true });
     expect(filterFromSearchParams(params).includeUnscreened).toBe(true);
