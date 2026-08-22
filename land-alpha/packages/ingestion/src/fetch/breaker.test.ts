@@ -41,6 +41,11 @@ describe('IngestHttpClient circuit breaker', () => {
     vi.stubGlobal('fetch', fn);
     const client = new IngestHttpClient({
       minDelayMs: 0,
+      // CI sets INGEST_OFFLINE, which short-circuits get() to the fixture
+      // reader before the breaker or the stubbed fetch is ever reached. These
+      // tests are about network behaviour, so they opt out explicitly rather
+      // than inheriting whatever the ambient environment happens to be.
+      offline: false,
       respectRobots: false,
       // One attempt per request: the breaker is what is under test, not the
       // retry backoff, and waiting out real exponential delays makes a
@@ -64,6 +69,11 @@ describe('IngestHttpClient circuit breaker', () => {
     vi.stubGlobal('fetch', fn);
     const client = new IngestHttpClient({
       minDelayMs: 0,
+      // CI sets INGEST_OFFLINE, which short-circuits get() to the fixture
+      // reader before the breaker or the stubbed fetch is ever reached. These
+      // tests are about network behaviour, so they opt out explicitly rather
+      // than inheriting whatever the ambient environment happens to be.
+      offline: false,
       respectRobots: false,
       // One attempt per request: the breaker is what is under test, not the
       // retry backoff, and waiting out real exponential delays makes a
@@ -95,6 +105,11 @@ describe('IngestHttpClient circuit breaker', () => {
 
     const client = new IngestHttpClient({
       minDelayMs: 0,
+      // CI sets INGEST_OFFLINE, which short-circuits get() to the fixture
+      // reader before the breaker or the stubbed fetch is ever reached. These
+      // tests are about network behaviour, so they opt out explicitly rather
+      // than inheriting whatever the ambient environment happens to be.
+      offline: false,
       respectRobots: false,
       // One attempt per request: the breaker is what is under test, not the
       // retry backoff, and waiting out real exponential delays makes a
@@ -123,6 +138,11 @@ describe('IngestHttpClient circuit breaker', () => {
 
     const client = new IngestHttpClient({
       minDelayMs: 0,
+      // CI sets INGEST_OFFLINE, which short-circuits get() to the fixture
+      // reader before the breaker or the stubbed fetch is ever reached. These
+      // tests are about network behaviour, so they opt out explicitly rather
+      // than inheriting whatever the ambient environment happens to be.
+      offline: false,
       respectRobots: false,
       // One attempt per request: the breaker is what is under test, not the
       // retry backoff, and waiting out real exponential delays makes a
